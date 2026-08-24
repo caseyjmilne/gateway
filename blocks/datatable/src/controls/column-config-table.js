@@ -64,18 +64,11 @@ export default function ColumnConfigTable( { columns, labelsByKey, onChange, onR
 				{ columns.map( ( column, index ) => (
 					<tr
 						key={ column.key }
-						draggable
 						className={ classnames(
 							'gateway-columns-config__row',
 							dragIndex === index && 'is-dragging',
 							overIndex === index && dragIndex !== index && 'is-drop-target'
 						) }
-						onDragStart={ ( event ) => {
-							setDragIndex( index );
-							// Firefox requires data to be set for drag to start.
-							event.dataTransfer.effectAllowed = 'move';
-							event.dataTransfer.setData( 'text/plain', String( index ) );
-						} }
 						onDragOver={ ( event ) => {
 							event.preventDefault();
 							setOverIndex( index );
@@ -91,7 +84,19 @@ export default function ColumnConfigTable( { columns, labelsByKey, onChange, onR
 							setOverIndex( null );
 						} }
 					>
-						<td className="gateway-columns-config__handle" aria-hidden="true">
+						{ /* draggable lives on the handle, not the row, so a drag can
+						   only be started from here -- not from anywhere else in the row. */ }
+						<td
+							className="gateway-columns-config__handle"
+							aria-hidden="true"
+							draggable
+							onDragStart={ ( event ) => {
+								setDragIndex( index );
+								// Firefox requires data to be set for drag to start.
+								event.dataTransfer.effectAllowed = 'move';
+								event.dataTransfer.setData( 'text/plain', String( index ) );
+							} }
+						>
 							⠿
 						</td>
 						<td>{ labelsByKey[ column.key ] || column.key }</td>

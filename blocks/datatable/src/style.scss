@@ -113,7 +113,6 @@
 	}
 
 	&__row {
-		cursor: grab;
 		border-top: 1px solid #e0e0e0;
 
 		&.is-dragging {
@@ -130,7 +129,11 @@
 		}
 	}
 
+	// Only the handle is draggable (see column-config-table.js /
+	// facet-config-table.js) -- the "grab" cursor lives here, not on the
+	// row, so it doesn't imply the rest of the row can start a drag too.
 	&__handle {
+		cursor: grab;
 		color: #949494;
 		text-align: center;
 		letter-spacing: -1px;

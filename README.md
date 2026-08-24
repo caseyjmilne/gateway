@@ -197,10 +197,15 @@ once a Post Type is chosen, in two parts:
 2. **Column configuration** (`controls/column-config-table.js`): the
    currently *selected* columns, in their configured order, as a table with:
    - A drag handle (⠿) to reorder rows via plain HTML5 drag-and-drop --
-     `columns` is just reordered in place on drop. (This UI lives in the
-     Inspector sidebar, i.e. the editor's top-level document, not the
-     iframed canvas, so there's no cross-iframe drag-and-drop concern to
-     work around here, unlike the DataTables init below.)
+     `columns` is just reordered in place on drop. `draggable` (and
+     `onDragStart`) live on the handle cell specifically, not the `<tr>`,
+     so a drag can only be started from the handle -- not by grabbing
+     anywhere else in the row, which matters more once a row has its own
+     interactive controls to click/select text in (as facet rows below
+     do). (This UI lives in the Inspector sidebar, i.e. the editor's
+     top-level document, not the iframed canvas, so there's no
+     cross-iframe drag-and-drop concern to work around here, unlike the
+     DataTables init below.)
    - A "Sortable" button per row, toggling whether that column is
      client-side sortable in DataTables.
    - A remove ("×") button per row, for deselecting a column from directly
