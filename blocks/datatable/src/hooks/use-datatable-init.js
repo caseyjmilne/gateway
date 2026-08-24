@@ -54,9 +54,17 @@ export function useDataTableInit( containerRef, deps = [] ) {
 			}
 		};
 
-		// The preview may already be present (e.g. cached SSR response).
-		syncTable();
-
+		// Deliberately *not* calling syncTable() here. When this effect
+		// re-runs because a dep changed (e.g. the column config), the table
+		// still sitting in the DOM at this instant is the *previous*
+		// render's markup -- <ServerSideRender> fetches its updated markup
+		// asynchronously, so it hasn't landed yet. Initializing against it
+		// now would apply stale settings (e.g. the old Sortable flags) to a
+		// table that's about to be replaced anyway -- exactly the kind of
+		// "the change doesn't seem to take effect in the editor" staleness
+		// this hook needs to avoid. The MutationObserver below is the only
+		// thing that should ever trigger a (re)init: it only fires once the
+		// real, up-to-date markup has actually landed in the DOM.
 		const observer = new window.MutationObserver( syncTable );
 		observer.observe( container, { childList: true, subtree: true } );
 

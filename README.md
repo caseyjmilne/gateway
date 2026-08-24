@@ -175,6 +175,11 @@ once a Post Type is chosen, in two parts:
      work around here, unlike the DataTables init below.)
    - A "Sortable" button per row, toggling whether that column is
      client-side sortable in DataTables.
+   - A remove ("×") button per row, for deselecting a column from directly
+     within the config table -- an alternative to clicking it off again in
+     the available-columns list above. Both paths share the same "keep at
+     least one column" guard (`ColumnsPanel`'s `handleRemove`), and the
+     button is disabled rather than a silent no-op when it's the last one.
 
 `controls/columns-panel.js` orchestrates both: it fetches the available
 column list from **`GET /gateway/v1/columns/<post_type>`**
@@ -226,10 +231,22 @@ per-caller wiring needed.
 `JSON.stringify( columns )` in the dependency array passed to
 `useDataTableInit()` (alongside `postType`, `limit`, `pageSize`) --
 selecting/deselecting a column, reordering, or toggling sortable all change
-that attribute, which re-renders `<ServerSideRender>` with the new markup,
-which the hook's `MutationObserver` picks up to destroy and reinitialize
+that attribute, which re-renders `<ServerSideRender>` with new markup, which
+the hook's `MutationObserver` picks up to destroy and reinitialize
 DataTables. This is the "column change" event the DataTable refresh is
 keyed off of.
+
+`useDataTableInit()` deliberately does *not* also sync immediately when a
+dependency changes (only the `MutationObserver` triggers a (re)init). At the
+instant a dep changes, the table still in the DOM is the *previous* render's
+markup -- `<ServerSideRender>`'s refetch is asynchronous -- so syncing right
+away would apply the new settings' effect (e.g. a just-toggled Sortable
+flag) against stale markup that's about to be replaced anyway, which is
+exactly the kind of "the change doesn't seem to take effect in the editor"
+staleness this hook exists to prevent. The effect's cleanup still tears down
+the current DataTable instance on every dependency change, so the table
+sits in its plain, unenhanced state until the observer confirms the real
+updated markup has landed and reinitializes against *that*.
 
 ## Extending: future child blocks
 

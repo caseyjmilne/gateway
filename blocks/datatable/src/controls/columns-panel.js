@@ -101,16 +101,23 @@ export default function ColumnsPanel( { postType, columns, onChange } ) {
 		};
 	}, [ postType ] );
 
+	// Shared by both removal paths: clicking a selected name in the
+	// available-columns list above, and the "×" remove button in the
+	// column-config table below.
+	const handleRemove = ( key ) => {
+		// Keep at least one column selected: an empty grid isn't useful,
+		// and would leave DataTables with no columns to initialize against.
+		if ( columns.length <= 1 ) {
+			return;
+		}
+		onChange( columns.filter( ( column ) => column.key !== key ) );
+	};
+
 	const handleToggle = ( key ) => {
 		const isSelected = columns.some( ( column ) => column.key === key );
 
 		if ( isSelected ) {
-			// Keep at least one column selected: an empty grid isn't useful,
-			// and would leave DataTables with no columns to initialize against.
-			if ( columns.length <= 1 ) {
-				return;
-			}
-			onChange( columns.filter( ( column ) => column.key !== key ) );
+			handleRemove( key );
 		} else {
 			onChange( [ ...columns, { key, sortable: true } ] );
 		}
@@ -144,6 +151,7 @@ export default function ColumnsPanel( { postType, columns, onChange } ) {
 				columns={ columns }
 				labelsByKey={ labelsByKey }
 				onChange={ onChange }
+				onRemove={ handleRemove }
 			/>
 		</>
 	);

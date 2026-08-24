@@ -90,8 +90,17 @@
 		text-align: left;
 	}
 
-	&__handle-col {
+	&__handle-col,
+	&__remove-col {
 		width: 1.5em;
+	}
+
+	&__remove {
+		color: #cc1818;
+
+		&:hover:not( :disabled ) {
+			color: #cc1818;
+		}
 	}
 
 	&__row {

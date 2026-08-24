@@ -15,11 +15,12 @@ import classnames from '../utils/classnames';
 
 /**
  * @param {Object}   props
- * @param {Object[]} props.columns    Selected columns, in order: [{ key, sortable }].
+ * @param {Object[]} props.columns     Selected columns, in order: [{ key, sortable }].
  * @param {Object}   props.labelsByKey Map of key => friendly label, for display.
- * @param {Function} props.onChange   ( nextColumns ) => void.
+ * @param {Function} props.onChange    ( nextColumns ) => void, for reorder/sortable-toggle.
+ * @param {Function} props.onRemove    ( key ) => void -- removes a column from the selection.
  */
-export default function ColumnConfigTable( { columns, labelsByKey, onChange } ) {
+export default function ColumnConfigTable( { columns, labelsByKey, onChange, onRemove } ) {
 	const [ dragIndex, setDragIndex ] = useState( null );
 	const [ overIndex, setOverIndex ] = useState( null );
 
@@ -56,6 +57,7 @@ export default function ColumnConfigTable( { columns, labelsByKey, onChange } ) 
 					<th className="gateway-columns-config__handle-col"></th>
 					<th>{ __( 'Column', 'gateway' ) }</th>
 					<th>{ __( 'Sortable', 'gateway' ) }</th>
+					<th className="gateway-columns-config__remove-col"></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -104,6 +106,17 @@ export default function ColumnConfigTable( { columns, labelsByKey, onChange } ) 
 									? __( 'Sortable', 'gateway' )
 									: __( 'Not sortable', 'gateway' ) }
 							</Button>
+						</td>
+						<td>
+							<Button
+								className="gateway-columns-config__remove"
+								icon="no-alt"
+								label={ __( 'Remove column', 'gateway' ) }
+								size="small"
+								isDestructive
+								disabled={ columns.length <= 1 }
+								onClick={ () => onRemove( column.key ) }
+							/>
 						</td>
 					</tr>
 				) ) }
