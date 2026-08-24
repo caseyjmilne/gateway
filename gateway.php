@@ -25,6 +25,7 @@ define( 'GATEWAY_BLOCKS_DIR', GATEWAY_PLUGIN_DIR . 'blocks' );
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-block-loader.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-column-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-columns-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-facet-query.php';
 
 /**
  * Boot the plugin.
@@ -33,5 +34,6 @@ function gateway_boot() {
 	\Gateway\Block_Loader::init();
 	\Gateway\Column_Registry::init();
 	\Gateway\Columns_REST_Controller::init();
+	\Gateway\Facet_Query::init();
 }
 add_action( 'plugins_loaded', 'gateway_boot' );

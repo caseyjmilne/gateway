@@ -141,3 +141,15 @@
 		color: #757575;
 	}
 }
+
+// Facet config table: same base as .gateway-columns-config, plus sizing
+// for the per-row Compare <select> and Value <input>.
+.gateway-facets-config {
+	.components-select-control__input {
+		min-width: 6.5em;
+	}
+
+	.components-text-control__input {
+		min-width: 5em;
+	}
+}

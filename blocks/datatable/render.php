@@ -78,6 +78,43 @@ if ( empty( $columns ) ) {
 
 $columns = array_values( $columns );
 
+// Resolve + validate the requested facets the same way as columns: a key
+// not in $available_columns for this post type is dropped, and each valid
+// facet's 'type' (core|meta) is taken from Column_Registry, never trusted
+// from the attribute, since Facet_Query routes core vs. meta facets very
+// differently (a mislabeled facet could otherwise dodge the SQL-safety
+// allow-list core facets go through).
+$facets = array();
+
+if ( ! empty( $attributes['facets'] ) && is_array( $attributes['facets'] ) ) {
+	foreach ( $attributes['facets'] as $requested_facet ) {
+		if ( empty( $requested_facet['key'] ) ) {
+			continue;
+		}
+
+		$key = is_string( $requested_facet['key'] ) ? trim( $requested_facet['key'] ) : '';
+
+		if ( '' === $key || ! isset( $available_columns[ $key ] ) ) {
+			continue;
+		}
+
+		$value = isset( $requested_facet['value'] ) ? (string) $requested_facet['value'] : '';
+
+		// An incomplete facet (no value entered yet) filters nothing --
+		// skip it rather than querying for an empty value.
+		if ( '' === $value ) {
+			continue;
+		}
+
+		$facets[] = array(
+			'key'     => $key,
+			'type'    => $available_columns[ $key ]['type'],
+			'compare' => isset( $requested_facet['compare'] ) ? $requested_facet['compare'] : '=',
+			'value'   => $value,
+		);
+	}
+}
+
 $query_args = array(
 	'post_type'      => $post_type,
 	'post_status'    => 'publish',
@@ -86,6 +123,8 @@ $query_args = array(
 	'posts_per_page' => $limit > 0 ? $limit : -1,
 	'no_found_rows'  => true,
 );
+
+$query_args = \Gateway\Facet_Query::apply_facets( $query_args, $facets );
 
 /**
  * Filters the WP_Query arguments used to populate the datatable block.

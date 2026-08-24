@@ -16,6 +16,11 @@
  * node's document to match their own global `document`, so initializing
  * against the iframe node from here works -- this is the standard approach
  * for driving legacy jQuery plugins from block editor code.
+ *
+ * This hook is only ever used from edit.js, never view.js -- so the row
+ * -link suppression below is inherently editor-only; front-end row links
+ * (e.g. a post's title, linked to its permalink) keep working normally
+ * there.
  */
 
 import { useEffect } from '@wordpress/element';
@@ -26,6 +31,38 @@ import { initGatewayDataTable, destroyGatewayDataTable } from '../shared/datatab
  * @param {Array}  deps         Dependency array; re-runs (re-inits) whenever these change.
  */
 export function useDataTableInit( containerRef, deps = [] ) {
+	// Suppress clicks on row links (e.g. a post's title, linked to its
+	// permalink in render.php) so they don't navigate the editor away from
+	// the post being edited. Scoped to <tbody> specifically -- not the
+	// whole container -- so DataTables' own UI (pagination controls, which
+	// render outside the <table> element entirely) is never affected. This
+	// is its own effect, independent of `deps`: event delegation means it
+	// doesn't need to know about any specific table node, so it's set up
+	// once and left running across re-renders/reinits rather than being
+	// torn down and recreated alongside them.
+	useEffect( () => {
+		const container = containerRef.current;
+
+		if ( ! container ) {
+			return;
+		}
+
+		const suppressRowLinks = ( event ) => {
+			const link = event.target.closest( 'a' );
+
+			if ( link && link.closest( 'tbody' ) ) {
+				event.preventDefault();
+			}
+		};
+
+		container.addEventListener( 'click', suppressRowLinks );
+
+		return () => {
+			container.removeEventListener( 'click', suppressRowLinks );
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [] );
+
 	useEffect( () => {
 		const container = containerRef.current;
 

@@ -8,21 +8,52 @@ import PostTypeControl from './controls/post-type-control';
 import LimitControl from './controls/limit-control';
 import PageSizeControl from './controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
+import FacetsPanel from './controls/facets-panel';
 import { useDataTableInit } from './hooks/use-datatable-init';
+import { useAvailableColumns } from './hooks/use-available-columns';
+import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
+
+const DEFAULT_COLUMNS = [
+	{ key: 'ID', sortable: true },
+	{ key: 'post_title', sortable: true },
+];
 
 export default function Edit( { attributes, setAttributes } ) {
-	const { postType, limit, pageSize, columns } = attributes;
+	const { postType, limit, pageSize, columns, facets } = attributes;
 	const blockProps = useBlockProps();
 	const previewRef = useRef();
 
+	// Fetched once per post type and shared by both panels below: "what
+	// fields are available" is the same question for columns (what to
+	// display) and facets (what to filter by).
+	const {
+		availableColumns,
+		isLoading: isLoadingColumns,
+		error: columnsError,
+	} = useAvailableColumns( postType );
+
+	// Drop selections that don't exist for the (possibly new) post type,
+	// e.g. meta fields specific to a previously selected one. Columns falls
+	// back to the ID/Title default if that empties it; an empty facet
+	// selection (no filtering) is a perfectly normal state, so it has no
+	// such fallback.
+	useReconcileFieldList( availableColumns, columns, ( value ) =>
+		setAttributes( { columns: value } ), DEFAULT_COLUMNS
+	);
+	useReconcileFieldList( availableColumns, facets, ( value ) =>
+		setAttributes( { facets: value } )
+	);
+
 	// Re-run whenever the rendered preview could change shape/content --
-	// including a column change (add/remove/reorder/sortable toggle), which
-	// is the event that should refresh the DataTable in the editor.
+	// including a column or facet change (add/remove/reorder/sortable
+	// toggle, or a facet's compare/value), which is the event that should
+	// refresh the DataTable in the editor.
 	useDataTableInit( previewRef, [
 		postType,
 		limit,
 		pageSize,
 		JSON.stringify( columns ),
+		JSON.stringify( facets ),
 	] );
 
 	return (
@@ -44,9 +75,20 @@ export default function Edit( { attributes, setAttributes } ) {
 				</PanelBody>
 				<PanelBody title={ __( 'Columns', 'gateway' ) } initialOpen={ false }>
 					<ColumnsPanel
-						postType={ postType }
+						availableColumns={ availableColumns }
+						isLoading={ isLoadingColumns }
+						error={ columnsError }
 						columns={ columns }
 						onChange={ ( value ) => setAttributes( { columns: value } ) }
+					/>
+				</PanelBody>
+				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
+					<FacetsPanel
+						availableColumns={ availableColumns }
+						isLoading={ isLoadingColumns }
+						error={ columnsError }
+						facets={ facets }
+						onChange={ ( value ) => setAttributes( { facets: value } ) }
 					/>
 				</PanelBody>
 			</InspectorControls>

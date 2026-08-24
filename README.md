@@ -35,11 +35,12 @@ Available scripts:
 ## Architecture
 
 ```
-gateway.php                     Plugin bootstrap: constants + boots Block_Loader + Columns_REST_Controller
+gateway.php                     Plugin bootstrap: constants + boots Block_Loader, Column_Registry, Columns_REST_Controller, Facet_Query
 includes/
   class-block-loader.php        Scans /blocks and register_block_type()'s every block found
   class-column-registry.php     Discovers columns (core fields + meta/ACF) for a post type; renders cell values
-  class-columns-rest-controller.php  GET /gateway/v1/columns/<post_type> (the block editor's column picker)
+  class-columns-rest-controller.php  GET /gateway/v1/columns/<post_type> (the block editor's column/facet picker)
+  class-facet-query.php         Applies validated facets to a WP_Query (meta_query + a scoped posts_where filter)
 blocks/
   datatable/
     block.json                  Block metadata, attributes, asset + render wiring
@@ -53,11 +54,16 @@ blocks/
         post-type-control.js    Reusable "Post Type" SelectControl
         limit-control.js        "Limit" numeric field
         page-size-control.js    "Page Size" numeric field
-        columns-panel.js        Fetches available columns, orchestrates the two below
-        available-columns-list.js  Click-to-toggle column selection
+        columns-panel.js        Renders the two below for the selected columns
+        facets-panel.js         Renders the two below for the selected facets
+        available-columns-list.js  Click-to-toggle field selection (shared by columns + facets)
         column-config-table.js  Drag-to-reorder + click-to-toggle-sortable table
+        facet-config-table.js   Drag-to-reorder + compare/value table
+        facet-compare-options.js  Facet comparison operator list (=, !=, >, ...)
       hooks/
         use-datatable-init.js   React hook: (re)inits DataTables against an async-rendered container
+        use-available-columns.js  Fetches the field list for a post type (shared by columns + facets)
+        use-reconcile-field-list.js  Drops selections no longer valid for the current post type
       shared/
         datatable.js            Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
       utils/
@@ -121,6 +127,18 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
    dependency changes (fading its opacity down via `style.scss`), and
    removes it once the fresh table has actually (re)initialized (fading back
    in) -- turning the hard cut into a brief, deliberate fade instead.
+6. **Suppressing row-link navigation:** a cell like `post_title`'s links to
+   the post's permalink (useful on the front end); clicking it in the
+   editor would otherwise navigate away from the post being edited.
+   `use-datatable-init.js` adds a delegated click listener, scoped
+   specifically to links inside `<tbody>` (not the whole container -- so
+   DataTables' own pagination controls, which render outside the `<table>`
+   element entirely, are unaffected), that calls `preventDefault()`. This
+   is a second, independent effect from the (re)init one above -- it uses
+   event delegation, so it doesn't need to know about any specific table
+   node, and is set up once rather than being torn down and recreated
+   alongside every reinit. Since this hook is only ever used from `edit.js`,
+   never `view.js`, the suppression is inherently editor-only.
 
 ### Settings
 
@@ -154,6 +172,9 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
   { key: 'post_title', sortable: true }]`): which fields show up as columns,
   in what order, and which of them are client-side sortable in DataTables.
   See "Column selection" below.
+- **Facets** (`facets` attribute, default `[]`): which fields the query is
+  filtered by, in what order, with what comparison and value. See "Facet
+  selection (filtering)" below.
 
 The query args used to populate the grid are filterable via the
 `gateway_datatable_query_args` PHP filter (`$query_args, $attributes,
@@ -285,14 +306,74 @@ hierarchical post types (pages, and any custom hierarchical CPT) --
 `Column_Registry` excludes it via `is_post_type_hierarchical()` for flat
 post types like `post`, where it isn't meaningful.
 
-**Refreshing on column changes:** `edit.js` includes
-`JSON.stringify( columns )` in the dependency array passed to
-`useDataTableInit()` (alongside `postType`, `limit`, `pageSize`) --
-selecting/deselecting a column, reordering, or toggling sortable all change
-that attribute, which re-renders `<ServerSideRender>` with new markup, which
-the hook's `MutationObserver` picks up to destroy and reinitialize
-DataTables. This is the "column change" event the DataTable refresh is
-keyed off of.
+### Facet selection (filtering)
+
+A second, independent Inspector panel -- "Facets" -- lets a block filter
+its grid by any of the same fields `Column_Registry` offers as columns
+("all the filterable columns" is the same field list as "all the
+displayable columns"). The UI mirrors Columns deliberately:
+
+- **`controls/facets-panel.js`** reuses `AvailableColumnsList` as-is (it
+  was already generic over "a list of fields + a selection to toggle") for
+  the click-to-toggle available-fields list. Unlike columns, an empty facet
+  selection is a perfectly normal state (no filtering applied), so there's
+  no "keep at least one" guard here.
+- **`controls/facet-config-table.js`** is the selected-facets equivalent of
+  `column-config-table.js`: same drag-and-drop reorder (native HTML5 DnD)
+  and remove ("×") button, but each row carries a **Compare** `<select>`
+  (Equals, Not Equals, Greater/Less Than (or Equal), Contains, Does Not
+  Contain -- `controls/facet-compare-options.js`) and a **Value** `<input>`
+  instead of a Sortable toggle. Per the current spec, Value is a plain text
+  field; loading a field's actual distinct values into a picker instead is
+  a natural later step this structure doesn't block.
+- **`facets` attribute**: an ordered array of `{ key, compare, value }`,
+  default `[]`.
+
+Fetching the available field list and reconciling a selection against post
+type changes were pulled out of `ColumnsPanel` and into two shared hooks --
+`hooks/use-available-columns.js` and `hooks/use-reconcile-field-list.js` --
+specifically so `FacetsPanel` could reuse both rather than duplicating a
+second REST fetch and a second copy of the "drop what's no longer valid"
+logic. `edit.js` now owns fetching the field list once per post type change
+and runs the reconciliation hook twice (once for `columns`, once for
+`facets`, with different fallback-to-default behavior as noted above).
+
+**Applying facets to the query** (`render.php` +
+`includes/class-facet-query.php`): each requested `{ key, compare, value }`
+is validated the
+same way columns are -- an unrecognized key for the post type is dropped,
+and a facet with no value entered yet is skipped rather than querying for
+an empty string. `Facet_Query::apply_facets()` then routes each valid facet
+by its `type` (never trusted from the attribute -- always re-resolved from
+`Column_Registry` in `render.php`, since a facet's `type` decides which of
+two very different code paths it goes through):
+
+- **Meta facets** become native `WP_Query` `meta_query` clauses --
+  `compare` is passed straight through (it's already WP_Query's own
+  vocabulary: `=`, `!=`, `>`, `>=`, `<`, `<=`, `LIKE`, `NOT LIKE`).
+- **Core facets** (filtering by a `WP_Post` field like `post_title` or
+  `post_date`) have no built-in `WP_Query` mechanism, so they're applied
+  via a `posts_where` filter -- scoped to *only* queries that explicitly
+  opt in via a private query var `apply_facets()` sets, so it can never
+  affect any other query on the site. Both the column name and the compare
+  operator are checked against fixed, non-filterable allow-lists
+  (`Facet_Query::ALLOWED_CORE_COLUMNS`, `::ALLOWED_COMPARE`) before ever
+  being placed into the raw SQL string -- the value is always passed
+  through `$wpdb->prepare()`'s placeholder, never interpolated directly.
+  This allow-list is deliberately *not* wired to the filterable
+  `gateway_datatable_core_columns` list: it exists purely as a SQL-safety
+  boundary, and letting arbitrary filtered-in column names widen it would
+  defeat the point.
+
+**Refreshing on column/facet changes:** `edit.js` includes
+`JSON.stringify( columns )` and `JSON.stringify( facets )` in the
+dependency array passed to `useDataTableInit()` (alongside `postType`,
+`limit`, `pageSize`) -- selecting/deselecting a column or facet, reordering
+either, toggling a column's sortable flag, or changing a facet's compare/
+value all change one of those attributes, which re-renders
+`<ServerSideRender>` with new markup, which the hook's `MutationObserver`
+picks up to destroy and reinitialize DataTables. This is the "column/facet
+change" event the DataTable refresh is keyed off of.
 
 `useDataTableInit()` deliberately does *not* also sync immediately when a
 dependency changes (only the `MutationObserver` triggers a (re)init). At the
