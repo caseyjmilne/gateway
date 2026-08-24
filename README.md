@@ -208,6 +208,12 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   and meta keys actually found in use on a recent sample of that post
   type's posts (`get_used_meta_keys()` -- to also surface fields, including
   ACF's, that were never formally registered, which is the common case).
+  Registered meta is looked up under *both* the specific post type's
+  subtype and the empty (`''`) subtype: `get_registered_meta_keys()` does
+  an exact match, and meta registered without a specific post type (i.e.
+  applying to every post type) is filed under the empty subtype -- missing
+  that second lookup would make such a key invisible even though it's
+  genuinely, formally registered.
   This is deliberately WordPress core APIs only -- no plugin's own API
   (ACF's included) is ever called directly, so discovery works identically
   whether or not ACF (or any specific field-builder plugin) is active, with
@@ -240,7 +246,12 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   `Column_Registry::init()` hooks `save_post` to flush a post type's cached
   list on every save, so a custom field populated for the first time shows
   up as soon as that post is saved, not "eventually, once the cache happens
-  to expire."
+  to expire." The cache key itself also folds in a short hash of this
+  file's own version/mtime (`get_cache_version()`), so a code change to the
+  discovery logic (a bug fix, a new exclusion) invalidates every previously
+  cached column list immediately -- a transient created under older logic
+  has no other way to know it's now stale, since deploying new code doesn't
+  by itself trigger `save_post` or wait out the TTL.
 
 **Validation, and how columns reach DataTables:** `render.php` never trusts
 the `columns` attribute blindly -- every requested `{ key, sortable }` is

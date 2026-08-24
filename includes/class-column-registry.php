@@ -66,7 +66,7 @@ class Column_Registry {
 			return array();
 		}
 
-		$cache_key = 'gateway_datatable_columns_' . $post_type;
+		$cache_key = 'gwdt_cols_' . $post_type . '_' . self::get_cache_version();
 		$cached    = get_transient( $cache_key );
 
 		if ( is_array( $cached ) ) {
@@ -122,7 +122,32 @@ class Column_Registry {
 	 * @param string $post_type Post type slug.
 	 */
 	public static function flush_cache( $post_type ) {
-		delete_transient( 'gateway_datatable_columns_' . $post_type );
+		delete_transient( 'gwdt_cols_' . $post_type . '_' . self::get_cache_version() );
+	}
+
+	/**
+	 * A short identifier that changes whenever this file's discovery logic
+	 * does, folded into the cache key in get_columns()/flush_cache().
+	 *
+	 * Without this, a transient created under an older version of this
+	 * file's logic (e.g. before a column-discovery bug was fixed, or an
+	 * exclusion was added) has no way to know it's now stale -- it would
+	 * keep being served as-is until its TTL happens to expire or a matching
+	 * save_post fires, neither of which is triggered by deploying new code.
+	 * Keying the cache to this file's own mtime means a code change to the
+	 * discovery logic invalidates every previously-cached column list
+	 * immediately, with no explicit "flush everything" step required.
+	 *
+	 * @return string
+	 */
+	protected static function get_cache_version() {
+		static $version;
+
+		if ( null === $version ) {
+			$version = substr( md5( GATEWAY_VERSION . '|' . filemtime( __FILE__ ) ), 0, 12 );
+		}
+
+		return $version;
 	}
 
 	/**
@@ -201,6 +226,15 @@ class Column_Registry {
 		$meta_keys = array();
 
 		foreach ( array_keys( get_registered_meta_keys( 'post', $post_type ) ) as $key ) {
+			$meta_keys[ $key ] = true;
+		}
+
+		// get_registered_meta_keys() does an *exact* object_subtype match --
+		// meta registered without one (register_meta( 'post', $key, $args )
+		// with no 'object_subtype', which applies it to every post type) is
+		// filed under the empty-string subtype and is otherwise invisible to
+		// the per-post-type lookup above.
+		foreach ( array_keys( get_registered_meta_keys( 'post', '' ) ) as $key ) {
 			$meta_keys[ $key ] = true;
 		}
 
