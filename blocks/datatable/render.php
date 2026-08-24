@@ -22,22 +22,26 @@ if ( ! post_type_exists( $post_type ) ) {
 	$post_type = 'post';
 }
 
+// 0 (or anything not a positive integer) means "no limit".
+$limit = isset( $attributes['limit'] ) ? absint( $attributes['limit'] ) : 0;
+
 $query_args = array(
 	'post_type'      => $post_type,
 	'post_status'    => 'publish',
 	'orderby'        => 'ID',
 	'order'          => 'DESC',
-	'posts_per_page' => -1,
+	'posts_per_page' => $limit > 0 ? $limit : -1,
 	'no_found_rows'  => true,
 );
 
 /**
  * Filters the WP_Query arguments used to populate the datatable block.
  *
- * DataTables handles paging/sorting/filtering client-side, so by default we
- * fetch every published item for the chosen post type. Sites with very large
- * post types can use this filter to cap posts_per_page or otherwise narrow
- * the query.
+ * DataTables handles paging/sorting/filtering client-side, so by default (or
+ * when the block's Limit setting is 0) we fetch every published item for the
+ * chosen post type. Sites with very large post types can use this filter to
+ * cap posts_per_page or otherwise narrow the query regardless of the block's
+ * own Limit setting.
  *
  * @param array    $query_args WP_Query arguments.
  * @param array    $attributes Block attributes.

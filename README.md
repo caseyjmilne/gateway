@@ -110,14 +110,23 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
 
 - **Post Type** (`postType` attribute, default `post`): a `SelectControl`
   (`controls/post-type-control.js`) populated from `wp.data.select('core')
-  .getPostTypes()`, filtered to `viewable` post types. `render.php` re-checks
-  the value with `post_type_exists()` and falls back to `post` -- never trust
-  the attribute blindly server-side.
+  .getPostTypes({ context: 'edit' })`, filtered to `viewable` post types
+  (`viewable` is only exposed in the REST `edit` context) and with WP's
+  internal non-content post types (`wp_block`, `wp_template`, ...) excluded.
+  `render.php` re-checks the value with `post_type_exists()` and falls back
+  to `post` -- never trust the attribute blindly server-side.
+- **Limit** (`limit` attribute, default `0`): a numeric field
+  (`controls/limit-control.js`) capping how many items the query fetches;
+  `0` means no limit. Only non-negative integers are accepted -- invalid or
+  negative input resets to `0` on blur. `render.php` re-sanitizes the value
+  with `absint()` and only applies it (`posts_per_page`) when greater than
+  `0`, so a tampered or malformed attribute can't produce a broken query.
 
 The grid currently always shows **ID** and **Title** columns; the query args
 used to populate it are filterable via the `gateway_datatable_query_args` PHP
-filter (`$query_args, $attributes, $block`) for per-site customization
-(e.g. capping `posts_per_page` on very large post types, changing `orderby`).
+filter (`$query_args, $attributes, $block`) for per-site customization (e.g.
+enforcing a hard cap on `posts_per_page` regardless of the block's own Limit
+setting, changing `orderby`).
 
 ## Extending: future child blocks
 
