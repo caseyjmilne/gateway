@@ -35,6 +35,15 @@ export function useDataTableInit( containerRef, deps = [] ) {
 
 		let currentTable = null;
 
+		// Dim the preview immediately, rather than leaving the old table
+		// fully visible until the moment it's torn down and replaced: a
+		// full DOM swap (see below) happens instantly with no DOM state to
+		// CSS-transition between, so without this the refresh reads as an
+		// abrupt, jarring full repaint. `.is-refreshing` (style.scss) fades
+		// the container out; cleared once the fresh table has (re)initialized,
+		// letting it fade back in.
+		container.classList.add( 'is-refreshing' );
+
 		const syncTable = () => {
 			const table = container.querySelector( 'table.gateway-datatable' );
 
@@ -48,6 +57,7 @@ export function useDataTableInit( containerRef, deps = [] ) {
 					console.error( 'Gateway DataTable: failed to initialize.', error );
 				}
 				currentTable = table;
+				container.classList.remove( 'is-refreshing' );
 			} else if ( ! table && currentTable ) {
 				destroyGatewayDataTable( currentTable );
 				currentTable = null;

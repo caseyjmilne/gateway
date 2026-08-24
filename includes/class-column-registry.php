@@ -129,6 +129,14 @@ class Column_Registry {
 			$post_type
 		);
 
+		// "Parent ID" only makes sense for hierarchical post types (pages,
+		// and any custom hierarchical CPT) -- post_parent isn't meaningful
+		// for posts or other flat post types, so don't offer it as a column
+		// for them.
+		if ( ! is_post_type_hierarchical( $post_type ) ) {
+			unset( $labels['post_parent'] );
+		}
+
 		$columns = array();
 
 		foreach ( $labels as $key => $label ) {

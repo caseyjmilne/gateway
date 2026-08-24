@@ -114,6 +114,13 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
    directly (no MutationObserver needed there, since the markup is present at
    `DOMContentLoaded`), so editor and front end always get identical
    DataTables behavior (sorting, searching/filtering, pagination, etc.).
+5. **Softening the refresh:** a settings change means the entire preview is
+   swapped for fresh server-rendered markup -- an instant full repaint with
+   no shared DOM state to CSS-transition between. `use-datatable-init.js`
+   adds an `.is-refreshing` class to the preview container the moment a
+   dependency changes (fading its opacity down via `style.scss`), and
+   removes it once the fresh table has actually (re)initialized (fading back
+   in) -- turning the hard cut into a brief, deliberate fade instead.
 
 ### Settings
 
@@ -222,10 +229,24 @@ object's label; meta values are cast to a safe display string, JSON-encoding
 arrays/objects). Column order in the rendered `<thead>`/`<tbody>`
 *is* DataTables' column order -- there's no separate mapping to keep in
 sync. Each `<th>` also carries `data-orderable="true|false"` from the
-column's `sortable` flag; `shared/datatable.js` reads those attributes to
-build DataTables' `columns` option, so a column's configured sortability is
-respected identically in the editor and on the front end, with no
-per-caller wiring needed.
+column's `sortable` flag; `shared/datatable.js` reads those attributes and
+builds DataTables' `columnDefs` option (selectively marking only the
+non-orderable columns' `targets`, rather than a full `columns` array
+enumerating every column) so a column's configured sortability is respected
+identically in the editor and on the front end, with no per-caller wiring
+needed. `columnDefs`/`targets` was a deliberate choice over the bare
+`columns` array: DataTables requires that array to have exactly one entry
+per header cell, and any mismatch is a documented failure condition --
+worth avoiding here since it fails in the worst direction (falling back to
+"every column orderable", silently discarding the configuration, rather
+than visibly erroring). `columnDefs` has no such requirement, so it can only
+ever fail toward *too* orderable, never toward silently ignoring the whole
+setup.
+
+`post_parent` ("Parent ID") is only offered as a core column for
+hierarchical post types (pages, and any custom hierarchical CPT) --
+`Column_Registry` excludes it via `is_post_type_hierarchical()` for flat
+post types like `post`, where it isn't meaningful.
 
 **Refreshing on column changes:** `edit.js` includes
 `JSON.stringify( columns )` in the dependency array passed to

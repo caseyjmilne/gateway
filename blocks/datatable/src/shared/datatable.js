@@ -69,18 +69,38 @@ function buildLengthMenu( pageLength ) {
 }
 
 /**
- * Read per-column sortability off the table's header cells (render.php
- * writes each <th>'s data-orderable based on the block's column config),
- * for DataTables' `columns` option. Column *order* is just DOM order here,
- * since render.php already emits <th>/<td> in the block's configured order.
+ * Read which columns are marked non-sortable off the table's header cells
+ * (render.php writes each <th>'s data-orderable based on the block's column
+ * config), as zero-based indexes for DataTables' `columnDefs` `targets`.
+ *
+ * Deliberately building `columnDefs` (selectively overriding just the
+ * non-orderable columns) rather than a full `columns` array covering every
+ * column: DataTables requires a `columns` array to have exactly one entry
+ * per header cell, in order -- any mismatch between that array and the
+ * table's actual header count is a documented DataTables error condition.
+ * A block instance whose editor preview and REST-rendered markup could
+ * ever transiently disagree on header count (or any bug in this file that
+ * miscounts) would then fail in the worst possible direction: silently
+ * falling back to "every column orderable", the opposite of what was
+ * configured, rather than visibly breaking. `columnDefs` with explicit
+ * `targets` has no such all-or-nothing requirement -- a column that isn't
+ * actually marked non-orderable just keeps DataTables' own default
+ * (orderable), so this can only ever fail toward "orderable it shouldn't
+ * be", never toward silently discarding every column's configuration.
  *
  * @param {HTMLTableElement} table The table element.
- * @return {Object[]} One `{ orderable }` entry per header cell, in order.
+ * @return {number[]} Zero-based indexes of columns that should NOT be sortable.
  */
-function getColumnConfigFromTable( table ) {
-	return Array.from( table.querySelectorAll( 'thead th' ) ).map( ( th ) => ( {
-		orderable: th.getAttribute( 'data-orderable' ) !== 'false',
-	} ) );
+function getNonOrderableTargets( table ) {
+	return Array.from( table.querySelectorAll( 'thead th' ) ).reduce(
+		( targets, th, index ) => {
+			if ( th.getAttribute( 'data-orderable' ) === 'false' ) {
+				targets.push( index );
+			}
+			return targets;
+		},
+		[]
+	);
 }
 
 /**
@@ -100,17 +120,20 @@ export function initGatewayDataTable( table, options = {} ) {
 	}
 
 	const pageLength = getPageLengthFromTable( table );
-	const columns = getColumnConfigFromTable( table );
+	const nonOrderableTargets = getNonOrderableTargets( table );
+	const firstColumnIsOrderable = ! nonOrderableTargets.includes( 0 );
 
 	return $( table ).DataTable( {
 		...DEFAULT_OPTIONS,
 		...( pageLength ? { pageLength } : {} ),
 		lengthMenu: buildLengthMenu( pageLength ),
-		...( columns.length ? { columns } : {} ),
+		...( nonOrderableTargets.length
+			? { columnDefs: [ { targets: nonOrderableTargets, orderable: false } ] }
+			: {} ),
 		// The default order targets column 0 ("ID" originally); once
 		// columns are configurable that column may not exist or may not be
 		// orderable, so only order by it when it actually is.
-		order: columns.length && columns[ 0 ].orderable ? [ [ 0, 'desc' ] ] : [],
+		order: firstColumnIsOrderable ? [ [ 0, 'desc' ] ] : [],
 		...options,
 	} );
 }

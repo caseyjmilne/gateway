@@ -15,6 +15,15 @@
 
 .gateway-datatable-preview {
 	min-height: 4em;
+	// Softens the settings-change -> DataTable-reinit cycle (see
+	// hooks/use-datatable-init.js): the actual DOM swap is instant, so this
+	// transition is what turns it into a brief fade instead of a hard cut.
+	opacity: 1;
+	transition: opacity 160ms ease;
+
+	&.is-refreshing {
+		opacity: 0.3;
+	}
 
 	.components-spinner {
 		display: block;
