@@ -40,6 +40,11 @@
 			}
 		}
 	},
+	"providesContext": {
+		"gateway/datatable/postType": "postType",
+		"gateway/datatable/columns": "columns",
+		"gateway/datatable/facets": "facets"
+	},
 	"supports": {
 		"html": false,
 		"align": [ "wide", "full" ],

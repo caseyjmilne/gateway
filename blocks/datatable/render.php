@@ -10,7 +10,7 @@
  * @package Gateway
  *
  * @var array    $attributes Block attributes.
- * @var string   $content    Inner block content (unused -- this is a dynamic, leaf block for now).
+ * @var string   $content    Server-rendered inner blocks (gateway/facet children), output above the table.
  * @var WP_Block $block      Block instance.
  */
 
@@ -147,6 +147,9 @@ $table_id           = 'gateway-datatable-' . wp_unique_id();
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-datatable-block' ) );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
+	<?php if ( ! empty( $content ) ) : ?>
+		<?php echo $content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already-rendered inner block markup (save.js's wrapper div + each gateway/facet child's own escaped output). ?>
+	<?php endif; ?>
 	<?php if ( $query->have_posts() ) : ?>
 		<table
 			id="<?php echo esc_attr( $table_id ); ?>"
@@ -158,7 +161,10 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 			<thead>
 				<tr>
 					<?php foreach ( $columns as $column ) : ?>
-						<th data-orderable="<?php echo $column['sortable'] ? 'true' : 'false'; ?>">
+						<th
+							data-orderable="<?php echo $column['sortable'] ? 'true' : 'false'; ?>"
+							data-column-key="<?php echo esc_attr( $column['key'] ); ?>"
+						>
 							<?php echo esc_html( $column['label'] ); ?>
 						</th>
 					<?php endforeach; ?>

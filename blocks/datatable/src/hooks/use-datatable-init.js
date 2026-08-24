@@ -24,7 +24,7 @@
  */
 
 import { useEffect } from '@wordpress/element';
-import { initGatewayDataTable, destroyGatewayDataTable } from '../shared/datatable';
+import { initGatewayDataTable, destroyGatewayDataTable } from '../../../shared/datatable';
 
 /**
  * @param {Object} containerRef React ref to the element that will contain the rendered <table>.

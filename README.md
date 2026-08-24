@@ -40,14 +40,18 @@ includes/
   class-block-loader.php        Scans /blocks and register_block_type()'s every block found
   class-column-registry.php     Discovers columns (core fields + meta/ACF) for a post type; renders cell values
   class-columns-rest-controller.php  GET /gateway/v1/columns/<post_type> (the block editor's column/facet picker)
-  class-facet-query.php         Applies validated facets to a WP_Query (meta_query + a scoped posts_where filter)
+  class-facet-query.php         Applies validated facets to a WP_Query; distinct values for select/checkboxes facets
 blocks/
+  shared/                       Cross-block JS, NOT a block itself (no block.json -- webpack's glob skips it)
+    datatable.js                Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
+    use-available-columns.js    Fetches the field list for a post type (shared by both blocks below)
   datatable/
-    block.json                  Block metadata, attributes, asset + render wiring
-    render.php                  PHP render callback (dynamic block, no save markup)
+    block.json                  Block metadata, attributes, providesContext, asset + render wiring
+    render.php                  PHP render callback: the table, plus $content (gateway/facet children) above it
     src/
       index.js                  Editor registration (editorScript)
-      edit.js                   Editor UI: InspectorControls + live SSR preview
+      edit.js                   Editor UI: InspectorControls + InnerBlocks (facets bar) + live SSR preview
+      save.js                   Persists InnerBlocks content only -- render.php still builds the table
       view.js                   Front-end entry (viewScript): finds tables, inits DataTables
       style.scss                Shared styles (front end + editor)
       controls/
@@ -62,12 +66,19 @@ blocks/
         facet-compare-options.js  Facet comparison operator list (=, !=, >, ...)
       hooks/
         use-datatable-init.js   React hook: (re)inits DataTables against an async-rendered container
-        use-available-columns.js  Fetches the field list for a post type (shared by columns + facets)
         use-reconcile-field-list.js  Drops selections no longer valid for the current post type
-      shared/
-        datatable.js            Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
-      utils/
-        classnames.js           Tiny classnames() helper (no external dependency)
+    build/                      Compiled output (generated, do not hand-edit)
+  facet/
+    block.json                  Block metadata, parent + usesContext restricting it to gateway/datatable
+    render.php                  PHP render callback: the input/select/checkboxes control
+    src/
+      index.js                  Editor registration
+      edit.js                   Editor UI: pick a facet + a UI type, with validity warnings
+      view.js                   Front-end entry: hooks the control into the sibling DataTable instance
+      style.scss                Facet control styles
+      controls/
+        facet-key-control.js    "Facet" select, from the parent's configured facets (context)
+        ui-type-control.js      "UI Type" select: input / select / checkboxes
     build/                      Compiled output (generated, do not hand-edit)
 ```
 
@@ -392,26 +403,129 @@ the current DataTable instance on every dependency change, so the table
 sits in its plain, unenhanced state until the observer confirms the real
 updated markup has landed and reinitializes against *that*.
 
+## Facets: interactive front-end filtering (`gateway/facet` block)
+
+`gateway/datatable` now accepts child blocks -- `gateway/facet`
+(`block.json`'s `"parent": ["gateway/datatable"]` restricts it to only be
+insertable there) -- that render an interactive input/select/checkboxes
+control on the front end and filter the grid live, client-side, as a
+visitor uses it. This is distinct from the Facets *panel* documented
+above: that panel defines a *preset* filter baked into the query (a facet
+with a fixed `value`); a `gateway/facet` block turns one of those same
+presets into something a site *visitor* can change.
+
+### Discoverability via block context
+
+"Discoverable by other scripts" -- any block nested inside a datatable
+block, not just `gateway/facet` -- is `providesContext`/`usesContext`,
+Gutenberg's native mechanism for a parent block exposing data to
+descendants, in both JS and PHP:
+
+- `gateway/datatable`'s `block.json` declares
+  `"providesContext": { "gateway/datatable/postType": "postType",
+  "gateway/datatable/columns": "columns", "gateway/datatable/facets":
+  "facets" }`.
+- `gateway/facet`'s `block.json` declares the matching `"usesContext"`.
+  In JS, `edit.js` reads it via the `context` prop React passes to a block
+  with `usesContext` declared; in PHP, `render.php` reads the identical
+  data via `$block->context['gateway/datatable/...']`.
+
+No REST call, no prop-drilling through the block tree -- just the parent's
+current attribute values, live, wherever a `usesContext` block needs them.
+
+### `gateway/datatable` growing InnerBlocks support
+
+Making a previously-leaf dynamic block accept children required two real
+changes, not just a JS tweak:
+
+- **`save.js`** (new -- previously `save: () => null` inline in
+  `index.js`): InnerBlocks content has to actually be *persisted* into
+  `post_content` for `render.php` to ever receive it as `$content` on the
+  front end. It uses `useInnerBlocksProps.save({ className:
+  'gateway-datatable-facets' })` directly -- deliberately *not* merged with
+  `useBlockProps.save()` first, since that would apply block-support
+  classes (align, spacing, ...) to this inner wrapper; those already belong
+  on `render.php`'s own `get_block_wrapper_attributes()` wrapper, which is
+  the only one that actually reaches the front end.
+- **`edit.js`**: `useInnerBlocksProps({ className: 'gateway-datatable-facets'
+  }, { allowedBlocks: ['gateway/facet'], renderAppender:
+  InnerBlocks.ButtonBlockAppender })` renders the facets bar -- restricted
+  to `gateway/facet` children -- above the `<ServerSideRender>` preview
+  ("it will sit at the top"). Note this area, not the SSR preview below it,
+  is where facet children are actually edited: `<ServerSideRender>` doesn't
+  reflect *live, unsaved* InnerBlocks edits (a known limitation of that
+  component), so `gateway/facet`'s own `edit.js` renders a static,
+  non-interactive preview of its control instead of relying on SSR to show
+  it. `render.php` still outputs the real `$content` above the table for
+  front-end correctness -- the SSR-preview gap is a limitation visible only
+  in the editor, not on the front end.
+
+### Configuring a facet block
+
+In the Inspector: pick which of the parent's configured facets this
+control represents (`controls/facet-key-control.js`, populated from the
+`gateway/datatable/facets` context), then a UI Type
+(`controls/ui-type-control.js`: Input, Select, or Checkboxes). A facet
+block only has something to hook into once its chosen field is *also* one
+of the datatable's currently displayed columns (its DataTables column
+index is how the front end targets it -- see below); `edit.js` checks this
+against the `gateway/datatable/columns` context and shows a `<Notice>`
+warning, rather than silently rendering nothing, when it isn't (or when
+the referenced facet has since been removed from the parent altogether).
+
+### Server-side rendering (`blocks/facet/render.php`)
+
+Re-validates everything from context rather than trusting `$attributes`:
+the facet must still exist in the parent's facet list, and its key must
+still be a displayed column, or the block renders nothing at all (the
+editor's warnings above are what a site owner sees instead). For **Select**
+and **Checkboxes**, options come from `Facet_Query::get_distinct_values()`
+-- real, currently-in-use values for that field (capped at 50 by default,
+cached like column discovery), not a placeholder list.
+
+### Front-end hookup (`blocks/facet/src/view.js`)
+
+1. Finds the sibling `<table class="gateway-datatable">` (nearest
+   `.gateway-datatable-block` ancestor) and calls the shared
+   `initGatewayDataTable()` -- **idempotent**, so it doesn't matter whether
+   the datatable block's own `view.js` or this one happens to run first
+   (two separately enqueued block-type scripts, with no ordering
+   guarantee): whichever runs first initializes the table; the other just
+   gets back the same instance.
+2. Locates the target column via the shared `getColumnIndexByKey()`,
+   matching this facet's `data-facet-key` against each `<th>`'s
+   `data-column-key` (written by the datatable's `render.php`).
+3. Wires interaction to `column.search(...).draw()`:
+   - **Input**: plain substring search (`regex: false`), debounced 300ms.
+   - **Select**/**Checkboxes**: an anchored regex (`^value$`, or
+     `^(value1|value2)$` for multiple checked boxes) for an *exact* match
+     rather than DataTables' default substring behavior -- picking one
+     option shouldn't also match every other value that happens to contain
+     it as a substring. Values are regex-escaped first.
+
+### Why `blocks/shared/`, not `blocks/datatable/src/shared/`
+
+`shared/datatable.js` and `shared/use-available-columns.js` moved out of
+the datatable block's own `src/` into `blocks/shared/` (a plain directory,
+no `block.json` -- `webpack.config.js`'s `blocks/*/block.json` glob skips
+it, so it's never mistaken for a block entry) once the facet block needed
+them too: the DataTables helpers, for the idempotent-init trick above; the
+column-fetching hook, for `gateway/facet`'s own `edit.js` to resolve a
+friendly label for its selected facet. Both blocks import them via a
+relative path (`../../shared/...`).
+
 ## Extending: future child blocks
 
-The datatable block is intentionally monolithic for now, but structured so
-it can be decomposed into child blocks (heading, rows, pagination, facets,
-...) without a rewrite:
+Facets (`gateway/facet`) are the first child block; the same InnerBlocks +
+context pattern is what a heading, row-template, or pagination child block
+would use too, should they materialize later.
 
 - **PHP:** `Block_Loader` already handles any number of block directories
   under `/blocks` with no changes needed.
 - **Build:** `webpack.config.js` already compiles every `blocks/*/src/{index,view}.js`
   it finds into that block's own `build/`.
 - **DataTables logic:** `shared/datatable.js`'s `initGatewayDataTable()` /
-  `destroyGatewayDataTable()` are already generic over "a table element,"
-  not tied to this block's markup, so child blocks (e.g. a facets/filter
-  block acting on a sibling table) can reuse them directly.
+  `destroyGatewayDataTable()` / `getColumnIndexByKey()` are already generic
+  over "a table element," not tied to any one block's markup.
 - **Controls:** `controls/post-type-control.js` is already a standalone
   component for reuse in a future query/settings block.
-
-The natural next step is converting `gateway/datatable` into a parent block
-that renders `InnerBlocks` for `gateway/datatable-heading`,
-`gateway/datatable-row`, `gateway/datatable-pagination`, and
-`gateway/datatable-facets`, with the parent block still owning the actual
-`<table>` element and DataTables instance so child blocks can reach into it
-via context.

@@ -9,7 +9,7 @@
 import 'datatables.net-dt/css/dataTables.dataTables.css';
 import './style.scss';
 
-import { initGatewayDataTable } from './shared/datatable';
+import { initGatewayDataTable } from '../../shared/datatable';
 
 function initAll() {
 	document.querySelectorAll( 'table.gateway-datatable' ).forEach( ( table ) => {

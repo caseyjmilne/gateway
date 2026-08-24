@@ -1,18 +1,20 @@
 /**
  * Editor registration for the gateway/datatable block.
  *
- * This is a dynamic block: markup always comes from render.php (via
- * <ServerSideRender> in the editor, and directly on the front end), so
- * save() intentionally returns null -- there is nothing for WP to persist
- * into post_content besides the block's attributes/comment delimiter.
+ * The table itself is always server-rendered (render.php, both on the
+ * front end and via <ServerSideRender> in the editor) -- but the block now
+ * accepts gateway/facet children (see block.json's providesContext), and
+ * InnerBlocks content has to actually be saved into post_content for
+ * render.php to receive it as $content, so save() is no longer a no-op.
  */
 
 import { registerBlockType } from '@wordpress/blocks';
 
 import metadata from '../block.json';
 import Edit from './edit';
+import save from './save';
 
 registerBlockType( metadata.name, {
 	edit: Edit,
-	save: () => null,
+	save,
 } );

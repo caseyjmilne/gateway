@@ -1,5 +1,10 @@
 import { useRef } from '@wordpress/element';
-import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
+import {
+	useBlockProps,
+	useInnerBlocksProps,
+	InspectorControls,
+	InnerBlocks,
+} from '@wordpress/block-editor';
 import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import ServerSideRender from '@wordpress/server-side-render';
@@ -10,7 +15,7 @@ import PageSizeControl from './controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
 import FacetsPanel from './controls/facets-panel';
 import { useDataTableInit } from './hooks/use-datatable-init';
-import { useAvailableColumns } from './hooks/use-available-columns';
+import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
 
 const DEFAULT_COLUMNS = [
@@ -22,6 +27,19 @@ export default function Edit( { attributes, setAttributes } ) {
 	const { postType, limit, pageSize, columns, facets } = attributes;
 	const blockProps = useBlockProps();
 	const previewRef = useRef();
+
+	// The facets bar: only gateway/facet blocks, sitting at the top of the
+	// block (rendered here, above the preview below -- and, on the front
+	// end, render.php echoes this same InnerBlocks markup, as $content,
+	// above the <table> for the same reason).
+	const innerBlocksProps = useInnerBlocksProps(
+		{ className: 'gateway-datatable-facets' },
+		{
+			allowedBlocks: [ 'gateway/facet' ],
+			renderAppender: InnerBlocks.ButtonBlockAppender,
+			templateLock: false,
+		}
+	);
 
 	// Fetched once per post type and shared by both panels below: "what
 	// fields are available" is the same question for columns (what to
@@ -93,6 +111,7 @@ export default function Edit( { attributes, setAttributes } ) {
 				</PanelBody>
 			</InspectorControls>
 			<div { ...blockProps }>
+				<div { ...innerBlocksProps } />
 				<div className="gateway-datatable-preview" ref={ previewRef }>
 					<ServerSideRender
 						block="gateway/datatable"

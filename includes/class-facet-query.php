@@ -152,6 +152,88 @@ class Facet_Query {
 	}
 
 	/**
+	 * Distinct values currently in use for a column, for populating a
+	 * "select" or "checkboxes" gateway/facet block. Capped and cached (like
+	 * Column_Registry's column discovery) since this scans the relevant
+	 * table directly.
+	 *
+	 * @param string $post_type Post type slug.
+	 * @param array  $column    Column definition ('key', 'type') from Column_Registry.
+	 * @param int    $limit     Maximum distinct values to return.
+	 * @return string[] Distinct, non-empty values, sorted.
+	 */
+	public static function get_distinct_values( $post_type, array $column, $limit = 50 ) {
+		$limit = max( 1, (int) $limit );
+
+		$cache_key = 'gwdt_vals_' . md5( $post_type . '|' . $column['key'] . '|' . $column['type'] . '|' . $limit );
+		$cached    = get_transient( $cache_key );
+
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		global $wpdb;
+
+		if ( 'meta' === $column['type'] ) {
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$values = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT pm.meta_value
+					FROM {$wpdb->postmeta} pm
+					INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+					WHERE p.post_type = %s AND pm.meta_key = %s AND pm.meta_value != ''
+					ORDER BY pm.meta_value ASC
+					LIMIT %d",
+					$post_type,
+					$column['key'],
+					$limit
+				)
+			);
+			// phpcs:enable
+		} else {
+			$core_column = self::sanitize_core_column( $column['key'] );
+
+			if ( ! $core_column ) {
+				return array();
+			}
+
+			// $core_column is allow-listed above -- the only thing making
+			// direct interpolation into the SQL string here safe.
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$values = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT {$wpdb->posts}.{$core_column}
+					FROM {$wpdb->posts}
+					WHERE post_type = %s AND {$wpdb->posts}.{$core_column} != ''
+					ORDER BY {$wpdb->posts}.{$core_column} ASC
+					LIMIT %d",
+					$post_type,
+					$limit
+				)
+			);
+			// phpcs:enable
+		}
+
+		$values = array_values( array_filter( (array) $values, 'strlen' ) );
+
+		set_transient(
+			$cache_key,
+			$values,
+			/**
+			 * Filters how long (in seconds) a facet's distinct-value list is
+			 * cached.
+			 *
+			 * @param int    $ttl       Cache TTL in seconds.
+			 * @param string $post_type Post type slug.
+			 * @param array  $column    Column definition.
+			 */
+			apply_filters( 'gateway_datatable_facet_values_cache_ttl', 15 * MINUTE_IN_SECONDS, $post_type, $column )
+		);
+
+		return $values;
+	}
+
+	/**
 	 * @param mixed $compare Requested compare operator.
 	 * @return string A member of ALLOWED_COMPARE -- '=' if not.
 	 */

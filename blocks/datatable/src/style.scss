@@ -13,6 +13,20 @@
 	}
 }
 
+// The facets bar: gateway/facet children (InnerBlocks in the editor,
+// render.php's $content on the front end -- see edit.js/save.js). Always
+// rendered when there's inner block content at all, even a single facet,
+// so this lives in the datatable block's own styles rather than the facet
+// block's, and gets a min-height so an empty bar isn't a zero-height,
+// easy-to-miss strip while editing.
+.gateway-datatable-facets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1em;
+	min-height: 2em;
+	margin-bottom: 1em;
+}
+
 .gateway-datatable-preview {
 	min-height: 4em;
 	// Softens the settings-change -> DataTable-reinit cycle (see

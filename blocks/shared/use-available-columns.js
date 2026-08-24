@@ -2,11 +2,12 @@
  * Fetches the columns available for a post type from the
  * gateway/v1/columns/<post_type> REST route.
  *
- * Shared by ColumnsPanel and FacetsPanel: "what fields exist for this post
- * type" is the exact same question for both -- a column is something to
- * display, a facet is something to filter by, but they draw from the same
- * field list, so this fetch happens once (in edit.js) and both panels
- * consume the same result rather than each fetching it independently.
+ * Lives in blocks/shared/ (not the datatable block's own src/) since it's
+ * used across block boundaries: the datatable block's edit.js (fetched
+ * once, shared by ColumnsPanel and FacetsPanel -- "what fields exist for
+ * this post type" is the same question for both), and the facet block's
+ * edit.js, which needs the same field list purely to resolve a friendly
+ * label for the facet it's configured for.
  */
 
 import { useEffect, useState } from '@wordpress/element';
