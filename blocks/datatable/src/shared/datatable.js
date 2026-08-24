@@ -69,6 +69,21 @@ function buildLengthMenu( pageLength ) {
 }
 
 /**
+ * Read per-column sortability off the table's header cells (render.php
+ * writes each <th>'s data-orderable based on the block's column config),
+ * for DataTables' `columns` option. Column *order* is just DOM order here,
+ * since render.php already emits <th>/<td> in the block's configured order.
+ *
+ * @param {HTMLTableElement} table The table element.
+ * @return {Object[]} One `{ orderable }` entry per header cell, in order.
+ */
+function getColumnConfigFromTable( table ) {
+	return Array.from( table.querySelectorAll( 'thead th' ) ).map( ( th ) => ( {
+		orderable: th.getAttribute( 'data-orderable' ) !== 'false',
+	} ) );
+}
+
+/**
  * Initialize (or re-fetch an existing) DataTable instance on a <table>.
  *
  * @param {HTMLTableElement} table   The table element to enhance.
@@ -85,11 +100,17 @@ export function initGatewayDataTable( table, options = {} ) {
 	}
 
 	const pageLength = getPageLengthFromTable( table );
+	const columns = getColumnConfigFromTable( table );
 
 	return $( table ).DataTable( {
 		...DEFAULT_OPTIONS,
 		...( pageLength ? { pageLength } : {} ),
 		lengthMenu: buildLengthMenu( pageLength ),
+		...( columns.length ? { columns } : {} ),
+		// The default order targets column 0 ("ID" originally); once
+		// columns are configurable that column may not exist or may not be
+		// orderable, so only order by it when it actually is.
+		order: columns.length && columns[ 0 ].orderable ? [ [ 0, 'desc' ] ] : [],
 		...options,
 	} );
 }

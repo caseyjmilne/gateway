@@ -23,11 +23,14 @@ define( 'GATEWAY_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'GATEWAY_BLOCKS_DIR', GATEWAY_PLUGIN_DIR . 'blocks' );
 
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-block-loader.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-column-registry.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-columns-rest-controller.php';
 
 /**
  * Boot the plugin.
  */
 function gateway_boot() {
 	\Gateway\Block_Loader::init();
+	\Gateway\Columns_REST_Controller::init();
 }
 add_action( 'plugins_loaded', 'gateway_boot' );

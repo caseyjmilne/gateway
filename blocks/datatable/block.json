@@ -21,6 +21,16 @@
 		"pageSize": {
 			"type": "number",
 			"default": 10
+		},
+		"columns": {
+			"type": "array",
+			"default": [
+				{ "key": "ID", "sortable": true },
+				{ "key": "post_title", "sortable": true }
+			],
+			"items": {
+				"type": "object"
+			}
 		}
 	},
 	"supports": {

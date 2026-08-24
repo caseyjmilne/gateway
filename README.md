@@ -35,9 +35,11 @@ Available scripts:
 ## Architecture
 
 ```
-gateway.php                     Plugin bootstrap: constants + boots Block_Loader
+gateway.php                     Plugin bootstrap: constants + boots Block_Loader + Columns_REST_Controller
 includes/
   class-block-loader.php        Scans /blocks and register_block_type()'s every block found
+  class-column-registry.php     Discovers columns (core fields + meta/ACF) for a post type; renders cell values
+  class-columns-rest-controller.php  GET /gateway/v1/columns/<post_type> (the block editor's column picker)
 blocks/
   datatable/
     block.json                  Block metadata, attributes, asset + render wiring
@@ -49,10 +51,17 @@ blocks/
       style.scss                Shared styles (front end + editor)
       controls/
         post-type-control.js    Reusable "Post Type" SelectControl
+        limit-control.js        "Limit" numeric field
+        page-size-control.js    "Page Size" numeric field
+        columns-panel.js        Fetches available columns, orchestrates the two below
+        available-columns-list.js  Click-to-toggle column selection
+        column-config-table.js  Drag-to-reorder + click-to-toggle-sortable table
       hooks/
         use-datatable-init.js   React hook: (re)inits DataTables against an async-rendered container
       shared/
         datatable.js            Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
+      utils/
+        classnames.js           Tiny classnames() helper (no external dependency)
     build/                      Compiled output (generated, do not hand-edit)
 ```
 
@@ -134,11 +143,93 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
   "Show X entries" `lengthMenu` dropdown so it never displays a page-size
   option that isn't actually selected.
 
-The grid currently always shows **ID** and **Title** columns; the query args
-used to populate it are filterable via the `gateway_datatable_query_args` PHP
-filter (`$query_args, $attributes, $block`) for per-site customization (e.g.
-enforcing a hard cap on `posts_per_page` regardless of the block's own Limit
-setting, changing `orderby`).
+- **Columns** (`columns` attribute, default `[{ key: 'ID', sortable: true },
+  { key: 'post_title', sortable: true }]`): which fields show up as columns,
+  in what order, and which of them are client-side sortable in DataTables.
+  See "Column selection" below.
+
+The query args used to populate the grid are filterable via the
+`gateway_datatable_query_args` PHP filter (`$query_args, $attributes,
+$block`) for per-site customization (e.g. enforcing a hard cap on
+`posts_per_page` regardless of the block's own Limit setting, changing
+`orderby`).
+
+### Column selection
+
+Columns are configured in a dedicated "Columns" Inspector panel, appearing
+once a Post Type is chosen, in two parts:
+
+1. **Available columns** (`controls/available-columns-list.js`): every
+   column available for the selected post type, grouped into "Fields" (core
+   `WP_Post` properties) and "Custom Fields" (post meta, including ACF
+   fields). Per spec, there are no checkboxes/radios -- clicking a column's
+   name selects it (added to the end of `columns`); clicking an already
+   selected name deselects it. At least one column must stay selected, so
+   the last remaining one can't be clicked off.
+2. **Column configuration** (`controls/column-config-table.js`): the
+   currently *selected* columns, in their configured order, as a table with:
+   - A drag handle (⠿) to reorder rows via plain HTML5 drag-and-drop --
+     `columns` is just reordered in place on drop. (This UI lives in the
+     Inspector sidebar, i.e. the editor's top-level document, not the
+     iframed canvas, so there's no cross-iframe drag-and-drop concern to
+     work around here, unlike the DataTables init below.)
+   - A "Sortable" button per row, toggling whether that column is
+     client-side sortable in DataTables.
+
+`controls/columns-panel.js` orchestrates both: it fetches the available
+column list from **`GET /gateway/v1/columns/<post_type>`**
+(`includes/class-columns-rest-controller.php`, requiring the current user be
+able to edit that post type) whenever Post Type changes, and reconciles the
+existing `columns` selection against the new list -- columns (typically
+meta fields) that don't exist for the newly selected post type are dropped,
+falling back to the default `ID`/`post_title` selection if that empties it.
+
+**Where columns actually come from** (`includes/class-column-registry.php`,
+`Column_Registry`), used by both the REST route and `render.php`:
+
+- **Core fields**: a static, filterable (`gateway_datatable_core_columns`)
+  map of `WP_Post` properties to friendly labels (`post_title` → "Title",
+  `post_content` → "Content", etc.).
+- **Meta fields** (including ACF): the union of formally registered meta
+  (`get_registered_meta_keys()` -- what `register_post_meta()`, and ACF's
+  own "Show in REST API" support, produce) and meta keys actually found in
+  `wp_postmeta` for that post type (to also surface ACF fields that were
+  never formally registered, which is the common case). Protected/internal
+  keys (WordPress' `_`-prefixed convention -- also how ACF stores its
+  internal field-key references) are excluded via `is_protected_meta()`.
+  Meta has no built-in "nice name," so labels are humanized from the raw key
+  (`event_start_date` → "Event Start Date") by default, filterable via
+  `gateway_datatable_column_label` for sites wanting real ACF field labels
+  instead. Discovery results are cached per post type (`get_transient()`,
+  15 minutes by default, filterable via `gateway_datatable_columns_cache_ttl`)
+  since the meta-key scan queries `wp_postmeta` directly.
+
+**Validation, and how columns reach DataTables:** `render.php` never trusts
+the `columns` attribute blindly -- every requested `{ key, sortable }` is
+checked against `Column_Registry::get_columns( $post_type )`, and anything
+not on that list (a stale key from a since-changed post type, a hand-edited
+attribute) is silently dropped; an empty result falls back to the same
+`ID`/`post_title` default. Each valid column's value is resolved by
+`Column_Registry::get_cell_value()` (core fields get type-appropriate
+formatting -- e.g. `post_date` through `mysql2date()`, `post_content`
+stripped of tags and trimmed to 20 words, `post_status` through its status
+object's label; meta values are cast to a safe display string, JSON-encoding
+arrays/objects). Column order in the rendered `<thead>`/`<tbody>`
+*is* DataTables' column order -- there's no separate mapping to keep in
+sync. Each `<th>` also carries `data-orderable="true|false"` from the
+column's `sortable` flag; `shared/datatable.js` reads those attributes to
+build DataTables' `columns` option, so a column's configured sortability is
+respected identically in the editor and on the front end, with no
+per-caller wiring needed.
+
+**Refreshing on column changes:** `edit.js` includes
+`JSON.stringify( columns )` in the dependency array passed to
+`useDataTableInit()` (alongside `postType`, `limit`, `pageSize`) --
+selecting/deselecting a column, reordering, or toggling sortable all change
+that attribute, which re-renders `<ServerSideRender>` with the new markup,
+which the hook's `MutationObserver` picks up to destroy and reinitialize
+DataTables. This is the "column change" event the DataTable refresh is
+keyed off of.
 
 ## Extending: future child blocks
 

@@ -21,3 +21,105 @@
 		margin: 2em auto;
 	}
 }
+
+// Available columns: click-to-toggle list (no checkboxes/radios -- the
+// "selected" state lives entirely in the button's own styling).
+.gateway-columns-available {
+	&__group {
+		margin-bottom: 1em;
+
+		&:last-child {
+			margin-bottom: 0;
+		}
+	}
+
+	&__group-title {
+		margin: 0 0 0.5em;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #757575;
+	}
+
+	&__list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	&__item {
+		display: inline-block;
+		padding: 4px 10px;
+		border: 1px solid #949494;
+		border-radius: 2px;
+		background: #fff;
+		color: #1e1e1e;
+		font-size: 12px;
+		line-height: 1.4;
+		cursor: pointer;
+
+		&:hover {
+			border-color: #1e1e1e;
+		}
+
+		&.is-selected {
+			border-color: var( --wp-admin-theme-color, #3858e9 );
+			background: var( --wp-admin-theme-color, #3858e9 );
+			color: #fff;
+		}
+	}
+}
+
+// Selected-columns config: drag-and-drop reorder + sortable toggle.
+.gateway-columns-config {
+	width: 100%;
+	margin-top: 1em;
+	border-collapse: collapse;
+
+	th {
+		padding: 4px 6px;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #757575;
+		text-align: left;
+	}
+
+	&__handle-col {
+		width: 1.5em;
+	}
+
+	&__row {
+		cursor: grab;
+		border-top: 1px solid #e0e0e0;
+
+		&.is-dragging {
+			opacity: 0.4;
+		}
+
+		&.is-drop-target {
+			box-shadow: inset 0 2px 0 var( --wp-admin-theme-color, #3858e9 );
+		}
+
+		td {
+			padding: 6px;
+			vertical-align: middle;
+		}
+	}
+
+	&__handle {
+		color: #949494;
+		text-align: center;
+		letter-spacing: -1px;
+	}
+
+	&__empty {
+		font-style: italic;
+		color: #757575;
+	}
+}

@@ -30,6 +30,54 @@ $limit = isset( $attributes['limit'] ) ? absint( $attributes['limit'] ) : 0;
 // (10) for anything that isn't a positive integer.
 $page_size = isset( $attributes['pageSize'] ) ? absint( $attributes['pageSize'] ) : 10;
 
+// Resolve the requested columns against Column_Registry -- this is the
+// validation step: a column key that isn't a real, known column for this
+// post type (stale attribute from a since-changed post type, hand-edited
+// post content, etc.) is silently dropped rather than trusted.
+$available_columns = array();
+
+foreach ( \Gateway\Column_Registry::get_columns( $post_type ) as $available_column ) {
+	$available_columns[ $available_column['key'] ] = $available_column;
+}
+
+$columns = array();
+
+if ( ! empty( $attributes['columns'] ) && is_array( $attributes['columns'] ) ) {
+	foreach ( $attributes['columns'] as $requested_column ) {
+		if ( empty( $requested_column['key'] ) ) {
+			continue;
+		}
+
+		// Not sanitize_key(): it forces lowercase, which would corrupt the
+		// core "ID" column key. The real validation here is the allow-list
+		// lookup below -- any key not already known to Column_Registry for
+		// this post type is dropped, regardless of casing.
+		$key = is_string( $requested_column['key'] ) ? trim( $requested_column['key'] ) : '';
+
+		if ( '' === $key || ! isset( $available_columns[ $key ] ) || isset( $columns[ $key ] ) ) {
+			continue;
+		}
+
+		$columns[ $key ] = array_merge(
+			$available_columns[ $key ],
+			array( 'sortable' => ! empty( $requested_column['sortable'] ) )
+		);
+	}
+}
+
+// Every configured column turned out to be invalid for this post type (or
+// none were configured) -- fall back to the same default the block starts
+// with, so the grid never renders with zero columns.
+if ( empty( $columns ) ) {
+	foreach ( array( 'ID', 'post_title' ) as $key ) {
+		if ( isset( $available_columns[ $key ] ) ) {
+			$columns[ $key ] = array_merge( $available_columns[ $key ], array( 'sortable' => true ) );
+		}
+	}
+}
+
+$columns = array_values( $columns );
+
 $query_args = array(
 	'post_type'      => $post_type,
 	'post_status'    => 'publish',
@@ -70,23 +118,31 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 		>
 			<thead>
 				<tr>
-					<th><?php esc_html_e( 'ID', 'gateway' ); ?></th>
-					<th><?php esc_html_e( 'Title', 'gateway' ); ?></th>
+					<?php foreach ( $columns as $column ) : ?>
+						<th data-orderable="<?php echo $column['sortable'] ? 'true' : 'false'; ?>">
+							<?php echo esc_html( $column['label'] ); ?>
+						</th>
+					<?php endforeach; ?>
 				</tr>
 			</thead>
 			<tbody>
 				<?php
 				while ( $query->have_posts() ) :
 					$query->the_post();
-					$title = get_the_title();
+					$post_id = get_the_ID();
 					?>
 					<tr>
-						<td><?php echo (int) get_the_ID(); ?></td>
-						<td>
-							<a href="<?php echo esc_url( get_permalink() ); ?>">
-								<?php echo esc_html( '' !== $title ? $title : __( '(no title)', 'gateway' ) ); ?>
-							</a>
-						</td>
+						<?php foreach ( $columns as $column ) : ?>
+							<td>
+								<?php if ( 'post_title' === $column['key'] ) : ?>
+									<a href="<?php echo esc_url( get_permalink( $post_id ) ); ?>">
+										<?php echo esc_html( \Gateway\Column_Registry::get_cell_value( $post_id, $column ) ); ?>
+									</a>
+								<?php else : ?>
+									<?php echo esc_html( \Gateway\Column_Registry::get_cell_value( $post_id, $column ) ); ?>
+								<?php endif; ?>
+							</td>
+						<?php endforeach; ?>
 					</tr>
 					<?php
 				endwhile;
