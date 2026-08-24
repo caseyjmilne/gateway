@@ -1,0 +1,23 @@
+{
+	"name": "gateway",
+	"version": "0.1.0",
+	"description": "Gateway WordPress plugin -- custom Gutenberg blocks, starting with a DataTables-powered grid block.",
+	"private": true,
+	"license": "GPL-2.0-or-later",
+	"scripts": {
+		"clean": "rm -rf blocks/*/build",
+		"build": "npm run clean && wp-scripts build",
+		"start": "wp-scripts start",
+		"format": "wp-scripts format blocks",
+		"lint:js": "wp-scripts lint-js blocks",
+		"lint:css": "wp-scripts lint-style blocks/**/*.scss",
+		"packages-update": "wp-scripts packages-update"
+	},
+	"dependencies": {
+		"datatables.net-dt": "^2.1.8"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "^30.0.0",
+		"glob": "^10.4.5"
+	}
+}

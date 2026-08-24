@@ -1,0 +1,23 @@
+/**
+ * Styles for the gateway/datatable block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ */
+
+.gateway-datatable-block {
+	overflow-x: auto;
+
+	table.gateway-datatable {
+		width: 100% !important;
+	}
+}
+
+.gateway-datatable-preview {
+	min-height: 4em;
+
+	.components-spinner {
+		display: block;
+		margin: 2em auto;
+	}
+}

@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/datatable",
+	"title": "Data Table",
+	"category": "widgets",
+	"icon": "editor-table",
+	"description": "A sortable, searchable grid of posts for any registered post type, powered by DataTables.",
+	"keywords": [ "table", "grid", "datatable", "posts", "list" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"attributes": {
+		"postType": {
+			"type": "string",
+			"default": "post"
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"editorScript": "file:./build/index.js",
+	"style": [ "file:./build/view.css", "file:./build/style-view.css" ],
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}
