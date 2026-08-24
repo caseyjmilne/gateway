@@ -17,6 +17,10 @@
 		"limit": {
 			"type": "number",
 			"default": 0
+		},
+		"pageSize": {
+			"type": "number",
+			"default": 10
 		}
 	},
 	"supports": {

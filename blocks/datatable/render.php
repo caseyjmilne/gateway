@@ -25,6 +25,11 @@ if ( ! post_type_exists( $post_type ) ) {
 // 0 (or anything not a positive integer) means "no limit".
 $limit = isset( $attributes['limit'] ) ? absint( $attributes['limit'] ) : 0;
 
+// Rows shown per page in the grid (DataTables' pageLength, read from the
+// data-page-size attribute below). Falls back to DataTables' own default
+// (10) for anything that isn't a positive integer.
+$page_size = isset( $attributes['pageSize'] ) ? absint( $attributes['pageSize'] ) : 10;
+
 $query_args = array(
 	'post_type'      => $post_type,
 	'post_status'    => 'publish',
@@ -60,6 +65,7 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 			id="<?php echo esc_attr( $table_id ); ?>"
 			class="gateway-datatable display"
 			data-post-type="<?php echo esc_attr( $post_type ); ?>"
+			data-page-size="<?php echo esc_attr( $page_size ); ?>"
 			style="width:100%"
 		>
 			<thead>

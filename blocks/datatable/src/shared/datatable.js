@@ -23,6 +23,52 @@ const DEFAULT_OPTIONS = {
 };
 
 /**
+ * "Show X entries" choices offered alongside the block's own Page Size
+ * setting -- rendered exactly as-is if Page Size matches one of these,
+ * otherwise the configured value is folded in so the dropdown always
+ * reflects what's actually showing.
+ */
+const DEFAULT_LENGTH_MENU = [ 10, 25, 50, 100 ];
+
+/**
+ * Read the block's Page Size setting off the table (render.php writes it as
+ * a data attribute), for the DataTables `pageLength` option.
+ *
+ * @param {HTMLTableElement} table The table element.
+ * @return {number|null} A positive page length, or null if unset/invalid
+ *                        (meaning: fall back to the DataTables default).
+ */
+function getPageLengthFromTable( table ) {
+	const raw = table.getAttribute( 'data-page-size' );
+
+	if ( ! raw ) {
+		return null;
+	}
+
+	const parsed = parseInt( raw, 10 );
+
+	return Number.isNaN( parsed ) || parsed <= 0 ? null : parsed;
+}
+
+/**
+ * Build a `lengthMenu` array guaranteed to include `pageLength`, so the
+ * "Show X entries" control never shows a value that isn't actually an
+ * option in its own dropdown.
+ *
+ * @param {number|null} pageLength The configured page length, if any.
+ * @return {number[]} Sorted, deduplicated length menu.
+ */
+function buildLengthMenu( pageLength ) {
+	if ( ! pageLength ) {
+		return DEFAULT_LENGTH_MENU;
+	}
+
+	return [ ...new Set( [ pageLength, ...DEFAULT_LENGTH_MENU ] ) ].sort(
+		( a, b ) => a - b
+	);
+}
+
+/**
  * Initialize (or re-fetch an existing) DataTable instance on a <table>.
  *
  * @param {HTMLTableElement} table   The table element to enhance.
@@ -38,8 +84,12 @@ export function initGatewayDataTable( table, options = {} ) {
 		return $( table ).DataTable();
 	}
 
+	const pageLength = getPageLengthFromTable( table );
+
 	return $( table ).DataTable( {
 		...DEFAULT_OPTIONS,
+		...( pageLength ? { pageLength } : {} ),
+		lengthMenu: buildLengthMenu( pageLength ),
 		...options,
 	} );
 }

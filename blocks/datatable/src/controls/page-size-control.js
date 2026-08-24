@@ -1,0 +1,76 @@
+/**
+ * "Page Size" number field for the datatable block's Inspector panel.
+ *
+ * Maps directly to DataTables' `pageLength` option (via a data attribute
+ * read in shared/datatable.js), controlling how many rows are shown per
+ * page. Accepts only positive integers; unlike Limit, 0 isn't meaningful
+ * here (DataTables needs a page length of at least 1), so invalid/zero
+ * input falls back to the default.
+ */
+
+import { useEffect, useState } from '@wordpress/element';
+import { TextControl } from '@wordpress/components';
+import { __ } from '@wordpress/i18n';
+
+const DEFAULT_PAGE_SIZE = 10;
+
+/**
+ * Parse arbitrary input into a valid page size: a positive integer.
+ * Anything unparsable (or less than 1) falls back to the default.
+ *
+ * @param {string} raw Raw field value.
+ * @return {number} Sanitized page size.
+ */
+function sanitizePageSize( raw ) {
+	const parsed = parseInt( raw, 10 );
+	return Number.isNaN( parsed ) || parsed < 1 ? DEFAULT_PAGE_SIZE : parsed;
+}
+
+export default function PageSizeControl( { value, onChange } ) {
+	// Buffer the field's raw text locally so the user can freely clear/edit
+	// it (a controlled input bound directly to the sanitized numeric
+	// attribute would snap back on every keystroke that isn't yet valid).
+	const [ inputValue, setInputValue ] = useState(
+		String( value || DEFAULT_PAGE_SIZE )
+	);
+
+	useEffect( () => {
+		setInputValue( String( value || DEFAULT_PAGE_SIZE ) );
+	}, [ value ] );
+
+	const handleChange = ( raw ) => {
+		setInputValue( raw );
+
+		if ( raw === '' ) {
+			return;
+		}
+
+		const parsed = parseInt( raw, 10 );
+
+		if ( ! Number.isNaN( parsed ) && parsed >= 1 ) {
+			onChange( parsed );
+		}
+	};
+
+	const handleBlur = () => {
+		const sanitized = sanitizePageSize( inputValue );
+		onChange( sanitized );
+		setInputValue( String( sanitized ) );
+	};
+
+	return (
+		<TextControl
+			label={ __( 'Page Size', 'gateway' ) }
+			help={ __(
+				'Number of rows to show per page in the grid.',
+				'gateway'
+			) }
+			type="number"
+			min="1"
+			step="1"
+			value={ inputValue }
+			onChange={ handleChange }
+			onBlur={ handleBlur }
+		/>
+	);
+}

@@ -121,6 +121,18 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
   negative input resets to `0` on blur. `render.php` re-sanitizes the value
   with `absint()` and only applies it (`posts_per_page`) when greater than
   `0`, so a tampered or malformed attribute can't produce a broken query.
+- **Page Size** (`pageSize` attribute, default `10`): a numeric field
+  (`controls/page-size-control.js`) mapped to DataTables' `pageLength`
+  option -- how many rows are shown per page. Only positive integers are
+  accepted; invalid or non-positive input falls back to `10` on blur.
+  Unlike Limit, this doesn't affect how many rows are *fetched* (that's
+  still governed by Limit) -- it only controls how many of them DataTables
+  shows per page at once. `render.php` re-sanitizes the value with
+  `absint()` and writes it onto the table as `data-page-size`;
+  `shared/datatable.js` reads that attribute (in both the editor and on
+  the front end) to set `pageLength`, and also folds the value into the
+  "Show X entries" `lengthMenu` dropdown so it never displays a page-size
+  option that isn't actually selected.
 
 The grid currently always shows **ID** and **Title** columns; the query args
 used to populate it are filterable via the `gateway_datatable_query_args` PHP
