@@ -31,6 +31,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-columns-rest-controller.php';
  */
 function gateway_boot() {
 	\Gateway\Block_Loader::init();
+	\Gateway\Column_Registry::init();
 	\Gateway\Columns_REST_Controller::init();
 }
 add_action( 'plugins_loaded', 'gateway_boot' );

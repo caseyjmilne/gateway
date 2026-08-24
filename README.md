@@ -202,19 +202,45 @@ falling back to the default `ID`/`post_title` selection if that empties it.
 - **Core fields**: a static, filterable (`gateway_datatable_core_columns`)
   map of `WP_Post` properties to friendly labels (`post_title` → "Title",
   `post_content` → "Content", etc.).
-- **Meta fields** (including ACF): the union of formally registered meta
-  (`get_registered_meta_keys()` -- what `register_post_meta()`, and ACF's
-  own "Show in REST API" support, produce) and meta keys actually found in
-  `wp_postmeta` for that post type (to also surface ACF fields that were
-  never formally registered, which is the common case). Protected/internal
-  keys (WordPress' `_`-prefixed convention -- also how ACF stores its
-  internal field-key references) are excluded via `is_protected_meta()`.
-  Meta has no built-in "nice name," so labels are humanized from the raw key
-  (`event_start_date` → "Event Start Date") by default, filterable via
-  `gateway_datatable_column_label` for sites wanting real ACF field labels
-  instead. Discovery results are cached per post type (`get_transient()`,
-  15 minutes by default, filterable via `gateway_datatable_columns_cache_ttl`)
-  since the meta-key scan queries `wp_postmeta` directly.
+- **Meta fields** (including ACF, or any other field-builder plugin): the
+  union of formally registered meta (`get_registered_meta_keys()` -- what
+  `register_post_meta()`, and ACF's own "Show in REST API" support, produce)
+  and meta keys actually found in use on a recent sample of that post
+  type's posts (`get_used_meta_keys()` -- to also surface fields, including
+  ACF's, that were never formally registered, which is the common case).
+  This is deliberately WordPress core APIs only -- no plugin's own API
+  (ACF's included) is ever called directly, so discovery works identically
+  whether or not ACF (or any specific field-builder plugin) is active, with
+  nothing that can fault if it isn't. The "meta actually in use" scan is
+  itself built entirely from core APIs too, rather than a hand-written SQL
+  query: `get_posts()` picks the sample (most recently modified first,
+  capped at 200 by default, filterable via
+  `gateway_datatable_meta_scan_sample_size`), `update_meta_cache()` primes
+  it in one batched query, then `get_post_meta( $post_id )` per post reads
+  that post's full set of meta keys straight from the now-primed cache. A
+  key that exists solely on posts outside the sample window won't surface
+  until one of them is next saved -- an acceptable, standard trade-off for
+  keeping this cheap enough to run from an admin screen, and one that
+  narrows on its own as any of a type's posts get edited over time.
+  Excluded: protected/internal keys (WordPress' `_`-prefixed convention --
+  also how ACF stores its internal field-key references) via
+  `is_protected_meta()`, plus a small, filterable
+  (`gateway_datatable_excluded_meta_keys`) list of WordPress-internal meta
+  that isn't underscore-prefixed but also isn't real content -- currently
+  just `footnotes` (the block editor's Footnotes feature; WordPress core
+  itself registers this meta key, with `show_in_rest`, for any post type
+  supporting the block editor). Meta has no built-in "nice name," so labels
+  are humanized from the raw key (`event_start_date` → "Event Start Date")
+  by default, filterable via `gateway_datatable_column_label` for sites
+  wanting real ACF field labels instead.
+
+  Discovery results are cached per post type (`get_transient()`, 15 minutes
+  by default, filterable via `gateway_datatable_columns_cache_ttl`) --
+  but that's a ceiling, not the only way it gets refreshed:
+  `Column_Registry::init()` hooks `save_post` to flush a post type's cached
+  list on every save, so a custom field populated for the first time shows
+  up as soon as that post is saved, not "eventually, once the cache happens
+  to expire."
 
 **Validation, and how columns reach DataTables:** `render.php` never trusts
 the `columns` attribute blindly -- every requested `{ key, sortable }` is

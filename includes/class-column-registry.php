@@ -1,8 +1,10 @@
 <?php
 /**
  * Discovers the columns available for a post type (core WP_Post fields +
- * registered/discovered meta, e.g. ACF fields), maps them to friendly
- * labels, and knows how to render a cell value for a given column.
+ * registered/discovered post meta -- including custom fields added by
+ * plugins like ACF, discovered via WordPress core APIs only, never a
+ * specific plugin's own API), maps them to friendly labels, and knows how
+ * to render a cell value for a given column.
  *
  * Single source of truth used by both Columns_REST_Controller (what the
  * block editor's column picker offers) and blocks/datatable/render.php
@@ -20,9 +22,36 @@ defined( 'ABSPATH' ) || exit;
 class Column_Registry {
 
 	/**
-	 * How long the discovered column list is cached per post type.
+	 * How long the discovered column list is cached per post type. Mainly a
+	 * safety-net ceiling -- flush_cache_on_save() actively invalidates it
+	 * on every post save, which is when a newly-populated meta key (e.g. a
+	 * custom field filled in for the first time) actually needs to become
+	 * visible.
 	 */
 	const CACHE_TTL = 15 * MINUTE_IN_SECONDS;
+
+	/**
+	 * Hook cache invalidation into WordPress.
+	 */
+	public static function init() {
+		add_action( 'save_post', array( __CLASS__, 'flush_cache_on_save' ) );
+	}
+
+	/**
+	 * Invalidate a post type's cached column list whenever a post of that
+	 * type is saved -- covers the common case of a custom field (meta key)
+	 * being populated for the first time, which the cached list wouldn't
+	 * otherwise pick up until it expires on its own.
+	 *
+	 * @param int $post_id Post ID being saved.
+	 */
+	public static function flush_cache_on_save( $post_id ) {
+		$post_type = get_post_type( $post_id );
+
+		if ( $post_type ) {
+			self::flush_cache( $post_type );
+		}
+	}
 
 	/**
 	 * Get every available column for a post type: core WP_Post fields plus
@@ -152,45 +181,38 @@ class Column_Registry {
 
 	/**
 	 * Meta columns available for a post type: formally registered meta
-	 * (register_post_meta(), including anything ACF registers when its
-	 * "Show in REST API" support is enabled) merged with meta keys actually
-	 * found on posts of this type (to also surface ACF/other fields that
-	 * were never formally registered). Protected meta (WordPress' own
-	 * "starts with an underscore" convention -- also used by ACF for its
-	 * internal field-key references) is excluded.
+	 * (register_post_meta() -- including anything ACF registers this way
+	 * when a field group's "Show in REST API" setting is turned on) merged
+	 * with meta keys actually found on a recent sample of posts of this
+	 * type (to also surface fields, including ACF's, that were never
+	 * formally registered -- the common case). WordPress core only,
+	 * deliberately: no ACF (or any other plugin's) API is called directly,
+	 * so this works identically whether or not ACF -- or any specific
+	 * field-builder plugin -- is even active. Protected meta (WordPress'
+	 * "starts with an underscore" convention -- also how ACF stores its
+	 * internal field-key references) is excluded, as are a handful of
+	 * WordPress-internal meta keys that would otherwise slip through (see
+	 * get_excluded_meta_keys()).
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[]
 	 */
 	protected static function get_meta_columns( $post_type ) {
-		global $wpdb;
-
 		$meta_keys = array();
 
 		foreach ( array_keys( get_registered_meta_keys( 'post', $post_type ) ) as $key ) {
 			$meta_keys[ $key ] = true;
 		}
 
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$found_keys = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT DISTINCT pm.meta_key
-				FROM {$wpdb->postmeta} pm
-				INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-				WHERE p.post_type = %s",
-				$post_type
-			)
-		);
-		// phpcs:enable
-
-		foreach ( (array) $found_keys as $key ) {
+		foreach ( self::get_used_meta_keys( $post_type ) as $key ) {
 			$meta_keys[ $key ] = true;
 		}
 
-		$columns = array();
+		$excluded_keys = self::get_excluded_meta_keys( $post_type );
+		$columns       = array();
 
 		foreach ( array_keys( $meta_keys ) as $key ) {
-			if ( '' === $key || is_protected_meta( $key, 'post' ) ) {
+			if ( '' === $key || is_protected_meta( $key, 'post' ) || in_array( $key, $excluded_keys, true ) ) {
 				continue;
 			}
 
@@ -199,9 +221,9 @@ class Column_Registry {
 				/**
 				 * Filters the friendly label for a meta column. Meta keys
 				 * have no built-in "nice name" the way core fields do, so
-				 * by default this just humanizes the raw key -- sites (or
-				 * an ACF-aware integration) can hook this to supply real
-				 * field labels instead.
+				 * by default this just humanizes the raw key -- sites can
+				 * hook this to supply real field labels instead (e.g. for
+				 * their own ACF fields).
 				 *
 				 * @param string $label     Humanized label.
 				 * @param string $key       Raw meta key.
@@ -220,6 +242,94 @@ class Column_Registry {
 		);
 
 		return $columns;
+	}
+
+	/**
+	 * Meta keys actually in use on posts of this type, via get_post_meta()
+	 * on a recent sample -- rather than a hand-written SQL scan of
+	 * wp_postmeta, this uses only core APIs: get_posts() to pick the
+	 * sample, update_meta_cache() to prime it in one batched query (the
+	 * same priming WP_Query itself normally does), then get_post_meta()
+	 * per post (cheap array reads against that now-primed cache, not
+	 * additional queries).
+	 *
+	 * Deliberately a *sample* (most recently modified posts first, capped
+	 * -- see the filter below) rather than every post of the type: for a
+	 * post type with many posts, discovering "what meta keys exist" this
+	 * way needs to stay cheap enough to run from an admin screen. A key
+	 * used on any reasonably-recently-touched post will surface; one that
+	 * exists solely on posts entirely outside the sample won't, until one
+	 * of them is next saved (which also busts the cache -- see init()).
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return string[] Meta keys found.
+	 */
+	protected static function get_used_meta_keys( $post_type ) {
+		$post_ids = get_posts(
+			array(
+				'post_type'      => $post_type,
+				'post_status'    => 'any',
+				/**
+				 * Filters how many of a post type's most recently modified
+				 * posts are scanned for in-use meta keys.
+				 *
+				 * @param int    $sample_size Number of posts to scan.
+				 * @param string $post_type   Post type slug.
+				 */
+				'posts_per_page' => apply_filters( 'gateway_datatable_meta_scan_sample_size', 200, $post_type ),
+				'orderby'        => 'modified',
+				'order'          => 'DESC',
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+			)
+		);
+
+		if ( ! $post_ids ) {
+			return array();
+		}
+
+		update_meta_cache( 'post', $post_ids );
+
+		$keys = array();
+
+		foreach ( $post_ids as $post_id ) {
+			foreach ( array_keys( get_post_meta( $post_id ) ) as $key ) {
+				$keys[ $key ] = true;
+			}
+		}
+
+		return array_keys( $keys );
+	}
+
+	/**
+	 * Meta keys that are technically real, unprotected post meta but are
+	 * WordPress core's or a plugin's own internals rather than actual
+	 * content -- not offered as columns even though they'd otherwise pass
+	 * the "not protected" check (they don't start with an underscore).
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return string[]
+	 */
+	protected static function get_excluded_meta_keys( $post_type ) {
+		/**
+		 * Filters meta keys excluded from the column picker despite not
+		 * being "protected" meta.
+		 *
+		 * @param string[] $excluded_keys Excluded meta keys.
+		 * @param string   $post_type     Post type slug.
+		 */
+		return apply_filters(
+			'gateway_datatable_excluded_meta_keys',
+			array(
+				// The block editor's Footnotes feature: WordPress core
+				// itself register_post_meta()'s this (show_in_rest, so the
+				// editor can save it) for any post type supporting the
+				// block editor -- it's real meta, but editor internals, not
+				// content a site owner would want as a grid column.
+				'footnotes',
+			),
+			$post_type
+		);
 	}
 
 	/**
