@@ -85,7 +85,39 @@ if ( ! $column_definition ) {
 	return;
 }
 
-$label               = $column_definition['label'];
+$label = $column_definition['label'];
+
+// The parent's preset value for this key (Facets panel), if any -- shown as
+// this control's initial value/selection so a visitor sees *why* the table
+// is already narrowed, rather than a blank control that gives no hint a
+// filter is active. This is purely presentational: the preset is always
+// applied server-side to the initial query regardless of whether any
+// gateway/facet block exists for it (see render.php on the parent block),
+// so the rows are already scoped before this control ever renders --
+// pre-filling it just makes that visible.
+$default_value = isset( $facet_definition['value'] ) ? (string) $facet_definition['value'] : '';
+
+$facet_options      = array();
+$default_in_options = false;
+$default_label      = $default_value;
+
+if ( in_array( $ui_type, array( 'select', 'checkboxes' ), true ) ) {
+	$facet_options      = \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition );
+	$default_in_options = '' !== $default_value && in_array( $default_value, wp_list_pluck( $facet_options, 'value' ), true );
+
+	// The preset value might not be among the discovered options (e.g. a
+	// taxonomy term outside the top-50 cap) -- when so, resolve a real
+	// label for it rather than showing the raw value, and inject it into
+	// the list below so it's still visible and selected.
+	if ( '' !== $default_value && ! $default_in_options && 'taxonomy' === $column_definition['type'] ) {
+		$term = get_term_by( 'slug', $default_value, $column_definition['key'] );
+
+		if ( $term && ! is_wp_error( $term ) ) {
+			$default_label = $term->name;
+		}
+	}
+}
+
 $field_id            = 'gateway-facet-' . wp_unique_id();
 $wrapper_attributes  = get_block_wrapper_attributes(
 	array(
@@ -111,24 +143,45 @@ $wrapper_attributes  = get_block_wrapper_attributes(
 			type="text"
 			id="<?php echo esc_attr( $field_id ); ?>"
 			class="gateway-facet__input"
+			value="<?php echo esc_attr( $default_value ); ?>"
 			placeholder="<?php echo esc_attr( sprintf( /* translators: %s: field label. */ __( 'Filter by %s…', 'gateway' ), $label ) ); ?>"
 		/>
 	<?php elseif ( 'select' === $ui_type ) : ?>
 		<select id="<?php echo esc_attr( $field_id ); ?>" class="gateway-facet__select">
-			<option value=""><?php esc_html_e( 'All', 'gateway' ); ?></option>
-			<?php foreach ( \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition ) as $option ) : ?>
-				<option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
+			<option value="" <?php selected( '', $default_value ); ?>><?php esc_html_e( 'All', 'gateway' ); ?></option>
+			<?php if ( '' !== $default_value && ! $default_in_options ) : ?>
+				<option value="<?php echo esc_attr( $default_value ); ?>" selected>
+					<?php echo esc_html( $default_label ); ?>
+				</option>
+			<?php endif; ?>
+			<?php foreach ( $facet_options as $option ) : ?>
+				<option value="<?php echo esc_attr( $option['value'] ); ?>" <?php selected( $option['value'], $default_value ); ?>>
+					<?php echo esc_html( $option['label'] ); ?>
+				</option>
 			<?php endforeach; ?>
 		</select>
 	<?php elseif ( 'checkboxes' === $ui_type ) : ?>
 		<div class="gateway-facet__checkboxes" role="group" aria-labelledby="<?php echo esc_attr( $field_id ); ?>">
-			<?php foreach ( \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition ) as $index => $option ) : ?>
+			<?php if ( '' !== $default_value && ! $default_in_options ) : ?>
+				<label class="gateway-facet__checkbox-label">
+					<input
+						type="checkbox"
+						class="gateway-facet__checkbox"
+						id="<?php echo esc_attr( $field_id . '-default' ); ?>"
+						value="<?php echo esc_attr( $default_value ); ?>"
+						checked
+					/>
+					<?php echo esc_html( $default_label ); ?>
+				</label>
+			<?php endif; ?>
+			<?php foreach ( $facet_options as $index => $option ) : ?>
 				<label class="gateway-facet__checkbox-label">
 					<input
 						type="checkbox"
 						class="gateway-facet__checkbox"
 						id="<?php echo esc_attr( $field_id . '-' . $index ); ?>"
 						value="<?php echo esc_attr( $option['value'] ); ?>"
+						<?php checked( $option['value'], $default_value ); ?>
 					/>
 					<?php echo esc_html( $option['label'] ); ?>
 				</label>

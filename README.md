@@ -532,6 +532,22 @@ core/meta they're the same string, but for a taxonomy `value` is the term
 **slug** (what gets matched) and `label` the term **name** (what's shown),
 the first case where those genuinely differ.
 
+**Showing an already-applied preset:** the parent's Facets panel preset
+`value` for this key (if any) is always applied to the initial `WP_Query`
+regardless of whether a `gateway/facet` block exists for it -- so without
+this, a visitor could see a table that's already narrowed with no
+indication why, and a blank-looking control that implies "nothing is
+filtered." `render.php` pre-fills the control from that preset value: the
+Input gets it as its initial `value`; Select/Checkboxes pre-select the
+matching option. When the preset value isn't among the (capped-at-50, or
+otherwise discovered) options -- e.g. a taxonomy term outside that cap --
+it's resolved and injected as an extra, selected option instead of silently
+going unrepresented (`get_term_by( 'slug', ... )` for taxonomy; core/meta
+values are their own label already). The block editor's own static preview
+(`src/edit.js`'s `FacetPreview`, which doesn't run through render.php) mirrors
+this too, plus a one-line note naming the preset value, so a site owner sees
+the same thing while editing that a visitor would see live.
+
 ### Front-end hookup (`blocks/facet/src/view.js`)
 
 1. Finds the sibling `<table class="gateway-datatable">` (nearest

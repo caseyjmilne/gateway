@@ -24,13 +24,15 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		return acc;
 	}, {} );
 
-	const isFacetConfigured = parentFacets.some(
+	const matchedFacet = parentFacets.find(
 		( facet ) => facet.key === facetKey
 	);
+	const isFacetConfigured = Boolean( matchedFacet );
 	const isDisplayedColumn = parentColumns.some(
 		( column ) => column.key === facetKey
 	);
 	const label = labelsByKey[ facetKey ] || facetKey;
+	const defaultValue = matchedFacet ? matchedFacet.value : '';
 
 	return (
 		<>
@@ -90,7 +92,11 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					</Notice>
 				) }
 				{ facetKey && isFacetConfigured && isDisplayedColumn && (
-					<FacetPreview uiType={ uiType } label={ label } />
+					<FacetPreview
+						uiType={ uiType }
+						label={ label }
+						defaultValue={ defaultValue }
+					/>
 				) }
 			</div>
 		</>
@@ -102,8 +108,13 @@ export default function Edit( { attributes, setAttributes, context } ) {
  * interactive version only exists on the front end (view.js), hooked into
  * an actual DataTable instance; the editor's job here is just to show what
  * kind of control this will be, not to simulate visitor interaction.
+ *
+ * `defaultValue` is the parent's preset value for this facet (Facets panel),
+ * shown pre-filled here the same way render.php pre-fills the real control
+ * on the front end -- so a site owner sees, while editing, that the table
+ * is already narrowed by that preset, not just once the page is published.
  */
-function FacetPreview( { uiType, label } ) {
+function FacetPreview( { uiType, label, defaultValue } ) {
 	return (
 		<div className={ `gateway-facet gateway-facet--${ uiType }` }>
 			<span className="gateway-facet__label">{ label }</span>
@@ -112,21 +123,34 @@ function FacetPreview( { uiType, label } ) {
 					type="text"
 					className="gateway-facet__input"
 					disabled
+					value={ defaultValue }
 					placeholder={ __( 'Filter…', 'gateway' ) }
 				/>
 			) }
 			{ 'select' === uiType && (
 				<select className="gateway-facet__select" disabled>
-					<option>{ __( 'All', 'gateway' ) }</option>
+					<option>{ defaultValue || __( 'All', 'gateway' ) }</option>
 				</select>
 			) }
 			{ 'checkboxes' === uiType && (
 				<div className="gateway-facet__checkboxes">
 					<label className="gateway-facet__checkbox-label">
-						<input type="checkbox" disabled />
-						{ __( 'Example value', 'gateway' ) }
+						<input type="checkbox" disabled checked={ Boolean( defaultValue ) } />
+						{ defaultValue || __( 'Example value', 'gateway' ) }
 					</label>
 				</div>
+			) }
+			{ defaultValue && (
+				<p className="gateway-facet__default-note">
+					{ sprintf(
+						/* translators: %s: preset filter value. */
+						__(
+							'Pre-filtered to “%s” by the Data Table block’s Facets setting.',
+							'gateway'
+						),
+						defaultValue
+					) }
+				</p>
 			) }
 		</div>
 	);
