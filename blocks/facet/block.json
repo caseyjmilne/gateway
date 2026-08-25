@@ -23,6 +23,10 @@
 		"uiType": {
 			"type": "string",
 			"default": "input"
+		},
+		"compare": {
+			"type": "string",
+			"default": "contains"
 		}
 	},
 	"supports": {

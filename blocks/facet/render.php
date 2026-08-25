@@ -33,9 +33,17 @@ $parent_columns = isset( $block->context['gateway/datatable/columns'] ) && is_ar
 
 $facet_key = isset( $attributes['facetKey'] ) && is_string( $attributes['facetKey'] ) ? $attributes['facetKey'] : '';
 $ui_type   = isset( $attributes['uiType'] ) ? $attributes['uiType'] : 'input';
+$compare   = isset( $attributes['compare'] ) ? $attributes['compare'] : 'contains';
 
 if ( ! in_array( $ui_type, array( 'input', 'select', 'checkboxes' ), true ) ) {
 	$ui_type = 'input';
+}
+
+// Only meaningful for the "input" UI type -- Select/Checkboxes are always
+// exact matches against a fixed list of values (see ui-type-control.js /
+// view.js), so an invalid value here is harmless either way.
+if ( 'equals' !== $compare ) {
+	$compare = 'contains';
 }
 
 if ( ! $post_type || '' === $facet_key ) {
@@ -84,6 +92,7 @@ $wrapper_attributes  = get_block_wrapper_attributes(
 		'class'          => 'gateway-facet gateway-facet--' . $ui_type,
 		'data-facet-key' => $facet_key,
 		'data-ui-type'   => $ui_type,
+		'data-compare'   => $compare,
 	)
 );
 ?>
@@ -107,21 +116,21 @@ $wrapper_attributes  = get_block_wrapper_attributes(
 	<?php elseif ( 'select' === $ui_type ) : ?>
 		<select id="<?php echo esc_attr( $field_id ); ?>" class="gateway-facet__select">
 			<option value=""><?php esc_html_e( 'All', 'gateway' ); ?></option>
-			<?php foreach ( \Gateway\Facet_Query::get_distinct_values( $post_type, $column_definition ) as $value ) : ?>
-				<option value="<?php echo esc_attr( $value ); ?>"><?php echo esc_html( $value ); ?></option>
+			<?php foreach ( \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition ) as $option ) : ?>
+				<option value="<?php echo esc_attr( $option['value'] ); ?>"><?php echo esc_html( $option['label'] ); ?></option>
 			<?php endforeach; ?>
 		</select>
 	<?php elseif ( 'checkboxes' === $ui_type ) : ?>
 		<div class="gateway-facet__checkboxes" role="group" aria-labelledby="<?php echo esc_attr( $field_id ); ?>">
-			<?php foreach ( \Gateway\Facet_Query::get_distinct_values( $post_type, $column_definition ) as $index => $value ) : ?>
+			<?php foreach ( \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition ) as $index => $option ) : ?>
 				<label class="gateway-facet__checkbox-label">
 					<input
 						type="checkbox"
 						class="gateway-facet__checkbox"
 						id="<?php echo esc_attr( $field_id . '-' . $index ); ?>"
-						value="<?php echo esc_attr( $value ); ?>"
+						value="<?php echo esc_attr( $option['value'] ); ?>"
 					/>
-					<?php echo esc_html( $value ); ?>
+					<?php echo esc_html( $option['label'] ); ?>
 				</label>
 			<?php endforeach; ?>
 		</div>

@@ -40,6 +40,23 @@ function escapeRegex( value ) {
 }
 
 /**
+ * Build a regex matching a cell if ANY of `values` appears in it as a full,
+ * standalone comma-list item -- not `^value$` (the whole cell must equal
+ * value), because a taxonomy column's cell can hold multiple comma
+ * -separated term names (Column_Registry::get_cell_value()) for a single
+ * post. This still matches correctly for an ordinary single-value cell
+ * (core/meta columns): with one item and no siblings, `(^|, )` and `(, |$)`
+ * just collapse to the start/end anchors `^value$` would have been.
+ *
+ * @param {string[]} values Values to match (regex-escaped internally).
+ * @return {string} Regex pattern for DataTables' `column().search()`.
+ */
+function exactMatchPattern( values ) {
+	const alternation = values.map( escapeRegex ).join( '|' );
+	return `(^|, )(${ alternation })(, |$)`;
+}
+
+/**
  * @param {Function} fn   Function to debounce.
  * @param {number}   wait Delay in ms.
  * @return {Function} Debounced function.
@@ -122,6 +139,10 @@ function initFacet( facetEl ) {
 		}
 
 		const column = dataTable.column( columnIndex );
+		const compare =
+			facetEl.getAttribute( 'data-compare' ) === 'equals'
+				? 'equals'
+				: 'contains';
 
 		const applySearch = ( value, isRegex ) => {
 			column.search( value, isRegex, false ).draw();
@@ -132,7 +153,20 @@ function initFacet( facetEl ) {
 		if ( input ) {
 			input.addEventListener(
 				'input',
-				debounce( () => applySearch( input.value, false ), 300 )
+				debounce( () => {
+					const { value } = input;
+
+					if ( 'equals' === compare ) {
+						applySearch(
+							value ? exactMatchPattern( [ value ] ) : '',
+							true
+						);
+					} else {
+						// Plain substring search -- "Contains", DataTables'
+						// own default behavior.
+						applySearch( value, false );
+					}
+				}, 300 )
 			);
 		}
 
@@ -141,24 +175,31 @@ function initFacet( facetEl ) {
 		if ( select ) {
 			select.addEventListener( 'change', () => {
 				const { value } = select;
-				// Anchored regex for an exact match, rather than DataTables'
-				// default substring search -- picking one option shouldn't
-				// also match every OTHER value that happens to contain it.
-				applySearch( value ? `^${ escapeRegex( value ) }$` : '', true );
+				// Select/Checkboxes are always exact matches against a fixed
+				// list of values, regardless of `compare` (that only governs
+				// Input -- see compare-control.js).
+				applySearch(
+					value ? exactMatchPattern( [ value ] ) : '',
+					true
+				);
 			} );
 		}
 
-		const checkboxes = facetEl.querySelectorAll( '.gateway-facet__checkbox' );
+		const checkboxes = facetEl.querySelectorAll(
+			'.gateway-facet__checkbox'
+		);
 
 		if ( checkboxes.length ) {
 			const handleChange = () => {
 				const checkedValues = Array.from( checkboxes )
 					.filter( ( checkbox ) => checkbox.checked )
-					.map( ( checkbox ) => escapeRegex( checkbox.value ) );
+					.map( ( checkbox ) => checkbox.value );
 
 				// OR-match any checked value; nothing checked means no filter.
 				applySearch(
-					checkedValues.length ? `^(${ checkedValues.join( '|' ) })$` : '',
+					checkedValues.length
+						? exactMatchPattern( checkedValues )
+						: '',
 					true
 				);
 			};

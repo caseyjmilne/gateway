@@ -80,8 +80,8 @@ $columns = array_values( $columns );
 
 // Resolve + validate the requested facets the same way as columns: a key
 // not in $available_columns for this post type is dropped, and each valid
-// facet's 'type' (core|meta) is taken from Column_Registry, never trusted
-// from the attribute, since Facet_Query routes core vs. meta facets very
+// facet's 'type' (core|meta|taxonomy) is taken from Column_Registry, never
+// trusted from the attribute, since Facet_Query routes each type very
 // differently (a mislabeled facet could otherwise dodge the SQL-safety
 // allow-list core facets go through).
 $facets = array();

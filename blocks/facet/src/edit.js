@@ -4,10 +4,11 @@ import { __, sprintf } from '@wordpress/i18n';
 
 import FacetKeyControl from './controls/facet-key-control';
 import UiTypeControl from './controls/ui-type-control';
+import CompareControl from './controls/compare-control';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 
 export default function Edit( { attributes, setAttributes, context } ) {
-	const { facetKey, uiType } = attributes;
+	const { facetKey, uiType, compare } = attributes;
 	const blockProps = useBlockProps();
 
 	const postType = context[ 'gateway/datatable/postType' ] || 'post';
@@ -23,8 +24,12 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		return acc;
 	}, {} );
 
-	const isFacetConfigured = parentFacets.some( ( facet ) => facet.key === facetKey );
-	const isDisplayedColumn = parentColumns.some( ( column ) => column.key === facetKey );
+	const isFacetConfigured = parentFacets.some(
+		( facet ) => facet.key === facetKey
+	);
+	const isDisplayedColumn = parentColumns.some(
+		( column ) => column.key === facetKey
+	);
 	const label = labelsByKey[ facetKey ] || facetKey;
 
 	return (
@@ -35,12 +40,24 @@ export default function Edit( { attributes, setAttributes, context } ) {
 						facets={ parentFacets }
 						labelsByKey={ labelsByKey }
 						value={ facetKey }
-						onChange={ ( value ) => setAttributes( { facetKey: value } ) }
+						onChange={ ( value ) =>
+							setAttributes( { facetKey: value } )
+						}
 					/>
 					<UiTypeControl
 						value={ uiType }
-						onChange={ ( value ) => setAttributes( { uiType: value } ) }
+						onChange={ ( value ) =>
+							setAttributes( { uiType: value } )
+						}
 					/>
+					{ 'input' === uiType && (
+						<CompareControl
+							value={ compare }
+							onChange={ ( value ) =>
+								setAttributes( { compare: value } )
+							}
+						/>
+					) }
 				</PanelBody>
 			</InspectorControls>
 			<div { ...blockProps }>

@@ -239,6 +239,14 @@ falling back to the default `ID`/`post_title` selection if that empties it.
 - **Core fields**: a static, filterable (`gateway_datatable_core_columns`)
   map of `WP_Post` properties to friendly labels (`post_title` → "Title",
   `post_content` → "Content", etc.).
+- **Taxonomies** (categories, tags, and any custom taxonomy): every
+  taxonomy registered for the post type (`get_object_taxonomies()`) that's
+  `public` -- filterable via `gateway_datatable_taxonomy_columns` for sites
+  that want a non-public one included deliberately. Unlike meta, this is a
+  pure registration lookup with no "in use" sampling or cache-staleness
+  concern, since taxonomy registration is static. A cell's value is its
+  post's term **names**, comma-joined (`get_the_terms()`); for facet
+  filtering, `Facet_Query` uses term **slugs** instead (see below).
 - **Meta fields** (including ACF, or any other field-builder plugin): the
   union of formally registered meta (`get_registered_meta_keys()` -- what
   `register_post_meta()`, and ACF's own "Show in REST API" support, produce)
@@ -362,11 +370,19 @@ and a facet with no value entered yet is skipped rather than querying for
 an empty string. `Facet_Query::apply_facets()` then routes each valid facet
 by its `type` (never trusted from the attribute -- always re-resolved from
 `Column_Registry` in `render.php`, since a facet's `type` decides which of
-two very different code paths it goes through):
+three very different code paths it goes through):
 
 - **Meta facets** become native `WP_Query` `meta_query` clauses --
   `compare` is passed straight through (it's already WP_Query's own
   vocabulary: `=`, `!=`, `>`, `>=`, `<`, `<=`, `LIKE`, `NOT LIKE`).
+- **Taxonomy facets** become native `WP_Query` `tax_query` clauses,
+  matching by term **slug**. Term membership is inherently binary, so
+  `compare` only ever distinguishes `IN` (the default, and anything other
+  than `!=`) from `NOT IN` -- the rest of the general compare vocabulary
+  (`>`, `LIKE`, ...) has no coherent meaning for taxonomy terms.
+  `controls/facet-config-table.js` restricts the Facets panel's own Compare
+  dropdown down to just Equals/Not Equals for a taxonomy facet, so a site
+  owner never sees options that would be silently coerced anyway.
 - **Core facets** (filtering by a `WP_Post` field like `post_title` or
   `post_date`) have no built-in `WP_Query` mechanism, so they're applied
   via a `posts_where` filter -- scoped to *only* queries that explicitly
@@ -465,13 +481,25 @@ changes, not just a JS tweak:
 In the Inspector: pick which of the parent's configured facets this
 control represents (`controls/facet-key-control.js`, populated from the
 `gateway/datatable/facets` context), then a UI Type
-(`controls/ui-type-control.js`: Input, Select, or Checkboxes). A facet
-block only has something to hook into once its chosen field is *also* one
-of the datatable's currently displayed columns (its DataTables column
-index is how the front end targets it -- see below); `edit.js` checks this
-against the `gateway/datatable/columns` context and shows a `<Notice>`
-warning, rather than silently rendering nothing, when it isn't (or when
-the referenced facet has since been removed from the parent altogether).
+(`controls/ui-type-control.js`: Input, Select, or Checkboxes), and -- for
+Input only -- a **Compare** (`controls/compare-control.js`): Contains or
+Equals. This is deliberately separate from, and unrelated to, the *preset*
+`compare` set on the Data Table block's Facets panel (`=`, `!=`, `>`, ...):
+that one is baked into the initial server-side query; this one governs how
+the *live*, client-side filter matches as a visitor types. It's also
+deliberately just two options -- DataTables' `column().search()` has no
+native numeric/date comparison operators, only substring/regex matching, so
+Contains/Equals is what that mechanism can actually back up. Not shown for
+Select/Checkboxes, since exact match is the only behavior that makes sense
+against a fixed list of discrete values there.
+
+A facet block only has something to hook into once its chosen field is
+*also* one of the datatable's currently displayed columns (its DataTables
+column index is how the front end targets it -- see below); `edit.js`
+checks this against the `gateway/datatable/columns` context and shows a
+`<Notice>` warning, rather than silently rendering nothing, when it isn't
+(or when the referenced facet has since been removed from the parent
+altogether).
 
 ### Server-side rendering (`blocks/facet/render.php`)
 
@@ -479,9 +507,13 @@ Re-validates everything from context rather than trusting `$attributes`:
 the facet must still exist in the parent's facet list, and its key must
 still be a displayed column, or the block renders nothing at all (the
 editor's warnings above are what a site owner sees instead). For **Select**
-and **Checkboxes**, options come from `Facet_Query::get_distinct_values()`
--- real, currently-in-use values for that field (capped at 50 by default,
-cached like column discovery), not a placeholder list.
+and **Checkboxes**, options come from `Facet_Query::get_facet_options()`
+-- real, currently-in-use values for core/meta fields, or a taxonomy's
+actual terms (capped at 50 by default, cached like column discovery), not
+a placeholder list. Each option is a `{ value, label }` pair -- for
+core/meta they're the same string, but for a taxonomy `value` is the term
+**slug** (what gets matched) and `label` the term **name** (what's shown),
+the first case where those genuinely differ.
 
 ### Front-end hookup (`blocks/facet/src/view.js`)
 
@@ -496,13 +528,26 @@ cached like column discovery), not a placeholder list.
 2. Locates the target column via `shared/dom.js`'s `getColumnIndexByKey()`,
    matching this facet's `data-facet-key` against each `<th>`'s
    `data-column-key` (written by the datatable's `render.php`).
-3. Wires interaction to `column.search(...).draw()`:
-   - **Input**: plain substring search (`regex: false`), debounced 300ms.
-   - **Select**/**Checkboxes**: an anchored regex (`^value$`, or
-     `^(value1|value2)$` for multiple checked boxes) for an *exact* match
-     rather than DataTables' default substring behavior -- picking one
-     option shouldn't also match every other value that happens to contain
-     it as a substring. Values are regex-escaped first.
+3. Wires interaction to `column.search(...).draw()`, reading the block's
+   own `data-compare` for the Input control:
+   - **Input, Contains** (default): plain substring search (`regex: false`),
+     debounced 300ms.
+   - **Input, Equals**, and **Select**/**Checkboxes** (always exact,
+     regardless of `data-compare` -- that attribute only governs Input): an
+     anchored regex built by `exactMatchPattern()` for an exact match rather
+     than DataTables' default substring behavior -- picking one option
+     shouldn't also match every other value that happens to contain it as a
+     substring. Values are regex-escaped first.
+
+   `exactMatchPattern()` matches a value as a full, standalone item in a
+   **comma-separated list**, not just the whole cell (`(^|, )value(, |$)`,
+   not `^value$`) -- because a taxonomy column's cell can hold multiple
+   comma-joined term names for one post (`Column_Registry::get_cell_value()`),
+   so "Equals" needs to mean "this term is one of them", not "this cell has
+   exactly and only this one term". Checked boxes are OR'd together the same
+   way. This still matches correctly for an ordinary single-value column
+   (core/meta) -- with nothing else in the list, the pattern collapses to
+   the same effect `^value$` would have had.
 
 **Only one bundle may ever import `datatables.net-dt`.** An earlier version
 of this had the facet block's `view.js` call the same idempotent

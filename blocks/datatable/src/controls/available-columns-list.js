@@ -17,6 +17,7 @@ import classnames from '../utils/classnames';
  */
 export default function AvailableColumnsList( { columns, selectedKeys, onToggle } ) {
 	const core = columns.filter( ( column ) => 'core' === column.type );
+	const taxonomy = columns.filter( ( column ) => 'taxonomy' === column.type );
 	const meta = columns.filter( ( column ) => 'meta' === column.type );
 
 	return (
@@ -24,6 +25,12 @@ export default function AvailableColumnsList( { columns, selectedKeys, onToggle 
 			<ColumnGroup
 				title={ __( 'Fields', 'gateway' ) }
 				columns={ core }
+				selectedKeys={ selectedKeys }
+				onToggle={ onToggle }
+			/>
+			<ColumnGroup
+				title={ __( 'Taxonomies', 'gateway' ) }
+				columns={ taxonomy }
 				selectedKeys={ selectedKeys }
 				onToggle={ onToggle }
 			/>

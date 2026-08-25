@@ -59,8 +59,11 @@ export default function FacetsPanel( {
 		);
 	}
 
-	const labelsByKey = availableColumns.reduce( ( acc, column ) => {
-		acc[ column.key ] = column.label;
+	// Full column objects (key, label, *and* type), not just labels: the
+	// config table needs `type` too, to restrict which Compare options make
+	// sense for a taxonomy facet (see facet-config-table.js).
+	const columnsByKey = availableColumns.reduce( ( acc, column ) => {
+		acc[ column.key ] = column;
 		return acc;
 	}, {} );
 
@@ -73,7 +76,7 @@ export default function FacetsPanel( {
 			/>
 			<FacetConfigTable
 				facets={ facets }
-				labelsByKey={ labelsByKey }
+				columnsByKey={ columnsByKey }
 				onChange={ onChange }
 				onRemove={ handleRemove }
 			/>

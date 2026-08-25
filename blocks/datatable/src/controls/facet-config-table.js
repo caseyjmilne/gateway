@@ -16,14 +16,25 @@ import { __ } from '@wordpress/i18n';
 import classnames from '../utils/classnames';
 import { FACET_COMPARE_OPTIONS } from './facet-compare-options';
 
+// Term membership is inherently binary -- the rest of FACET_COMPARE_OPTIONS
+// (">", "LIKE", ...) has no coherent meaning for a taxonomy facet, and
+// Facet_Query::apply_facets() only ever reads one of these two for a
+// taxonomy anyway (anything else silently becomes "Equals" server-side).
+const TAXONOMY_COMPARE_OPTIONS = FACET_COMPARE_OPTIONS.slice( 0, 2 );
+
 /**
  * @param {Object}   props
- * @param {Object[]} props.facets      Selected facets, in order: [{ key, compare, value }].
- * @param {Object}   props.labelsByKey Map of key => friendly label, for display.
- * @param {Function} props.onChange    ( nextFacets ) => void, for reorder/compare/value changes.
- * @param {Function} props.onRemove    ( key ) => void -- removes a facet from the selection.
+ * @param {Object[]} props.facets       Selected facets, in order: [{ key, compare, value }].
+ * @param {Object}   props.columnsByKey Map of key => column definition ({ key, label, type }).
+ * @param {Function} props.onChange     ( nextFacets ) => void, for reorder/compare/value changes.
+ * @param {Function} props.onRemove     ( key ) => void -- removes a facet from the selection.
  */
-export default function FacetConfigTable( { facets, labelsByKey, onChange, onRemove } ) {
+export default function FacetConfigTable( {
+	facets,
+	columnsByKey,
+	onChange,
+	onRemove,
+} ) {
 	const [ dragIndex, setDragIndex ] = useState( null );
 	const [ overIndex, setOverIndex ] = useState( null );
 
@@ -68,76 +79,93 @@ export default function FacetConfigTable( { facets, labelsByKey, onChange, onRem
 				</tr>
 			</thead>
 			<tbody>
-				{ facets.map( ( facet, index ) => (
-					<tr
-						key={ facet.key }
-						className={ classnames(
-							'gateway-columns-config__row',
-							dragIndex === index && 'is-dragging',
-							overIndex === index && dragIndex !== index && 'is-drop-target'
-						) }
-						onDragOver={ ( event ) => {
-							event.preventDefault();
-							setOverIndex( index );
-						} }
-						onDrop={ ( event ) => {
-							event.preventDefault();
-							moveFacet( dragIndex, index );
-							setDragIndex( null );
-							setOverIndex( null );
-						} }
-						onDragEnd={ () => {
-							setDragIndex( null );
-							setOverIndex( null );
-						} }
-					>
-						{ /* draggable lives on the handle, not the row, so a drag can
-						   only be started from here -- not from the Compare/Value
-						   controls elsewhere in the row. */ }
-						<td
-							className="gateway-columns-config__handle"
-							aria-hidden="true"
-							draggable
-							onDragStart={ ( event ) => {
-								setDragIndex( index );
-								event.dataTransfer.effectAllowed = 'move';
-								event.dataTransfer.setData( 'text/plain', String( index ) );
+				{ facets.map( ( facet, index ) => {
+					const column = columnsByKey[ facet.key ];
+					const compareOptions =
+						column && 'taxonomy' === column.type
+							? TAXONOMY_COMPARE_OPTIONS
+							: FACET_COMPARE_OPTIONS;
+
+					return (
+						<tr
+							key={ facet.key }
+							className={ classnames(
+								'gateway-columns-config__row',
+								dragIndex === index && 'is-dragging',
+								overIndex === index &&
+									dragIndex !== index &&
+									'is-drop-target'
+							) }
+							onDragOver={ ( event ) => {
+								event.preventDefault();
+								setOverIndex( index );
+							} }
+							onDrop={ ( event ) => {
+								event.preventDefault();
+								moveFacet( dragIndex, index );
+								setDragIndex( null );
+								setOverIndex( null );
+							} }
+							onDragEnd={ () => {
+								setDragIndex( null );
+								setOverIndex( null );
 							} }
 						>
-							⠿
-						</td>
-						<td>{ labelsByKey[ facet.key ] || facet.key }</td>
-						<td>
-							<SelectControl
-								__nextHasNoMarginBottom
-								label={ __( 'Compare', 'gateway' ) }
-								hideLabelFromVision
-								value={ facet.compare }
-								options={ FACET_COMPARE_OPTIONS }
-								onChange={ ( compare ) => updateFacet( index, { compare } ) }
-							/>
-						</td>
-						<td>
-							<TextControl
-								__nextHasNoMarginBottom
-								label={ __( 'Value', 'gateway' ) }
-								hideLabelFromVision
-								value={ facet.value }
-								onChange={ ( value ) => updateFacet( index, { value } ) }
-							/>
-						</td>
-						<td>
-							<Button
-								className="gateway-columns-config__remove"
-								icon="no-alt"
-								label={ __( 'Remove facet', 'gateway' ) }
-								size="small"
-								isDestructive
-								onClick={ () => onRemove( facet.key ) }
-							/>
-						</td>
-					</tr>
-				) ) }
+							{ /* draggable lives on the handle, not the row, so a drag can
+						   only be started from here -- not from the Compare/Value
+						   controls elsewhere in the row. */ }
+							<td
+								className="gateway-columns-config__handle"
+								aria-hidden="true"
+								draggable
+								onDragStart={ ( event ) => {
+									setDragIndex( index );
+									event.dataTransfer.effectAllowed = 'move';
+									event.dataTransfer.setData(
+										'text/plain',
+										String( index )
+									);
+								} }
+							>
+								⠿
+							</td>
+							<td>{ ( column && column.label ) || facet.key }</td>
+							<td>
+								<SelectControl
+									__nextHasNoMarginBottom
+									label={ __( 'Compare', 'gateway' ) }
+									hideLabelFromVision
+									value={ facet.compare }
+									options={ compareOptions }
+									onChange={ ( compare ) =>
+										updateFacet( index, { compare } )
+									}
+								/>
+							</td>
+							<td>
+								<TextControl
+									__nextHasNoMarginBottom
+									label={ __( 'Value', 'gateway' ) }
+									hideLabelFromVision
+									value={ facet.value }
+									onChange={ ( value ) =>
+										updateFacet( index, { value } )
+									}
+								/>
+							</td>
+							<td>
+								<Button
+									className="gateway-columns-config__remove"
+									icon="no-alt"
+									label={ __( 'Remove facet', 'gateway' ) }
+									size="small"
+									isDestructive
+									onClick={ () => onRemove( facet.key ) }
+								/>
+							</td>
+						</tr>
+					);
+				} ) }
 			</tbody>
 		</table>
 	);

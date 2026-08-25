@@ -1,10 +1,11 @@
 <?php
 /**
  * Discovers the columns available for a post type (core WP_Post fields +
- * registered/discovered post meta -- including custom fields added by
- * plugins like ACF, discovered via WordPress core APIs only, never a
- * specific plugin's own API), maps them to friendly labels, and knows how
- * to render a cell value for a given column.
+ * public taxonomies registered for it + registered/discovered post meta --
+ * including custom fields added by plugins like ACF, discovered via
+ * WordPress core APIs only, never a specific plugin's own API), maps them
+ * to friendly labels, and knows how to render a cell value for a given
+ * column.
  *
  * Single source of truth used by both Columns_REST_Controller (what the
  * block editor's column picker offers) and blocks/datatable/render.php
@@ -56,7 +57,7 @@ class Column_Registry {
 	/**
 	 * Get every available column for a post type: core WP_Post fields plus
 	 * registered/discovered post meta, each as:
-	 * [ 'key' => string, 'label' => string, 'type' => 'core'|'meta' ].
+	 * [ 'key' => string, 'label' => string, 'type' => 'core'|'meta'|'taxonomy' ].
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[] Column definitions.
@@ -75,6 +76,7 @@ class Column_Registry {
 
 		$columns = array_merge(
 			self::get_core_columns( $post_type ),
+			self::get_taxonomy_columns( $post_type ),
 			self::get_meta_columns( $post_type )
 		);
 
@@ -202,6 +204,42 @@ class Column_Registry {
 		}
 
 		return $columns;
+	}
+
+	/**
+	 * Taxonomy columns available for a post type: every taxonomy registered
+	 * for it (categories, tags, and any custom taxonomy) that's `public` --
+	 * a site-visitor-facing grid/facet shouldn't default to offering an
+	 * internal-only taxonomy's terms. Unlike meta, this is a pure
+	 * registration lookup (no "in use" sampling, no cache-staleness
+	 * concern) since taxonomy registration is static and authoritative.
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return array[]
+	 */
+	protected static function get_taxonomy_columns( $post_type ) {
+		$taxonomies = get_object_taxonomies( $post_type, 'objects' );
+		$columns    = array();
+
+		foreach ( $taxonomies as $taxonomy ) {
+			if ( empty( $taxonomy->public ) ) {
+				continue;
+			}
+
+			$columns[] = array(
+				'key'   => $taxonomy->name,
+				'label' => $taxonomy->label,
+				'type'  => 'taxonomy',
+			);
+		}
+
+		/**
+		 * Filters the taxonomy columns offered for a post type.
+		 *
+		 * @param array  $columns   Taxonomy column definitions.
+		 * @param string $post_type Post type slug.
+		 */
+		return apply_filters( 'gateway_datatable_taxonomy_columns', $columns, $post_type );
 	}
 
 	/**
@@ -389,6 +427,23 @@ class Column_Registry {
 		if ( 'meta' === $column['type'] ) {
 			$value = get_post_meta( $post_id, $column['key'], true );
 			return self::stringify( $value );
+		}
+
+		if ( 'taxonomy' === $column['type'] ) {
+			$terms = get_the_terms( $post_id, $column['key'] );
+
+			if ( empty( $terms ) || is_wp_error( $terms ) ) {
+				return '';
+			}
+
+			// Comma-joined term names -- this is what's actually rendered
+			// in the cell, so it's what a "Contains"/typed-search facet
+			// matches against. An "Equals" facet instead needs to treat
+			// each comma-separated name as its own list item (a post can
+			// have multiple terms) rather than requiring the whole,
+			// possibly-multi-term cell to match one selected value exactly
+			// -- see the list-item-boundary regex in facet/src/view.js.
+			return implode( ', ', wp_list_pluck( $terms, 'name' ) );
 		}
 
 		switch ( $column['key'] ) {
