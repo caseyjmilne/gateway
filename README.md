@@ -591,15 +591,18 @@ changes, not just a JS tweak:
   ...) to this inner wrapper, which (see below) never actually reaches a
   visitor anyway.
 - **`edit.js`**: `useInnerBlocksProps(blockProps, { allowedBlocks:
-  REQUIRED_BLOCKS, templateLock: false })` renders one list -- exactly
-  four named container blocks (`gateway/datatable-facets`,
-  `-header`, `-body`, `-footer`), in that fixed order. `useRequiredInnerBlocks()`
-  (below) is what actually guarantees all four exist, seeding a
-  brand-new datatable block with all of them (Header pre-populated with
-  Page Size + Search, Footer with Pagination + Results) the same way a
-  `template` would, but also *repairing* an existing block that's missing
-  one -- see "Self-healing structure" below for why that's a `template`
-  can't safely be relied on for both at once.
+  REQUIRED_BLOCKS, template, templateLock: false })` renders one list --
+  exactly four named container blocks (`gateway/datatable-facets`,
+  `-header`, `-body`, `-footer`), in that fixed order, Header pre-populated
+  with Page Size + Search and Footer with Pagination + Results. Two
+  separate mechanisms cooperate to guarantee that: `template` seeds a
+  brand-new, genuinely empty datatable block (Gutenberg only ever applies
+  a `template` automatically while the list is empty, so it can't touch
+  anything that already exists), and `useRequiredInnerBlocks()` (below)
+  *repairs* an existing block that's missing a required child it didn't
+  used to need -- see "Self-healing structure" below for why one mechanism
+  can't safely cover both cases, and why they have to stay out of each
+  other's way on that first, empty moment.
 - **`render.php`**: renders the four named child blocks itself, rather
   than echo the `$content` it's normally handed -- `$content` is
   WordPress's own concatenation of every child's rendered markup into ONE
@@ -616,7 +619,7 @@ changes, not just a JS tweak:
   practice, since every child here (and everything nested inside it) is
   read-only and its own queries are transient-cached.
 
-### Self-healing structure, not a locked `template`
+### Self-healing structure, not a locked `template` alone
 
 An earlier version of this used `template` + `templateLock: 'all'` to
 guarantee Header/Body/Footer always exist, in order, at this level. That
@@ -629,35 +632,56 @@ position, not by name**. A datatable block saved *before* Body existed had
 only 2 children where the template now expected 3+; comparing
 index-for-index, the sync found the *existing Footer* sitting at the
 position the template now expected Body to be, and **discarded that
-Footer outright**,
-replacing it with a fresh, empty one -- silently throwing away a site
-owner's own Pagination/Results configuration the moment the post was next
-opened and saved. (The same class of bug would have hit the Facets block
-being added here in exactly the same way.)
+Footer outright**, replacing it with a fresh, empty one -- silently
+throwing away a site owner's own Pagination/Results configuration the
+moment the post was next opened and saved. (The same class of bug would
+have hit the Facets block being added here in exactly the same way.)
 
 `useRequiredInnerBlocks()` (`hooks/use-required-inner-blocks.js`) replaces
-both the seeding and the repair with one name-based mechanism that can't
-make that mistake: on every render, it checks which of the required names
-are genuinely *absent* (never "in the wrong place"), and inserts only the
+that positional repair with a name-based one that can't make the same
+mistake: on every render, it checks which of the required names are
+genuinely *absent* (never "in the wrong place"), and inserts only the
 first missing one, at a position computed from *which other required
 blocks already exist* -- never removing or replacing anything. Since
 `insertBlock()` changes the block list, the hook naturally re-runs and
 repeats until every required block is present, at which point it's a
-no-op on every subsequent render. This handles both cases the old
-`template` did (a brand-new block, with nothing yet, converges to the full
-skeleton in a few render passes) *and* the migration case it got
-dangerously wrong (an existing block missing only the newest required
-addition gets exactly that one inserted, with everything else -- including
-whatever a site owner configured inside Header/Footer -- left completely
-untouched).
+no-op on every subsequent render. Given a partially-populated block --
+missing only the newest required addition -- this converges on exactly
+that one insertion, with everything else (including whatever a site owner
+configured inside Header/Footer) left completely untouched.
 
-**If you have existing content saved between this bug being introduced and
-this fix:** reopening and re-saving is what triggers the repair (this all
-runs in the editor, not on the front end) -- but if a datatable block was
-already re-saved *while* the broken `templateLock: 'all'` version was live,
-its Footer's Pagination/Results configuration may already have been
-silently reset to defaults, and that specific loss isn't something this
-fix can recover on its own (check post revisions if that content mattered).
+**A brand-new, genuinely empty block is deliberately left to `template`
+instead of this hook**, and that split is itself the fix for a second bug
+reported after the above: with the hook also handling the empty case (as
+an earlier version of this fix did, having dropped `template` entirely
+under the belief the hook alone was now sufficient), a freshly inserted
+datatable block came up completely empty, and dropping any *one* child
+block into it would suddenly cause every other required section to
+appear too. The cause was two independent mount-time effects racing over
+the same "list is empty" moment: `useRequiredInnerBlocks()` (declared, so
+its effect fires, before `useInnerBlocksProps` is even called) would
+dispatch an `insertBlock()` for the first missing name while the list was
+still empty; `template`'s own sync effect, having rendered from that same
+still-empty snapshot, had no way to see that dispatch and proceeded on
+its own belief that nothing existed yet, calling `replaceInnerBlocks()`
+with the entire template and discarding what the hook had just inserted.
+Two writers, one "is it empty" moment, each blind to the other. The fix
+is `useRequiredInnerBlocks()` doing nothing at all while `innerBlocks` is
+still empty (see the guard at the top of its effect) -- leaving that
+moment to `template` exclusively -- and only ever stepping in once
+something, anything, already exists to prove that moment has passed. That
+also explains the reported symptom exactly: manually adding one block
+made the list non-empty, which is precisely the condition under which the
+hook starts converging on the rest.
+
+**If you have existing content saved between the original position-based
+bug being introduced and its fix:** reopening and re-saving is what
+triggers the repair (this all runs in the editor, not on the front end)
+-- but if a datatable block was already re-saved *while* the broken
+`templateLock: 'all'` version was live, its Footer's Pagination/Results
+configuration may already have been silently reset to defaults, and that
+specific loss isn't something this fix can recover on its own (check post
+revisions if that content mattered).
 
 ### Header/body/footer/facets: four named blocks, not smarter type-inference
 

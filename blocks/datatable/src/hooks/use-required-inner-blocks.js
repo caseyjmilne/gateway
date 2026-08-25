@@ -23,6 +23,25 @@
  * only ever ADDS a block whose name is genuinely absent, at a position
  * computed from the *names* of blocks that already exist (never assumes
  * anything about index alignment), and never removes or replaces anything.
+ *
+ * Deliberately does nothing while `innerBlocks` is still empty (see the
+ * guard at the top of the effect below). That case is left entirely to
+ * `useInnerBlocksProps`' own `template` option (see edit.js), and the two
+ * can't be left to run at once: both are plain mount-time effects reacting
+ * to the same "list is empty" condition, and this hook is declared (so its
+ * effect fires) *before* `useInnerBlocksProps` is even called. On a brand
+ * new block, this hook's effect would dispatch an `insertBlock()` for the
+ * first missing name while the list is still empty -- but the template
+ * sync effect, having rendered from that same still-empty snapshot, has no
+ * way to see that dispatch either; it proceeds on its own belief that nothing
+ * exists yet and calls `replaceInnerBlocks()` with the *entire* template,
+ * discarding what this hook just inserted. Two mount-time writers racing
+ * over the same "is it empty" moment is exactly what produced the reported
+ * bug (a freshly inserted datatable block ending up completely empty
+ * instead of populated by either mechanism). Skipping the empty case here
+ * leaves it to the one mechanism actually designed for it, and this hook
+ * only ever takes over once something -- anything -- already exists to
+ * prove that moment has passed.
  */
 
 import { useEffect } from '@wordpress/element';
@@ -42,6 +61,14 @@ export function useRequiredInnerBlocks( clientId, required, buildBlock ) {
 	const { insertBlock } = useDispatch( blockEditorStore );
 
 	useEffect( () => {
+		// Leave a genuinely empty list to `template` (see docblock above) --
+		// only step in once it's no longer empty, whether that's because
+		// `template` already did its job or because this is older content
+		// that has some, but not all, of the required blocks.
+		if ( 0 === innerBlocks.length ) {
+			return;
+		}
+
 		const names = innerBlocks.map( ( block ) => block.name );
 		const missingIndex = required.findIndex(
 			( name ) => ! names.includes( name )

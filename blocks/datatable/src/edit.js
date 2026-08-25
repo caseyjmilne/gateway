@@ -69,8 +69,37 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// front end exactly -- Facets, Header, then the table, then Footer --
 	// rather than the table appearing separately, below this list, via a
 	// <ServerSideRender> of the whole parent.
+	//
+	// `template` here is safe in a way it wasn't when it was paired with
+	// `templateLock: 'all'` (see useRequiredInnerBlocks' own docblock for
+	// that history): Gutenberg only ever applies a `template` automatically
+	// when the InnerBlocks area is *completely empty* -- true regardless of
+	// `templateLock`'s own value -- so it can only ever fill a genuinely
+	// brand-new datatable block, never reshuffle or discard anything from
+	// one that already has content. That's exactly the "drop a fresh block
+	// in and everything appears at once" case; useRequiredInnerBlocks()
+	// remains the mechanism for the *other* case this can't cover on its
+	// own -- an existing block already past that empty-list moment, missing
+	// only a since-added required child.
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
 		allowedBlocks: REQUIRED_BLOCKS,
+		template: [
+			[ 'gateway/datatable-facets', {} ],
+			[
+				'gateway/datatable-header',
+				{},
+				[
+					[ 'gateway/datatable-page-size', {} ],
+					[ 'gateway/datatable-search', {} ],
+				],
+			],
+			[ 'gateway/datatable-body', {} ],
+			[
+				'gateway/datatable-footer',
+				{},
+				[ [ 'gateway/pagination', {} ], [ 'gateway/datatable-results', {} ] ],
+			],
+		],
 		templateLock: false,
 	} );
 
