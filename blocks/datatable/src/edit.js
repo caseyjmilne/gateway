@@ -28,14 +28,20 @@ export default function Edit( { attributes, setAttributes } ) {
 	const blockProps = useBlockProps();
 	const previewRef = useRef();
 
-	// The facets bar: only gateway/facet blocks, sitting at the top of the
-	// block (rendered here, above the preview below -- and, on the front
-	// end, render.php echoes this same InnerBlocks markup, as $content,
-	// above the <table> for the same reason).
+	// The InnerBlocks area: gateway/facet and gateway/pagination children,
+	// edited here as one flat, reorderable list (rendered above the preview
+	// below, for editing purposes only -- see render.php's own comment for
+	// where each type actually ends up on the front end: facets above the
+	// <table>, pagination below it, regardless of edit-time ordering here).
+	// `template` seeds a new block instance with a Pagination child by
+	// default, so a site owner gets working pagination without having to
+	// know to add it; `templateLock: false` leaves them free to remove or
+	// rearrange it afterward, same as everything else in this area.
 	const innerBlocksProps = useInnerBlocksProps(
 		{ className: 'gateway-datatable-facets' },
 		{
-			allowedBlocks: [ 'gateway/facet' ],
+			allowedBlocks: [ 'gateway/facet', 'gateway/pagination' ],
+			template: [ [ 'gateway/pagination', {} ] ],
 			renderAppender: InnerBlocks.ButtonBlockAppender,
 			templateLock: false,
 		}

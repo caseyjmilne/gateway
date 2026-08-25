@@ -44,10 +44,12 @@ includes/
 blocks/
   shared/                       Cross-block JS, NOT a block itself (no block.json -- webpack's glob skips it)
     datatable.js                Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
+    dom.js                      Pure DOM helpers (getColumnIndexByKey) -- no jQuery/DataTables dependency
+    wait-for-datatable.js       "Find the sibling table, wait for it to become a DataTable" (jQuery only)
     use-available-columns.js    Fetches the field list for a post type (shared by both blocks below)
   datatable/
     block.json                  Block metadata, attributes, providesContext, asset + render wiring
-    render.php                  PHP render callback: the table, plus $content (gateway/facet children) above it
+    render.php                  PHP render callback: the table, plus each inner block rendered and grouped by type (facets above it, pagination below)
     src/
       index.js                  Editor registration (editorScript)
       edit.js                   Editor UI: InspectorControls + InnerBlocks (facets bar) + live SSR preview
@@ -79,6 +81,16 @@ blocks/
       controls/
         facet-key-control.js    "Facet" select, from the parent's configured facets (context)
         ui-type-control.js      "UI Type" select: input / select / checkboxes
+        compare-control.js      "Compare" select (Contains/Equals), Input UI type only
+    build/                      Compiled output (generated, do not hand-edit)
+  pagination/
+    block.json                  Block metadata, parent restricting it to gateway/datatable
+    render.php                  PHP render callback: an empty Prev/Next + page-number skeleton
+    src/
+      index.js                  Editor registration
+      edit.js                   Editor UI: a static preview (no settings to configure)
+      view.js                   Front-end entry: drives the sibling DataTable's page() API
+      style.scss                Pagination control styles
     build/                      Compiled output (generated, do not hand-edit)
 ```
 
@@ -488,25 +500,50 @@ changes, not just a JS tweak:
 
 - **`save.js`** (new -- previously `save: () => null` inline in
   `index.js`): InnerBlocks content has to actually be *persisted* into
-  `post_content` for `render.php` to ever receive it as `$content` on the
-  front end. It uses `useInnerBlocksProps.save({ className:
+  `post_content` -- as nested `<!-- wp:gateway/facet ... /-->`-style block
+  comments -- for WordPress to reconstruct the child block list on every
+  later request. It uses `useInnerBlocksProps.save({ className:
   'gateway-datatable-facets' })` directly -- deliberately *not* merged with
   `useBlockProps.save()` first, since that would apply block-support
-  classes (align, spacing, ...) to this inner wrapper; those already belong
-  on `render.php`'s own `get_block_wrapper_attributes()` wrapper, which is
-  the only one that actually reaches the front end.
+  classes (align, spacing, ...) to this inner wrapper, which (see below)
+  never actually reaches a visitor anyway.
 - **`edit.js`**: `useInnerBlocksProps({ className: 'gateway-datatable-facets'
-  }, { allowedBlocks: ['gateway/facet'], renderAppender:
-  InnerBlocks.ButtonBlockAppender })` renders the facets bar -- restricted
-  to `gateway/facet` children -- above the `<ServerSideRender>` preview
-  ("it will sit at the top"). Note this area, not the SSR preview below it,
-  is where facet children are actually edited: `<ServerSideRender>` doesn't
-  reflect *live, unsaved* InnerBlocks edits (a known limitation of that
-  component), so `gateway/facet`'s own `edit.js` renders a static,
-  non-interactive preview of its control instead of relying on SSR to show
-  it. `render.php` still outputs the real `$content` above the table for
-  front-end correctness -- the SSR-preview gap is a limitation visible only
-  in the editor, not on the front end.
+  }, { allowedBlocks: ['gateway/facet', 'gateway/pagination'], template:
+  [['gateway/pagination', {}]], renderAppender:
+  InnerBlocks.ButtonBlockAppender })` renders one flat, reorderable list --
+  both child types together -- above the `<ServerSideRender>` preview.
+  `template` seeds a brand-new datatable block with a Pagination child
+  already in place, so a site owner gets working pagination without having
+  to know to add it (`templateLock: false` leaves them free to remove or
+  rearrange it after). Note this area, not the SSR preview below it, is
+  where children are actually edited: `<ServerSideRender>` only ever sends
+  the block's own top-level *attributes* to the block-renderer REST
+  endpoint, never the current, in-memory inner block list -- so `$content`
+  (and, since the change below, `$block->inner_blocks`) is *always empty*
+  in that preview, regardless of what's really nested inside. `gateway/facet`
+  and `gateway/pagination` each render a static, non-interactive preview
+  of their own control in `edit.js` instead of relying on SSR to show it;
+  this was already true before `gateway/pagination` existed and is a
+  limitation of `<ServerSideRender>` itself, visible only while editing --
+  the real front end always has the genuine, saved inner block list to
+  render from.
+- **`render.php`**: renders each inner block itself, grouped by type,
+  rather than echo the `$content` it's normally handed -- `$content` is
+  WordPress's own concatenation of every child's rendered markup into ONE
+  fixed spot (wherever `save.js`'s InnerBlocks placeholder sits), which was
+  fine while `gateway/facet` was the only child type (everything belonged
+  in that one "bar above the table" spot anyway), but `gateway/pagination`
+  needs to land somewhere else entirely (below the table) -- a single flat
+  string can't represent two different positions. `$block->inner_blocks` is
+  the same set of already-instantiated, context-resolved child `WP_Block`
+  instances WordPress used to build that (here-unused) `$content` in the
+  first place -- a public property (confirmed against WordPress core's
+  `WP_Block` source), so `foreach ( $block->inner_blocks as $inner_block )`,
+  branching on `$inner_block->name`, and calling `$inner_block->render()` in
+  each branch is legitimate public API, not a hack. It does mean every
+  child renders twice per request (once, unused, to build the `$content`
+  parameter; once again here) -- harmless in practice, since every child
+  block here is read-only and its own queries are transient-cached.
 
 ### Configuring a facet block
 
@@ -619,35 +656,128 @@ visibly, a duplicated "entries per page"/search/pagination UI. The fix:
 `shared/datatable.js` (which imports the library) is only ever imported by
 the datatable block's own `view.js`/`edit.js`; the facet block's `view.js`
 imports only `shared/dom.js` (`getColumnIndexByKey()` -- pure DOM, no
-jQuery/DataTables dependency at all) and plain jQuery, and only ever
-*waits for and reuses* an instance, never creates one.
+jQuery/DataTables dependency at all) and `shared/wait-for-datatable.js`
+(plain jQuery only), and only ever *waits for and reuses* an instance,
+never creates one. `gateway/pagination`'s `view.js` follows the exact same
+rule, for the exact same reason -- see the Pagination section below.
+
+## Pagination: a dedicated pagination area (`gateway/pagination` block)
+
+A second child block type, alongside `gateway/facet` -- also restricted to
+`"parent": ["gateway/datatable"]`, also found automatically by every
+mechanism documented above (`Block_Loader`, `webpack.config.js`, no PHP or
+build changes needed). A new datatable block gets one by default, via
+`edit.js`'s InnerBlocks `template` (see above); a site owner can remove or
+add more.
+
+**Why a block, not just leaving DataTables' own built-in paging control in
+place:** so its position on the page is something a site owner controls the
+same way as everything else in the InnerBlocks area, and so its markup can
+be restyled like any other block, rather than being stuck with whatever
+`<div>` structure DataTables generates internally.
+
+**No settings, no context.** Unlike `gateway/facet`, this block doesn't
+target a specific column or need to know the parent's `postType`/
+`columns`/`facets` -- it drives the table's paging as a whole, so it
+declares no `usesContext` and has no attributes. `edit.js` is a static
+preview with no `InspectorControls` at all.
+
+**Server-side rendering (`render.php`):** renders an empty skeleton --
+disabled Previous/Next buttons and an empty container for page-number
+buttons -- and nothing more. There's nothing more meaningful to render
+here: the actual page count depends on DataTables' own client-side paging
+state, which can also shift as live `gateway/facet` filters are applied,
+neither of which is knowable at server-render time (the same reasoning
+`gateway/facet`'s Select/Checkboxes options rely on real data while the
+*interactivity* is entirely client-side).
+
+**Where it actually renders:** below the `<table>`, regardless of where
+it's positioned in the editor's InnerBlocks list relative to any facets --
+see "`gateway/datatable` growing InnerBlocks support" above for how
+`render.php` splits inner blocks by type to make that possible from what
+is, in the editor, one single flat, reorderable child list.
+
+**Front-end hookup (`src/view.js`):** finds the sibling table exactly like
+`gateway/facet` does (`shared/wait-for-datatable.js`'s
+`findDataTableElement()` + `waitForDataTable()`), then:
+
+- Previous/Next buttons call `dataTable.page( 'previous' | 'next'
+  ).draw( 'page' )` -- the `'page'` argument to `.draw()` is what makes this
+  a "standing redraw" that preserves the current paging position, rather
+  than the full redraw `.draw()` alone would perform (which resets to page
+  1 -- the same distinction `gateway/facet`'s search-driven redraws don't
+  need, since resetting to page 1 after a filter changes what matches is
+  the behavior actually wanted there).
+- Page-number buttons are rebuilt on every DataTables `draw` event (fired
+  after every redraw, including page changes *and* facet-driven filtering,
+  either of which can change the total page count) via
+  `dataTable.page.info()` (`{ page, pages, ... }`, both explicitly
+  zero-based/total-count per the DataTables docs) -- a windowed list
+  (`getPageWindow()`) centered on the current page, always including the
+  first/last page with an `…` ellipsis marker where the window doesn't
+  reach them, the same general shape most pagination widgets use. Rebuilding
+  the whole list each time (rather than diffing) keeps this simple; a
+  handful of buttons per redraw is not a cost worth optimizing away.
+- The page-number container uses one delegated click listener rather than
+  one per button, since the buttons themselves are torn down and rebuilt on
+  every redraw -- a listener bound to any specific button wouldn't survive
+  that.
+
+**Suppressing DataTables' own default paging control.** Without
+suppressing it, adding a `gateway/pagination` block would produce two
+paging UIs (DataTables' own default one, plus this block's). DataTables 2's
+`layout` option controls *where* (or *whether*) each built-in feature
+(`pageLength`, `search`, `info`, `paging`) renders, independently of
+whether paging itself is functionally active -- the default layout is
+`{ topStart: 'pageLength', topEnd: 'search', bottomStart: 'info',
+bottomEnd: 'paging' }`, and a partial `layout` object merges with those
+defaults for any position left unspecified. `render.php` writes
+`data-has-pagination-block="true"` on the `<table>` when it found one;
+`shared/datatable.js`'s `initGatewayDataTable()` reads that attribute and,
+when true, passes `layout: { bottomEnd: null }` -- removing just the
+built-in paging *widget* from that slot while leaving `paging: true` (and
+every other default slot) untouched, so the underlying pagination logic
+-- and the search box, length menu, and info text -- all keep working
+exactly as before.
 
 ### Why `blocks/shared/`, not `blocks/datatable/src/shared/`
 
-`shared/datatable.js`, `shared/dom.js`, and `shared/use-available-columns.js`
-moved out of the datatable block's own `src/` into `blocks/shared/` (a
-plain directory, no `block.json` -- `webpack.config.js`'s
-`blocks/*/block.json` glob skips it, so it's never mistaken for a block
-entry) once the facet block needed some of them too: `dom.js`'s
-column-index lookup, and the column-fetching hook for `gateway/facet`'s
-own `edit.js` to resolve a friendly label for its selected facet.
-`datatable.js` moved for the same reason but, per above, is
-import-restricted to the datatable block's own files regardless of where
-it lives. Blocks import what they need via a relative path
-(`../../shared/...`).
+`shared/datatable.js`, `shared/dom.js`, `shared/wait-for-datatable.js`, and
+`shared/use-available-columns.js` live in `blocks/shared/` (a plain
+directory, no `block.json` -- `webpack.config.js`'s `blocks/*/block.json`
+glob skips it, so it's never mistaken for a block entry) rather than inside
+any one block's own `src/`, since more than one block needs each of them:
+`dom.js`'s column-index lookup and `wait-for-datatable.js`'s
+find-table/wait-for-instance logic are both used by `gateway/facet` *and*
+`gateway/pagination`; the column-fetching hook is used by `gateway/facet`'s
+`edit.js` to resolve a friendly label for its selected facet.
+`datatable.js` lives here too but, per above, is import-restricted to the
+datatable block's own files regardless of where it lives. Blocks import
+what they need via a relative path (`../../shared/...`).
 
 ## Extending: future child blocks
 
-Facets (`gateway/facet`) are the first child block; the same InnerBlocks +
-context pattern is what a heading, row-template, or pagination child block
-would use too, should they materialize later.
+`gateway/facet` and `gateway/pagination` are the first two child blocks;
+the same InnerBlocks + context pattern is what a heading or row-template
+child block would use too, should one materialize later.
 
 - **PHP:** `Block_Loader` already handles any number of block directories
   under `/blocks` with no changes needed.
 - **Build:** `webpack.config.js` already compiles every `blocks/*/src/{index,view}.js`
   it finds into that block's own `build/`.
 - **DataTables logic:** `shared/datatable.js`'s `initGatewayDataTable()` /
-  `destroyGatewayDataTable()` / `getColumnIndexByKey()` are already generic
-  over "a table element," not tied to any one block's markup.
+  `destroyGatewayDataTable()`, `shared/dom.js`'s `getColumnIndexByKey()`,
+  and `shared/wait-for-datatable.js`'s `findDataTableElement()` /
+  `waitForDataTable()` are already generic over "a table element," not tied
+  to any one block's markup -- a new child block that needs to hook into an
+  existing DataTable instance should use `wait-for-datatable.js`, never
+  import `shared/datatable.js` or `datatables.net-dt` itself (see "Only one
+  bundle may ever import `datatables.net-dt`" above).
 - **Controls:** `controls/post-type-control.js` is already a standalone
   component for reuse in a future query/settings block.
+- **A new child type that needs its own render position** (like
+  `gateway/pagination` needing "below the table" rather than "in the bar
+  above it"): add a branch to the `foreach ( $block->inner_blocks as
+  $inner_block )` loop in `blocks/datatable/render.php` and echo that
+  group wherever it belongs -- the mechanism already supports any number of
+  groups, not just these two.

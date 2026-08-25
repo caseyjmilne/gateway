@@ -78,6 +78,23 @@ function buildLengthMenu( pageLength ) {
 }
 
 /**
+ * Whether a gateway/pagination child block exists for this table
+ * (render.php writes this data attribute based on whether it found one
+ * among the datatable block's inner blocks). When true, DataTables' own
+ * built-in paging *control* is suppressed via the `layout` option -- paging
+ * itself stays fully active (the data is still split across pages exactly
+ * as before), only its default rendered widget is hidden -- so the custom
+ * Pagination block is the only paging UI shown, rather than both appearing
+ * side by side.
+ *
+ * @param {HTMLTableElement} table The table element.
+ * @return {boolean} Whether to suppress DataTables' built-in paging control.
+ */
+function hasPaginationBlock( table ) {
+	return table.getAttribute( 'data-has-pagination-block' ) === 'true';
+}
+
+/**
  * Read which columns are marked non-sortable off the table's header cells
  * (render.php writes each <th>'s data-orderable based on the block's column
  * config), as zero-based indexes for DataTables' `columnDefs` `targets`.
@@ -143,6 +160,12 @@ export function initGatewayDataTable( table, options = {} ) {
 		// columns are configurable that column may not exist or may not be
 		// orderable, so only order by it when it actually is.
 		order: firstColumnIsOrderable ? [ [ 0, 'desc' ] ] : [],
+		// bottomEnd is where DataTables' default layout puts its paging
+		// control; null removes just that slot; every other default slot
+		// (pageLength/search/info) is left untouched.
+		...( hasPaginationBlock( table )
+			? { layout: { bottomEnd: null } }
+			: {} ),
 		...options,
 	} );
 }

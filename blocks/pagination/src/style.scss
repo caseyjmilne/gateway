@@ -1,0 +1,62 @@
+/**
+ * Styles for the gateway/pagination block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ */
+
+// Editor-only (see edit.js) -- never rendered by render.php, so this rule
+// has no effect on the front end.
+.gateway-pagination-editor-note {
+	margin: 0 0 0.5em;
+	font-size: 0.85em;
+	font-style: italic;
+	color: #757575;
+}
+
+.gateway-pagination {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5em;
+	margin-top: 1em;
+
+	&__pages {
+		display: flex;
+		align-items: center;
+		gap: 0.25em;
+	}
+
+	&__prev,
+	&__next,
+	&__page {
+		padding: 4px 10px;
+		border: 1px solid #949494;
+		border-radius: 2px;
+		background: #fff;
+		color: #1e1e1e;
+		font-size: 13px;
+		line-height: 1.4;
+		cursor: pointer;
+
+		&:hover:not( :disabled ) {
+			border-color: #1e1e1e;
+		}
+
+		&:disabled {
+			opacity: 0.5;
+			cursor: default;
+		}
+	}
+
+	&__page.is-current {
+		border-color: var( --wp-admin-theme-color, #3858e9 );
+		background: var( --wp-admin-theme-color, #3858e9 );
+		color: #fff;
+	}
+
+	&__ellipsis {
+		padding: 0 4px;
+		color: #757575;
+	}
+}

@@ -17,17 +17,17 @@
  * pagination UI on the front end. So: only blocks/datatable/src/view.js
  * (and its editor equivalent) may ever import the library. This file only
  * *waits for and reuses* whatever instance that script already created,
- * via plain jQuery (safe -- externalized, a true singleton, never
- * bundled) and shared/dom.js's getColumnIndexByKey() (safe -- no
- * jQuery/DataTables dependency at all).
+ * via shared/wait-for-datatable.js (safe -- only imports plain jQuery,
+ * externalized, a true singleton, never bundled) and shared/dom.js's
+ * getColumnIndexByKey() (safe -- no jQuery/DataTables dependency at all).
  */
 
-import $ from 'jquery';
 import './style.scss';
 import { getColumnIndexByKey } from '../../shared/dom';
-
-const POLL_INTERVAL_MS = 50;
-const POLL_TIMEOUT_MS = 5000;
+import {
+	findDataTableElement,
+	waitForDataTable,
+} from '../../shared/wait-for-datatable';
 
 /**
  * Escape a value for safe use inside a DataTables regex search.
@@ -70,54 +70,10 @@ function debounce( fn, wait ) {
 }
 
 /**
- * @param {HTMLElement} facetEl The facet's wrapper element.
- * @return {HTMLTableElement|null} The sibling datatable's <table>, if any.
- */
-function findTable( facetEl ) {
-	const wrapper = facetEl.closest( '.gateway-datatable-block' );
-	return wrapper ? wrapper.querySelector( 'table.gateway-datatable' ) : null;
-}
-
-/**
- * Wait for the sibling datatable block's own view.js to have initialized
- * DataTables on `table` (it may not have run yet -- two separately
- * enqueued scripts, no ordering guarantee between them), then resolve
- * with the DataTables API instance.
- *
- * @param {HTMLTableElement} table Table element.
- * @return {Promise<Object|null>} Resolves with the API instance, or null on timeout.
- */
-function waitForDataTable( table ) {
-	return new Promise( ( resolve ) => {
-		const start = Date.now();
-
-		const check = () => {
-			if (
-				$.fn.DataTable &&
-				$.fn.DataTable.isDataTable &&
-				$.fn.DataTable.isDataTable( table )
-			) {
-				resolve( $( table ).DataTable() );
-				return;
-			}
-
-			if ( Date.now() - start > POLL_TIMEOUT_MS ) {
-				resolve( null );
-				return;
-			}
-
-			setTimeout( check, POLL_INTERVAL_MS );
-		};
-
-		check();
-	} );
-}
-
-/**
  * @param {HTMLElement} facetEl One .gateway-facet element.
  */
 function initFacet( facetEl ) {
-	const table = findTable( facetEl );
+	const table = findDataTableElement( facetEl );
 
 	if ( ! table ) {
 		return;
