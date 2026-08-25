@@ -8,7 +8,11 @@
  * block context (see gateway/datatable's block.json "providesContext" and
  * this block's "usesContext"), the same mechanism that makes a facet
  * "discoverable by other scripts": any block nested inside a datatable
- * block, not just this one, can read the same context.
+ * block, not just this one, can read the same context -- context
+ * propagates transitively through any number of intermediate blocks (here,
+ * gateway/datatable-header, this block's direct parent) that don't
+ * themselves override it, so this block doesn't need to be a *direct*
+ * child of gateway/datatable to see its context.
  *
  * @package Gateway
  *

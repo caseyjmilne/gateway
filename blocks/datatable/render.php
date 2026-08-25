@@ -143,27 +143,29 @@ $query_args = apply_filters( 'gateway_datatable_query_args', $query_args, $attri
 
 $query = new WP_Query( $query_args );
 
-// Render inner blocks ourselves, split by type, rather than echo the
+// Render the header/footer child blocks ourselves, rather than echo the
 // $content this callback is normally handed: WordPress computes $content by
 // concatenating every inner block's rendered markup into ONE fixed spot
-// (wherever save.js's InnerBlocks placeholder sits) -- fine while facets
-// were the only child type, since they all belonged in that one "bar above
-// the table" spot anyway, but gateway/pagination needs to land in a
-// completely different spot (below the table), which a single flat string
-// can't represent. $block->inner_blocks is the same set of already
-// -instantiated, context-resolved child WP_Block instances WordPress used
-// to build that (here-unused) $content in the first place, so grouping by
-// $inner_block->name and rendering each group ourselves costs an extra
-// render pass per child (they're all read-only and cache-backed, so
-// negligible) in exchange for controlling where each group ends up.
-$facet_markup      = '';
-$pagination_markup = '';
+// (wherever save.js's InnerBlocks placeholder sits), which can't represent
+// gateway/datatable-header (above the table) and gateway/datatable-footer
+// (below it) landing in two different places around a hardcoded <table>.
+// $block->inner_blocks is the same set of already-instantiated, context
+// -resolved child WP_Block instances WordPress used to build that (here
+// -unused) $content in the first place -- a public property (confirmed
+// against WordPress core's WP_Block source), so finding each by
+// $inner_block->name and rendering it ourselves is legitimate public API,
+// not a hack. It does mean each renders twice per request (once, unused,
+// to build the $content parameter; once again here) -- harmless in
+// practice, since both are read-only and their own queries (Facet_Query's
+// distinct-value lookups) are transient-cached.
+$header_markup = '';
+$footer_markup = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {
-	if ( 'gateway/pagination' === $inner_block->name ) {
-		$pagination_markup .= $inner_block->render();
-	} else {
-		$facet_markup .= $inner_block->render();
+	if ( 'gateway/datatable-footer' === $inner_block->name ) {
+		$footer_markup .= $inner_block->render();
+	} elseif ( 'gateway/datatable-header' === $inner_block->name ) {
+		$header_markup .= $inner_block->render();
 	}
 }
 
@@ -171,10 +173,8 @@ $table_id           = 'gateway-datatable-' . wp_unique_id();
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-datatable-block' ) );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-	<?php if ( '' !== $facet_markup ) : ?>
-		<div class="gateway-datatable-facets">
-			<?php echo $facet_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each gateway/facet child's own escaped output. ?>
-		</div>
+	<?php if ( '' !== $header_markup ) : ?>
+		<?php echo $header_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the gateway/datatable-header child's own escaped output. ?>
 	<?php endif; ?>
 	<?php if ( $query->have_posts() ) : ?>
 		<table
@@ -182,7 +182,7 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 			class="gateway-datatable display"
 			data-post-type="<?php echo esc_attr( $post_type ); ?>"
 			data-page-size="<?php echo esc_attr( $page_size ); ?>"
-			data-has-pagination-block="<?php echo '' !== $pagination_markup ? 'true' : 'false'; ?>"
+			data-has-pagination-block="<?php echo '' !== $footer_markup ? 'true' : 'false'; ?>"
 			style="width:100%"
 		>
 			<thead>
@@ -222,8 +222,8 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 				?>
 			</tbody>
 		</table>
-		<?php if ( '' !== $pagination_markup ) : ?>
-			<?php echo $pagination_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the gateway/pagination child's own escaped output. ?>
+		<?php if ( '' !== $footer_markup ) : ?>
+			<?php echo $footer_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the gateway/datatable-footer child's own escaped output. ?>
 		<?php endif; ?>
 	<?php else : ?>
 		<p>

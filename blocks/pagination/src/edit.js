@@ -12,12 +12,6 @@ export default function Edit() {
 
 	return (
 		<div { ...blockProps }>
-			<p className="gateway-pagination-editor-note">
-				{ __(
-					'On the front end, this always renders below the Data Table’s grid, regardless of where it sits among the other blocks here.',
-					'gateway'
-				) }
-			</p>
 			<nav
 				className="gateway-pagination"
 				aria-label={ __( 'Table pagination', 'gateway' ) }

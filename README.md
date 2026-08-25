@@ -49,10 +49,10 @@ blocks/
     use-available-columns.js    Fetches the field list for a post type (shared by both blocks below)
   datatable/
     block.json                  Block metadata, attributes, providesContext, asset + render wiring
-    render.php                  PHP render callback: the table, plus each inner block rendered and grouped by type (facets above it, pagination below)
+    render.php                  PHP render callback: the table, plus the header/footer child blocks rendered around it
     src/
       index.js                  Editor registration (editorScript)
-      edit.js                   Editor UI: InspectorControls + InnerBlocks (facets bar) + live SSR preview
+      edit.js                   Editor UI: InspectorControls + InnerBlocks (header/footer) + live SSR preview
       save.js                   Persists InnerBlocks content only -- render.php still builds the table
       view.js                   Front-end entry (viewScript): finds tables, inits DataTables
       style.scss                Shared styles (front end + editor)
@@ -70,8 +70,28 @@ blocks/
         use-datatable-init.js   React hook: (re)inits DataTables against an async-rendered container
         use-reconcile-field-list.js  Drops selections no longer valid for the current post type
     build/                      Compiled output (generated, do not hand-edit)
+  datatable-header/
+    block.json                  Block metadata, parent restricting it to gateway/datatable
+    render.php                  PHP render callback: echoes $content as-is (see "Header/footer" below)
+    src/
+      index.js                  Editor registration
+      edit.js                   Editor UI: an InnerBlocks area restricted to gateway/facet
+      save.js                   Persists InnerBlocks content -- this block's own wrapper + classes
+      view.js                   No front-end behavior -- exists only so style.scss gets built
+      style.scss                Layout for facet children (flex row)
+    build/                      Compiled output (generated, do not hand-edit)
+  datatable-footer/
+    block.json                  Block metadata, parent restricting it to gateway/datatable
+    render.php                  PHP render callback: echoes $content as-is (see "Header/footer" below)
+    src/
+      index.js                  Editor registration
+      edit.js                   Editor UI: an InnerBlocks area restricted to gateway/pagination
+      save.js                   Persists InnerBlocks content -- this block's own wrapper + classes
+      view.js                   No front-end behavior -- exists only so style.scss gets built
+      style.scss                Layout for the pagination child
+    build/                      Compiled output (generated, do not hand-edit)
   facet/
-    block.json                  Block metadata, parent + usesContext restricting it to gateway/datatable
+    block.json                  Block metadata, parent + usesContext restricting it to gateway/datatable-header
     render.php                  PHP render callback: the input/select/checkboxes control
     src/
       index.js                  Editor registration
@@ -84,7 +104,7 @@ blocks/
         compare-control.js      "Compare" select (Contains/Equals), Input UI type only
     build/                      Compiled output (generated, do not hand-edit)
   pagination/
-    block.json                  Block metadata, parent restricting it to gateway/datatable
+    block.json                  Block metadata, parent restricting it to gateway/datatable-footer
     render.php                  PHP render callback: an empty Prev/Next + page-number skeleton
     src/
       index.js                  Editor registration
@@ -466,13 +486,14 @@ updated markup has landed and reinitializes against *that*.
 ## Facets: interactive front-end filtering (`gateway/facet` block)
 
 `gateway/datatable` now accepts child blocks -- `gateway/facet`
-(`block.json`'s `"parent": ["gateway/datatable"]` restricts it to only be
-insertable there) -- that render an interactive input/select/checkboxes
-control on the front end and filter the grid live, client-side, as a
-visitor uses it. This is distinct from the Facets *panel* documented
-above: that panel defines a *preset* filter baked into the query (a facet
-with a fixed `value`); a `gateway/facet` block turns one of those same
-presets into something a site *visitor* can change.
+(`block.json`'s `"parent": ["gateway/datatable-header"]` restricts it to
+only be insertable inside the Header block documented below) -- that
+render an interactive input/select/checkboxes control on the front end and
+filter the grid live, client-side, as a visitor uses it. This is distinct
+from the Facets *panel* documented above: that panel defines a *preset*
+filter baked into the query (a facet with a fixed `value`); a
+`gateway/facet` block turns one of those same presets into something a
+site *visitor* can change.
 
 ### Discoverability via block context
 
@@ -500,50 +521,90 @@ changes, not just a JS tweak:
 
 - **`save.js`** (new -- previously `save: () => null` inline in
   `index.js`): InnerBlocks content has to actually be *persisted* into
-  `post_content` -- as nested `<!-- wp:gateway/facet ... /-->`-style block
-  comments -- for WordPress to reconstruct the child block list on every
-  later request. It uses `useInnerBlocksProps.save({ className:
-  'gateway-datatable-facets' })` directly -- deliberately *not* merged with
-  `useBlockProps.save()` first, since that would apply block-support
-  classes (align, spacing, ...) to this inner wrapper, which (see below)
-  never actually reaches a visitor anyway.
-- **`edit.js`**: `useInnerBlocksProps({ className: 'gateway-datatable-facets'
-  }, { allowedBlocks: ['gateway/facet', 'gateway/pagination'], template:
-  [['gateway/pagination', {}]], renderAppender:
+  `post_content` -- as nested `<!-- wp:gateway/datatable-header ... /-->`
+  -style block comments -- for WordPress to reconstruct the child block
+  list on every later request. It uses `useInnerBlocksProps.save()` with no
+  extra className -- deliberately *not* merged with `useBlockProps.save()`
+  either, since that would apply block-support classes (align, spacing,
+  ...) to this inner wrapper, which (see below) never actually reaches a
+  visitor anyway.
+- **`edit.js`**: `useInnerBlocksProps({}, { allowedBlocks:
+  ['gateway/datatable-header', 'gateway/datatable-footer'], template:
+  [['gateway/datatable-header', {}], ['gateway/datatable-footer', {},
+  [['gateway/pagination', {}]]]], renderAppender:
   InnerBlocks.ButtonBlockAppender })` renders one flat, reorderable list --
-  both child types together -- above the `<ServerSideRender>` preview.
-  `template` seeds a brand-new datatable block with a Pagination child
-  already in place, so a site owner gets working pagination without having
-  to know to add it (`templateLock: false` leaves them free to remove or
-  rearrange it after). Note this area, not the SSR preview below it, is
-  where children are actually edited: `<ServerSideRender>` only ever sends
-  the block's own top-level *attributes* to the block-renderer REST
-  endpoint, never the current, in-memory inner block list -- so `$content`
-  (and, since the change below, `$block->inner_blocks`) is *always empty*
-  in that preview, regardless of what's really nested inside. `gateway/facet`
-  and `gateway/pagination` each render a static, non-interactive preview
-  of their own control in `edit.js` instead of relying on SSR to show it;
-  this was already true before `gateway/pagination` existed and is a
-  limitation of `<ServerSideRender>` itself, visible only while editing --
-  the real front end always has the genuine, saved inner block list to
-  render from.
-- **`render.php`**: renders each inner block itself, grouped by type,
-  rather than echo the `$content` it's normally handed -- `$content` is
+  exactly two container blocks -- above the `<ServerSideRender>` preview.
+  The nested template array (`InnerBlocks`' recursive `[name, attrs,
+  innerTemplate]` shape) seeds a brand-new datatable block with a Header
+  *and* a Footer already in place, the Footer pre-populated with a
+  Pagination child, so a site owner gets working pagination without having
+  to know to add anything (`templateLock: false` leaves them free to
+  remove or rearrange any of it after). Note this area, not the SSR
+  preview below it, is where children are actually edited:
+  `<ServerSideRender>` only ever sends the block's own top-level
+  *attributes* to the block-renderer REST endpoint, never the current,
+  in-memory inner block list -- so `$content` (and, since the change
+  below, `$block->inner_blocks`) is *always empty* in that preview,
+  regardless of what's really nested inside. This is a limitation of
+  `<ServerSideRender>` itself, predating this block ever having children
+  at all, and visible only while editing -- the real front end always has
+  the genuine, saved inner block list to render from.
+- **`render.php`**: renders the header/footer child blocks itself, rather
+  than echo the `$content` it's normally handed -- `$content` is
   WordPress's own concatenation of every child's rendered markup into ONE
-  fixed spot (wherever `save.js`'s InnerBlocks placeholder sits), which was
-  fine while `gateway/facet` was the only child type (everything belonged
-  in that one "bar above the table" spot anyway), but `gateway/pagination`
-  needs to land somewhere else entirely (below the table) -- a single flat
-  string can't represent two different positions. `$block->inner_blocks` is
-  the same set of already-instantiated, context-resolved child `WP_Block`
-  instances WordPress used to build that (here-unused) `$content` in the
-  first place -- a public property (confirmed against WordPress core's
-  `WP_Block` source), so `foreach ( $block->inner_blocks as $inner_block )`,
-  branching on `$inner_block->name`, and calling `$inner_block->render()` in
-  each branch is legitimate public API, not a hack. It does mean every
-  child renders twice per request (once, unused, to build the `$content`
-  parameter; once again here) -- harmless in practice, since every child
-  block here is read-only and its own queries are transient-cached.
+  fixed spot (wherever `save.js`'s InnerBlocks placeholder sits), which
+  can't represent Header (above the table) and Footer (below it) landing
+  in two different places around a hardcoded `<table>`. `$block->inner_blocks`
+  is the same set of already-instantiated, context-resolved child
+  `WP_Block` instances WordPress used to build that (here-unused) `$content`
+  in the first place -- a public property (confirmed against WordPress
+  core's `WP_Block` source), so `foreach ( $block->inner_blocks as
+  $inner_block )`, branching on `$inner_block->name`, and calling
+  `$inner_block->render()` in each branch is legitimate public API, not a
+  hack. It does mean the header/footer render twice per request (once,
+  unused, to build the `$content` parameter; once again here) -- harmless
+  in practice, since both (and everything nested inside them) are
+  read-only and their queries are transient-cached.
+
+### Header/footer: why two more blocks, not just smarter type-inference
+
+An earlier version of this had `gateway/facet` and `gateway/pagination` as
+*direct* children of `gateway/datatable`, sharing one InnerBlocks list, with
+`render.php` grouping them by `$inner_block->name` (facet-like vs.
+`'gateway/pagination'`) into "above the table" / "below the table" buckets.
+That worked, but every facet/pagination-specific concern lived as an
+`if`/`else` a reader had to trace through `render.php` to understand, and
+the Facets and Pagination sections of the *same* InnerBlocks list could be
+freely interleaved with no visual cue that they'd land in very different
+places on the front end (a real point of confusion this README used to
+carry a caveat about).
+
+`gateway/datatable-header` and `gateway/datatable-footer` make the same
+two-bucket split *structural* instead of inferred: each is its own block,
+visibly labeled "Data Table Header" / "Data Table Footer" in the inserter
+and the editor's block list, each with its own nested InnerBlocks area
+restricted to exactly the child type that belongs there (`gateway/facet`
+in the Header, via its own `"parent": ["gateway/datatable-header"]`;
+`gateway/pagination` in the Footer, via `"parent":
+["gateway/datatable-footer"]`). `gateway/datatable`'s own `render.php` now
+only ever has to ask "is this the header or the footer block?" -- two
+names, not an open-ended type list -- and a site owner never has to wonder
+where a facet vs. a pagination control will end up: the block they're
+looking at is *named* for where its contents render. This is also why
+`gateway/pagination`'s `edit.js` no longer carries a "this always renders
+below the table regardless of where it sits" notice -- there's no longer
+anywhere else for it to sit; it can only ever be inside a Footer block.
+
+Both header/footer blocks are otherwise as simple as an InnerBlocks wrapper
+gets: no attributes, no context of their own (`gateway/facet` nested inside
+the Header still receives the parent's `postType`/`columns`/`facets`
+context exactly as before -- Gutenberg's context propagation is transitive
+through any number of intermediate blocks that don't override it, so an
+extra layer of nesting doesn't break it). Each one's `render.php` doesn't
+need `gateway/datatable`'s inner-block-splitting treatment at all: with
+nothing else to interleave around, `echo $content;` (after a `count(
+$block->inner_blocks ) === 0` check, so an unused header/footer renders
+nothing rather than an empty box) is exactly the right output.
 
 ### Configuring a facet block
 
@@ -663,12 +724,13 @@ rule, for the exact same reason -- see the Pagination section below.
 
 ## Pagination: a dedicated pagination area (`gateway/pagination` block)
 
-A second child block type, alongside `gateway/facet` -- also restricted to
-`"parent": ["gateway/datatable"]`, also found automatically by every
-mechanism documented above (`Block_Loader`, `webpack.config.js`, no PHP or
-build changes needed). A new datatable block gets one by default, via
-`edit.js`'s InnerBlocks `template` (see above); a site owner can remove or
-add more.
+A second child block type, alongside `gateway/facet` -- restricted to
+`"parent": ["gateway/datatable-footer"]` (not `gateway/datatable` directly
+-- see "Header/footer" above), also found automatically by every mechanism
+documented above (`Block_Loader`, `webpack.config.js`, no PHP or build
+changes needed). A new datatable block gets one by default, via `edit.js`'s
+InnerBlocks `template` seeding a Footer with a Pagination child already
+inside it (see above); a site owner can remove or add more.
 
 **Why a block, not just leaving DataTables' own built-in paging control in
 place:** so its position on the page is something a site owner controls the
@@ -691,11 +753,11 @@ neither of which is knowable at server-render time (the same reasoning
 `gateway/facet`'s Select/Checkboxes options rely on real data while the
 *interactivity* is entirely client-side).
 
-**Where it actually renders:** below the `<table>`, regardless of where
-it's positioned in the editor's InnerBlocks list relative to any facets --
-see "`gateway/datatable` growing InnerBlocks support" above for how
-`render.php` splits inner blocks by type to make that possible from what
-is, in the editor, one single flat, reorderable child list.
+**Where it actually renders:** below the `<table>`, unconditionally -- it
+can only ever be nested inside a `gateway/datatable-footer` block, and the
+Footer always renders below the table (see "Header/footer" above). There's
+no positioning ambiguity left to resolve here the way there briefly was
+when facet/pagination shared one flat InnerBlocks list.
 
 **Front-end hookup (`src/view.js`):** finds the sibling table exactly like
 `gateway/facet` does (`shared/wait-for-datatable.js`'s
@@ -757,9 +819,9 @@ what they need via a relative path (`../../shared/...`).
 
 ## Extending: future child blocks
 
-`gateway/facet` and `gateway/pagination` are the first two child blocks;
-the same InnerBlocks + context pattern is what a heading or row-template
-child block would use too, should one materialize later.
+`gateway/facet` (inside the Header) and `gateway/pagination` (inside the
+Footer) are the first two leaf child blocks; the same InnerBlocks +
+context pattern is what a future leaf block would use too.
 
 - **PHP:** `Block_Loader` already handles any number of block directories
   under `/blocks` with no changes needed.
@@ -775,9 +837,17 @@ child block would use too, should one materialize later.
   bundle may ever import `datatables.net-dt`" above).
 - **Controls:** `controls/post-type-control.js` is already a standalone
   component for reuse in a future query/settings block.
-- **A new child type that needs its own render position** (like
-  `gateway/pagination` needing "below the table" rather than "in the bar
-  above it"): add a branch to the `foreach ( $block->inner_blocks as
-  $inner_block )` loop in `blocks/datatable/render.php` and echo that
-  group wherever it belongs -- the mechanism already supports any number of
-  groups, not just these two.
+- **A new leaf block that belongs above or below the table:** add it as an
+  allowed child of the existing Header or Footer block (update that
+  block's own `edit.js` `allowedBlocks`, and the new block's own `"parent"`)
+  -- no changes needed to `gateway/datatable`'s own `render.php` at all,
+  since it only ever asks "is this the header or the footer," not what's
+  inside either one.
+- **A genuinely new *position* (a third zone, neither above nor below the
+  table):** add a third wrapper block alongside `gateway/datatable-header`/
+  `-footer`, following the exact same pattern (a plain InnerBlocks wrapper,
+  its own `render.php` that echoes `$content` after a `count( $block
+  ->inner_blocks ) === 0` guard), then add one more name check to
+  `gateway/datatable`'s own `foreach ( $block->inner_blocks as $inner_block )`
+  loop and echo that group wherever it belongs. The mechanism already
+  supports any number of named zones, not just these two.

@@ -153,8 +153,24 @@ function initPagination( el ) {
 		// filter can change the total record/page count without this block
 		// itself doing anything, and the button states (which page numbers
 		// exist, which is current/disabled) need to stay accurate either way.
-		dataTable.on( 'draw', render );
-		render();
+		dataTable.on( 'draw', () => {
+			try {
+				render();
+			} catch ( error ) {
+				// eslint-disable-next-line no-console
+				console.error( 'Gateway Pagination: failed to render.', error );
+			}
+		} );
+
+		try {
+			render();
+		} catch ( error ) {
+			// eslint-disable-next-line no-console
+			console.error( 'Gateway Pagination: failed to render.', error );
+		}
+	} ).catch( ( error ) => {
+		// eslint-disable-next-line no-console
+		console.error( 'Gateway Pagination: failed to initialize.', error );
 	} );
 }
 

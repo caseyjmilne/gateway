@@ -5,21 +5,11 @@
  * "style" field is enqueued in both contexts by WordPress core).
  */
 
-// Editor-only (see edit.js) -- never rendered by render.php, so this rule
-// has no effect on the front end.
-.gateway-pagination-editor-note {
-	margin: 0 0 0.5em;
-	font-size: 0.85em;
-	font-style: italic;
-	color: #757575;
-}
-
 .gateway-pagination {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 0.5em;
-	margin-top: 1em;
 
 	&__pages {
 		display: flex;

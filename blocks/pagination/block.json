@@ -9,7 +9,7 @@
 	"keywords": [ "pagination", "pager", "pages", "datatable" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [ "gateway/datatable" ],
+	"parent": [ "gateway/datatable-footer" ],
 	"supports": {
 		"html": false
 	},

@@ -28,20 +28,35 @@ export default function Edit( { attributes, setAttributes } ) {
 	const blockProps = useBlockProps();
 	const previewRef = useRef();
 
-	// The InnerBlocks area: gateway/facet and gateway/pagination children,
-	// edited here as one flat, reorderable list (rendered above the preview
-	// below, for editing purposes only -- see render.php's own comment for
-	// where each type actually ends up on the front end: facets above the
-	// <table>, pagination below it, regardless of edit-time ordering here).
-	// `template` seeds a new block instance with a Pagination child by
-	// default, so a site owner gets working pagination without having to
-	// know to add it; `templateLock: false` leaves them free to remove or
-	// rearrange it afterward, same as everything else in this area.
+	// The InnerBlocks area: exactly two container blocks, gateway/datatable
+	// -header and gateway/datatable-footer -- each with its own nested
+	// InnerBlocks area (gateway/facet inside the header, gateway/pagination
+	// inside the footer; see each block's own "parent" restriction). `template`
+	// seeds a brand-new datatable block with both, the footer pre-populated
+	// with a Pagination child, so a site owner gets working pagination without
+	// having to know to add anything; `templateLock: false` leaves them free
+	// to remove or rearrange either afterward. Editing still happens in this
+	// one area, above the <ServerSideRender> preview below (a Gutenberg
+	// limitation, not something header/footer changes -- see render.php's own
+	// comment on the parent block for why), but *which* facet/pagination
+	// controls end up above vs. below the table is no longer ambiguous the
+	// way it was when both lived in one shared, type-inferred list: a block
+	// literally named "Header" or "Footer" makes that unambiguous on its own.
 	const innerBlocksProps = useInnerBlocksProps(
-		{ className: 'gateway-datatable-facets' },
+		{},
 		{
-			allowedBlocks: [ 'gateway/facet', 'gateway/pagination' ],
-			template: [ [ 'gateway/pagination', {} ] ],
+			allowedBlocks: [
+				'gateway/datatable-header',
+				'gateway/datatable-footer',
+			],
+			template: [
+				[ 'gateway/datatable-header', {} ],
+				[
+					'gateway/datatable-footer',
+					{},
+					[ [ 'gateway/pagination', {} ] ],
+				],
+			],
 			renderAppender: InnerBlocks.ButtonBlockAppender,
 			templateLock: false,
 		}
