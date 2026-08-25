@@ -55,6 +55,15 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const columns = context[ 'gateway/datatable/columns' ] || [];
 	const facets = context[ 'gateway/datatable/facets' ] || [];
 
+	// TEMPORARY diagnostic -- remove once the sortable-columns report is
+	// resolved. Confirms exactly what this block receives as context,
+	// directly in the browser, since every downstream step (render.php's
+	// resolution, DataTables' own columnDefs application, and the
+	// attribute-parsing that loads `columns` from saved post content) has
+	// already been verified correct in isolation.
+	// eslint-disable-next-line no-console
+	console.log( 'Gateway datatable-body: received columns context =', columns );
+
 	// What <ServerSideRender> actually renders with -- see the docblock
 	// above. Memoized so it only changes (and only triggers a refetch)
 	// when the underlying values genuinely do, not on every render.
