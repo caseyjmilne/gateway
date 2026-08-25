@@ -9,15 +9,23 @@
  * (`bottomStart: info`, `bottomEnd: paging`), the same relative positions
  * these two blocks replace -- and `align-items: center` keeps them aligned
  * to each other on that row rather than to whichever one happens to be
- * taller. A min-height keeps this from being a zero-height, easy-to-miss
- * strip while editing, even before a pagination block has been added --
- * render.php renders nothing at all on the front end in that case, so this
- * only ever matters in the editor.
+ * taller. `flex-wrap: nowrap` keeps them on that one row deliberately,
+ * rather than wrapping when there isn't room: the editor canvas is
+ * narrower than most themes' actual front-end content width (no sidebar,
+ * settings panel, etc. to compete with there), so `wrap` -- fine on the
+ * front end, where both fit on one line -- dropped Results onto its own
+ * line below Pagination's own (comparatively wide, several-button) preview
+ * in the editor specifically, even though nothing was actually different
+ * about the two blocks or their CSS; only the available width was. A min
+ * -height keeps this from being a zero-height, easy-to-miss strip while
+ * editing, even before a pagination block has been added -- render.php
+ * renders nothing at all on the front end in that case, so this only ever
+ * matters in the editor.
  */
 
 .gateway-datatable-footer {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	justify-content: space-between;
 	align-items: center;
 	gap: 1em;

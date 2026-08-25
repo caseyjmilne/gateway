@@ -980,7 +980,14 @@ opposite ends of the row, mirroring DataTables' own default layout --
 these two blocks replace) and `align-items: center` (aligned to each
 other on that row, rather than to whichever one happens to be taller) --
 the same treatment `gateway/datatable-header` already gives Page Size and
-Search (see "Page Size and Search" below).
+Search (see "Page Size and Search" below). Deliberately `flex-wrap:
+nowrap`, not `wrap`: the editor canvas is narrower than most themes'
+actual front-end content width (no sidebar/settings panel competing for
+space there), so `wrap` -- fine on the front end, where both fit on one
+line -- dropped Results onto its own line below Pagination's own
+comparatively wide, several-button preview in the editor specifically,
+even though neither block nor its CSS actually differed between the two;
+only the available width did.
 
 **Why blocks, not just leaving DataTables' own built-in widgets in place:**
 so their position on the page is something a site owner controls the same
