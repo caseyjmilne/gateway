@@ -46,6 +46,7 @@ blocks/
     datatable.js                Shared DataTables init/destroy helpers (jQuery + datatables.net-dt)
     dom.js                      Pure DOM helpers (getColumnIndexByKey) -- no jQuery/DataTables dependency
     wait-for-datatable.js       "Find the sibling table, wait for a DataTable, hide a native widget" (jQuery only)
+    use-live-datatable-sync.js  Editor-only: keeps a live preview wired to the (possibly-replaced) sibling DataTable instance
     use-available-columns.js    Fetches the field list for a post type (shared by both blocks below)
   datatable/
     block.json                  Block metadata, attributes, providesContext, asset + render wiring
@@ -146,8 +147,9 @@ blocks/
     render.php                  PHP render callback: an empty Prev/Next + page-number skeleton
     src/
       index.js                  Editor registration
-      edit.js                   Editor UI: a static preview (no settings to configure)
-      view.js                   Front-end entry: drives the sibling DataTable's page() API
+      edit.js                   Editor UI: a *live* preview -- see "Pagination and Results" below
+      view.js                   Front-end entry: finds+waits for the table, hands off to attach-pagination.js
+      attach-pagination.js      Shared button-building/wiring logic, used by both edit.js and view.js
       style.scss                Pagination control styles
     build/                      Compiled output (generated, do not hand-edit)
   datatable-results/
@@ -1080,8 +1082,10 @@ restyled like any other block, rather than being stuck with whatever
 **No settings, no context.** Unlike `gateway/facet`, neither block targets
 a specific column or needs to know the parent's `postType`/`columns`/
 `facets` -- each drives one whole-table DataTables feature, so neither
-declares `usesContext` or has attributes. Both `edit.js`s are static
-previews with no `InspectorControls` at all.
+declares `usesContext` or has attributes. Neither has any
+`InspectorControls`; `gateway/datatable-results`' `edit.js` is a static
+preview, but `gateway/pagination`'s is not any more -- see "A live editor
+preview" below.
 
 **Server-side rendering:** each renders an empty skeleton and nothing
 more -- `gateway/pagination`'s disabled Previous/Next buttons and an empty
@@ -1102,6 +1106,60 @@ there briefly was when facet/pagination shared one flat InnerBlocks list.
 **Front-end hookup:** both find the sibling table exactly like
 `gateway/facet` does (`shared/wait-for-datatable.js`'s
 `findDataTableElement()` + `waitForDataTable()`).
+
+### A live editor preview, not a static one
+
+Reported: "pagination in editor always shows 3 pages even when the real
+number would be different -- isn't reading the actual page size at all."
+Correct: an earlier version of `gateway/pagination`'s `edit.js` hardcoded
+three fake page-number buttons, entirely unrelated to any real table --
+the same "static, non-functional preview" every other block in this
+family (Page Size, Search, Results) still deliberately is, since the real
+state only exists once DataTables has initialized. Pagination is the one
+exception now, because it doesn't have to be: `gateway/datatable-body`'s
+own editor preview already initializes a real, live DataTable instance
+against its `<ServerSideRender>` output (see "Initializing DataTables
+inside the Gutenberg editor" above) -- `gateway/pagination`, a *sibling*
+block, can attach to that exact same instance instead of faking anything.
+
+- **`src/attach-pagination.js`** (new): the button-building/wiring logic
+  that used to live entirely inside `view.js` -- `getPageWindow()`, and a
+  new `attachPagination( el, table, dataTable )` that wires Previous/Next/
+  page-number clicks to `page()`, re-renders on every `draw`, and returns
+  a cleanup function (removing its own listeners and the DataTables `draw`
+  listener) -- now shared between `view.js` (front end) and `edit.js`
+  (editor), so the exact same logic drives both rather than two
+  independent copies drifting apart.
+- **`shared/use-live-datatable-sync.js`** (new): an editor-only hook that
+  polls (every 200ms, indefinitely -- not `waitForDataTable()`'s one-shot,
+  5-second-timeout wait) for a live DataTable instance among the block's
+  siblings, calling `attach( table, dataTable )` whenever one appears,
+  calling the previous attachment's own cleanup first if it's being
+  *replaced* (e.g. `use-datatable-init.js` destroys and recreates the
+  instance after a Post Type change), and detaching entirely if the table
+  disappears. Polling rather than a `MutationObserver` here specifically:
+  unlike `use-datatable-init.js` (which watches one specific, local
+  container it already owns), this hook has no closer shared container
+  with the table than the whole `gateway-datatable-block` wrapper, several
+  levels away in some layouts -- an observer broad enough to see it would
+  fire far more often than this needs to check.
+- **`gateway/pagination`'s `edit.js`**: renders the same empty skeleton
+  `render.php` does (no placeholder page numbers), gives `useBlockProps()`
+  a ref, and calls `useLiveDataTableSync( ref, attach )` where `attach`
+  calls `attachPagination()` against that same ref's element. The result:
+  correct page counts and disabled states in the editor, and clicking
+  through the preview actually pages it -- not a simulation of what it
+  might look like.
+- **A prerequisite this surfaced:** `findDataTableElement()`
+  (`shared/wait-for-datatable.js`) locates the sibling table via
+  `.closest( '.gateway-datatable-block' )` -- but `gateway/datatable`'s own
+  `edit.js` called bare `useBlockProps()`, the same missing-`className`
+  gap "Header/body/footer/facets" above found and fixed for Header/
+  Footer/Facets, just never noticed here before because nothing in the
+  editor had ever tried to find the table from a sibling block until now
+  (every other block's own editor preview was static). Fixed the same
+  way: `useBlockProps( { className: 'gateway-datatable-block' } )`,
+  matching `render.php`'s own `get_block_wrapper_attributes()` call.
 
 `gateway/pagination`'s `src/view.js`:
 

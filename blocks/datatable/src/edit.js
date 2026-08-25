@@ -60,7 +60,17 @@ function buildRequiredBlock( name ) {
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
 	const { postType, columns, facets } = attributes;
-	const blockProps = useBlockProps();
+	// `className: 'gateway-datatable-block'` -- matching render.php's own
+	// `get_block_wrapper_attributes()` call -- so this element is findable
+	// by that class in the editor too, not just the front end: several
+	// descendant blocks (gateway/facet, gateway/pagination, ...) locate
+	// their sibling table via `.closest( '.gateway-datatable-block' )`
+	// (shared/wait-for-datatable.js's findDataTableElement()), including,
+	// as of gateway/pagination's own live editor preview, from *inside*
+	// the editor canvas -- something no earlier block actually needed
+	// here, since every other one's own editor preview was static and
+	// never tried to find the table at all.
+	const blockProps = useBlockProps( { className: 'gateway-datatable-block' } );
 
 	useRequiredInnerBlocks( clientId, REQUIRED_BLOCKS, buildRequiredBlock );
 

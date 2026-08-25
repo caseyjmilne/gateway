@@ -13,9 +13,13 @@
  * the exact same instance.
  *
  * Used by blocks/facet/src/view.js, blocks/pagination/src/view.js, and
- * blocks/datatable-results/src/view.js -- any future block that needs to
- * hook into an existing DataTable instance without itself creating one
- * should use this too, rather than duplicating the polling logic.
+ * blocks/datatable-results/src/view.js on the front end; findDataTableElement()
+ * is also reused by shared/use-live-datatable-sync.js, the editor-only
+ * equivalent that keeps a live preview (gateway/pagination's own edit.js)
+ * in sync with whatever DataTable instance gateway/datatable-body's own
+ * editor preview currently has. Any future block that needs to hook into
+ * an existing DataTable instance without itself creating one should use
+ * one of these two, rather than duplicating the polling logic.
  */
 
 import $ from 'jquery';
