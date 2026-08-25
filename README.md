@@ -350,15 +350,22 @@ post types like `post`, where it isn't meaningful.
 ### Facet selection (filtering)
 
 A second, independent Inspector panel -- "Facets" -- lets a block filter
-its grid by any of the same fields `Column_Registry` offers as columns
-("all the filterable columns" is the same field list as "all the
-displayable columns"). The UI mirrors Columns deliberately:
+its grid. The UI mirrors Columns deliberately:
 
 - **`controls/facets-panel.js`** reuses `AvailableColumnsList` as-is (it
   was already generic over "a list of fields + a selection to toggle") for
-  the click-to-toggle available-fields list. Unlike columns, an empty facet
-  selection is a perfectly normal state (no filtering applied), so there's
-  no "keep at least one" guard here.
+  the click-to-toggle available-fields list -- but narrowed to only the
+  fields already selected as *displayed* columns (`availableColumns`
+  filtered against the `columns` attribute), not every filterable field
+  `Column_Registry` knows about for the post type. A facet only has
+  something to hook into once its field is also a displayed column (its
+  DataTables column index is how the front end targets it -- see
+  gateway/facet's `view.js`), so a field that isn't currently a column
+  would just produce a facet with nothing to filter; restricting the list
+  here prevents that state from being created in the first place, rather
+  than only surfacing it after the fact via a warning. Unlike columns, an
+  empty facet selection is a perfectly normal state (no filtering applied),
+  so there's no "keep at least one" guard here.
 - **`controls/facet-config-table.js`** is the selected-facets equivalent of
   `column-config-table.js`: same drag-and-drop reorder (native HTML5 DnD)
   and remove ("×") button, but each row carries a **Compare** `<select>`
@@ -376,8 +383,16 @@ type changes were pulled out of `ColumnsPanel` and into two shared hooks --
 specifically so `FacetsPanel` could reuse both rather than duplicating a
 second REST fetch and a second copy of the "drop what's no longer valid"
 logic. `edit.js` now owns fetching the field list once per post type change
-and runs the reconciliation hook twice (once for `columns`, once for
-`facets`, with different fallback-to-default behavior as noted above).
+and runs the reconciliation hook twice: `columns` against `availableColumns`
+(drops a selection that no longer exists for the post type, e.g. a meta
+field specific to a previously selected one), and `facets` against
+`columns` itself, not `availableColumns` -- so a facet is also dropped the
+moment its column is removed from the display list, keeping every facet
+valid against the same "is this a displayed column" rule the Facets panel's
+toggle list enforces going forward. (Since `columns` is always already a
+subset of `availableColumns` by the time its own reconciliation has run,
+reconciling facets against `columns` is strictly the tighter of the two and
+supersedes reconciling against `availableColumns` directly.)
 
 **Applying facets to the query** (`render.php` +
 `includes/class-facet-query.php`): each requested `{ key, compare, value }`

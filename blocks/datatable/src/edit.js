@@ -58,7 +58,12 @@ export default function Edit( { attributes, setAttributes } ) {
 	useReconcileFieldList( availableColumns, columns, ( value ) =>
 		setAttributes( { columns: value } ), DEFAULT_COLUMNS
 	);
-	useReconcileFieldList( availableColumns, facets, ( value ) =>
+	// Facets are reconciled against the *displayed* columns, not every
+	// available field: a facet only has something to hook into once its
+	// field is also a currently displayed column (see FacetsPanel and
+	// gateway/facet's own front-end hookup), so a facet whose column gets
+	// removed here is dropped automatically rather than left dangling.
+	useReconcileFieldList( columns, facets, ( value ) =>
 		setAttributes( { facets: value } )
 	);
 
@@ -103,6 +108,7 @@ export default function Edit( { attributes, setAttributes } ) {
 				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
 						availableColumns={ availableColumns }
+						displayedColumns={ columns }
 						isLoading={ isLoadingColumns }
 						error={ columnsError }
 						facets={ facets }
