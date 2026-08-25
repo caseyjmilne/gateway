@@ -5,7 +5,8 @@
  * This whole UI lives in the Inspector sidebar (the block editor's top-level
  * admin document, not the iframed canvas), so plain HTML5 drag-and-drop is
  * all that's needed here -- no cross-iframe concerns like the DataTables
- * init in hooks/use-datatable-init.js has to deal with.
+ * init in gateway/datatable-body/src/hooks/use-datatable-init.js has to
+ * deal with.
  */
 
 import { useState } from '@wordpress/element';

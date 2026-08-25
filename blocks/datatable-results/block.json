@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/datatable-results",
+	"title": "Data Table Results",
+	"category": "widgets",
+	"icon": "info-outline",
+	"description": "The \"Showing X to Y of Z entries\" summary for a Data Table block's grid.",
+	"keywords": [ "results", "info", "entries", "datatable" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/datatable-footer" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

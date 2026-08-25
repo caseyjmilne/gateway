@@ -1,20 +1,12 @@
-import { useRef } from '@wordpress/element';
-import {
-	useBlockProps,
-	useInnerBlocksProps,
-	InspectorControls,
-	InnerBlocks,
-} from '@wordpress/block-editor';
+import { useBlockProps, useInnerBlocksProps, InspectorControls } from '@wordpress/block-editor';
 import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import ServerSideRender from '@wordpress/server-side-render';
 
 import PostTypeControl from './controls/post-type-control';
 import LimitControl from './controls/limit-control';
 import PageSizeControl from './controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
 import FacetsPanel from './controls/facets-panel';
-import { useDataTableInit } from './hooks/use-datatable-init';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
 
@@ -24,41 +16,45 @@ const DEFAULT_COLUMNS = [
 ];
 
 export default function Edit( { attributes, setAttributes } ) {
-	const { postType, limit, pageSize, columns, facets } = attributes;
+	const { postType, columns, facets } = attributes;
 	const blockProps = useBlockProps();
-	const previewRef = useRef();
 
-	// The InnerBlocks area: exactly two container blocks, gateway/datatable
-	// -header and gateway/datatable-footer -- each with its own nested
-	// InnerBlocks area (gateway/facet inside the header, gateway/pagination
-	// inside the footer; see each block's own "parent" restriction). `template`
-	// seeds a brand-new datatable block with both, the footer pre-populated
-	// with a Pagination child, so a site owner gets working pagination without
-	// having to know to add anything; `templateLock: false` leaves them free
-	// to remove or rearrange either afterward. Editing still happens in this
-	// one area, above the <ServerSideRender> preview below (a Gutenberg
-	// limitation, not something header/footer changes -- see render.php's own
-	// comment on the parent block for why), but *which* facet/pagination
-	// controls end up above vs. below the table is no longer ambiguous the
-	// way it was when both lived in one shared, type-inferred list: a block
-	// literally named "Header" or "Footer" makes that unambiguous on its own.
+	// The InnerBlocks area: exactly three fixed, named slots -- gateway/
+	// datatable-header, gateway/datatable-body, gateway/datatable-footer --
+	// each rendering in that same order both here (see below) and on the
+	// front end (render.php echoes them in this order unconditionally,
+	// regardless of inner block order). `templateLock: 'all'` locks this
+	// list to exactly that skeleton: no inserting, removing, or reordering
+	// at this level, since there's no state where showing them out of order
+	// (or missing one) would make sense -- Body always needs to be able to
+	// show the table, Header/Footer always render where their names say.
+	// (Their own *nested* InnerBlocks -- gateway/facet inside the Header,
+	// gateway/pagination/gateway/datatable-results inside the Footer -- stay
+	// freely editable; this lock only applies to this one, outermost level.)
+	// Because Body is a genuine sibling block here, rendered in its own
+	// right (see its own edit.js), the editor's visual order now matches
+	// the front end exactly -- Header, then the table, then Footer -- rather
+	// than the table only appearing separately, below this list, via a
+	// <ServerSideRender> of the whole parent (which is what previously made
+	// Header/Footer both appear to sit "above" the table while editing).
 	const innerBlocksProps = useInnerBlocksProps(
-		{},
+		blockProps,
 		{
 			allowedBlocks: [
 				'gateway/datatable-header',
+				'gateway/datatable-body',
 				'gateway/datatable-footer',
 			],
 			template: [
 				[ 'gateway/datatable-header', {} ],
+				[ 'gateway/datatable-body', {} ],
 				[
 					'gateway/datatable-footer',
 					{},
-					[ [ 'gateway/pagination', {} ] ],
+					[ [ 'gateway/pagination', {} ], [ 'gateway/datatable-results', {} ] ],
 				],
 			],
-			renderAppender: InnerBlocks.ButtonBlockAppender,
-			templateLock: false,
+			templateLock: 'all',
 		}
 	);
 
@@ -88,18 +84,6 @@ export default function Edit( { attributes, setAttributes } ) {
 		setAttributes( { facets: value } )
 	);
 
-	// Re-run whenever the rendered preview could change shape/content --
-	// including a column or facet change (add/remove/reorder/sortable
-	// toggle, or a facet's compare/value), which is the event that should
-	// refresh the DataTable in the editor.
-	useDataTableInit( previewRef, [
-		postType,
-		limit,
-		pageSize,
-		JSON.stringify( columns ),
-		JSON.stringify( facets ),
-	] );
-
 	return (
 		<>
 			<InspectorControls>
@@ -109,11 +93,11 @@ export default function Edit( { attributes, setAttributes } ) {
 						onChange={ ( value ) => setAttributes( { postType: value } ) }
 					/>
 					<LimitControl
-						value={ limit }
+						value={ attributes.limit }
 						onChange={ ( value ) => setAttributes( { limit: value } ) }
 					/>
 					<PageSizeControl
-						value={ pageSize }
+						value={ attributes.pageSize }
 						onChange={ ( value ) => setAttributes( { pageSize: value } ) }
 					/>
 				</PanelBody>
@@ -137,15 +121,7 @@ export default function Edit( { attributes, setAttributes } ) {
 					/>
 				</PanelBody>
 			</InspectorControls>
-			<div { ...blockProps }>
-				<div { ...innerBlocksProps } />
-				<div className="gateway-datatable-preview" ref={ previewRef }>
-					<ServerSideRender
-						block="gateway/datatable"
-						attributes={ attributes }
-					/>
-				</div>
-			</div>
+			<div { ...innerBlocksProps } />
 		</>
 	);
 }

@@ -1,14 +1,22 @@
 {
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
-	"name": "gateway/datatable",
-	"title": "Data Table",
+	"name": "gateway/datatable-body",
+	"title": "Data Table Body",
 	"category": "widgets",
 	"icon": "editor-table",
-	"description": "A sortable, searchable grid of posts for any registered post type, powered by DataTables.",
-	"keywords": [ "table", "grid", "datatable", "posts", "list" ],
+	"description": "The Data Table's grid of results (headings and rows) -- a genuine sibling of the Header and Footer blocks, so its position in the editor always matches the front end.",
+	"keywords": [ "body", "table", "grid", "datatable" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
+	"parent": [ "gateway/datatable" ],
+	"usesContext": [
+		"gateway/datatable/postType",
+		"gateway/datatable/limit",
+		"gateway/datatable/pageSize",
+		"gateway/datatable/columns",
+		"gateway/datatable/facets"
+	],
 	"attributes": {
 		"postType": {
 			"type": "string",
@@ -40,23 +48,9 @@
 			}
 		}
 	},
-	"providesContext": {
-		"gateway/datatable/postType": "postType",
-		"gateway/datatable/limit": "limit",
-		"gateway/datatable/pageSize": "pageSize",
-		"gateway/datatable/columns": "columns",
-		"gateway/datatable/facets": "facets"
-	},
 	"supports": {
-		"html": false,
-		"align": [ "wide", "full" ],
-		"spacing": {
-			"margin": true,
-			"padding": true
-		}
+		"html": false
 	},
 	"editorScript": "file:./build/index.js",
-	"style": [ "file:./build/view.css", "file:./build/style-view.css" ],
-	"viewScript": "file:./build/view.js",
 	"render": "file:./render.php"
 }

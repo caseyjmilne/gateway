@@ -12,10 +12,10 @@
  * -plugin and never bundled, so every entry point that imports it shares
  * the exact same instance.
  *
- * Used by both blocks/facet/src/view.js and blocks/pagination/src/view.js
- * -- any future block that needs to hook into an existing DataTable
- * instance without itself creating one should use this too, rather than
- * duplicating the polling logic.
+ * Used by blocks/facet/src/view.js, blocks/pagination/src/view.js, and
+ * blocks/datatable-results/src/view.js -- any future block that needs to
+ * hook into an existing DataTable instance without itself creating one
+ * should use this too, rather than duplicating the polling logic.
  */
 
 import $ from 'jquery';
@@ -65,4 +65,38 @@ export function waitForDataTable( table ) {
 
 		check();
 	} );
+}
+
+/**
+ * Remove DataTables' own default-rendered widget for one feature (its
+ * layout is `{ topStart: 'pageLength', topEnd: 'search', bottomStart:
+ * 'info', bottomEnd: 'paging' }` by default -- 'dt-info'/'dt-paging' are
+ * the `info`/`paging` widgets' own container class, confirmed against
+ * DataTables' source), so a dedicated block replacing it (gateway/
+ * pagination for paging, gateway/datatable-results for info) is the only
+ * UI shown for that feature, not both side by side.
+ *
+ * DOM-based rather than an init-time `layout` option override: the table
+ * and its dedicated replacement block can be siblings several levels apart
+ * (e.g. gateway/datatable-body and gateway/pagination, both children of
+ * gateway/datatable but nested under different intermediate blocks), so
+ * neither one's own render.php can see whether the other exists -- there's
+ * no context that flows sideways between siblings. Finding and removing
+ * the already-rendered native widget, from the one block that actually
+ * knows it's meant to replace it, sidesteps needing that visibility
+ * entirely.
+ *
+ * @param {HTMLTableElement} table         The table element.
+ * @param {string}           widgetClass   The native widget's own container class ('dt-info' or 'dt-paging').
+ */
+export function hideNativeDataTableWidget( table, widgetClass ) {
+	const container = table.closest( '.dt-container' );
+
+	if ( ! container ) {
+		return;
+	}
+
+	container
+		.querySelectorAll( `.${ widgetClass }` )
+		.forEach( ( widget ) => widget.remove() );
 }

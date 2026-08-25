@@ -3,15 +3,19 @@
  *
  * Lives here -- blocks/shared/, a sibling of the per-block directories
  * webpack.config.js globs for entries, not inside any one block's own src/
- * -- because it's used by both the datatable block's editor (edit.js, via
- * hooks/use-datatable-init.js) and front end (view.js).
+ * -- because it's used by both gateway/datatable-body's editor (edit.js, via
+ * its own hooks/use-datatable-init.js) and gateway/datatable's front end
+ * (view.js).
  *
  * IMPORTANT: importing this module pulls in 'datatables.net-dt' as a
  * side effect, and that must only ever happen from bundles that actually
- * belong to the datatable block. It must NOT be imported from the facet
- * block (or any other future block) -- see the large comment in
- * facet/src/view.js for why a second, independently-bundled copy of that
- * import is an actual bug (duplicated DataTables UI), not just wasted
+ * need to initialize/destroy a DataTable instance -- currently exactly
+ * gateway/datatable's own view.js and gateway/datatable-body's own edit.js
+ * (never both on the same page at once: view.js is front-end only,
+ * edit.js editor-only). It must NOT be imported from the facet, pagination,
+ * or results blocks (or any other future block) -- see the large comment
+ * in facet/src/view.js for why a second, independently-bundled copy of
+ * that import is an actual bug (duplicated DataTables UI), not just wasted
  * bytes. Anything that doesn't specifically need to initialize/destroy a
  * DataTable -- e.g. getColumnIndexByKey() -- lives in shared/dom.js
  * instead, precisely so it can be imported without this risk.
@@ -75,23 +79,6 @@ function buildLengthMenu( pageLength ) {
 	return [ ...new Set( [ pageLength, ...DEFAULT_LENGTH_MENU ] ) ].sort(
 		( a, b ) => a - b
 	);
-}
-
-/**
- * Whether a gateway/pagination child block exists for this table
- * (render.php writes this data attribute based on whether it found one
- * among the datatable block's inner blocks). When true, DataTables' own
- * built-in paging *control* is suppressed via the `layout` option -- paging
- * itself stays fully active (the data is still split across pages exactly
- * as before), only its default rendered widget is hidden -- so the custom
- * Pagination block is the only paging UI shown, rather than both appearing
- * side by side.
- *
- * @param {HTMLTableElement} table The table element.
- * @return {boolean} Whether to suppress DataTables' built-in paging control.
- */
-function hasPaginationBlock( table ) {
-	return table.getAttribute( 'data-has-pagination-block' ) === 'true';
 }
 
 /**

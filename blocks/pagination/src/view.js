@@ -17,6 +17,7 @@ import './style.scss';
 import {
 	findDataTableElement,
 	waitForDataTable,
+	hideNativeDataTableWidget,
 } from '../../shared/wait-for-datatable';
 
 // How many page-number buttons to show at once (not counting the always
@@ -95,6 +96,10 @@ function initPagination( el ) {
 		if ( ! prevButton || ! nextButton || ! pagesEl ) {
 			return;
 		}
+
+		// This block is a full replacement for DataTables' own default
+		// paging control, not an addition alongside it.
+		hideNativeDataTableWidget( table, 'dt-paging' );
 
 		const render = () => {
 			const info = dataTable.page.info();

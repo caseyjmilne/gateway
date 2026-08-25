@@ -18,11 +18,19 @@
 // their own layout styles (blocks/datatable-header/src/style.scss,
 // blocks/datatable-footer/src/style.scss). Nothing to style here for them.
 
+// Editor-only: gateway/datatable-body's own <ServerSideRender> preview
+// wrapper (its edit.js, not this block's -- see "Header/footer/body" in
+// the README for why the table itself is a sibling block now). Declared
+// here rather than in datatable-body's own style.scss purely because this
+// file is already guaranteed to load wherever a Body block could ever
+// exist (Body only ever renders nested inside a gateway/datatable), so
+// there's no need for a second stylesheet just for one rule.
 .gateway-datatable-preview {
 	min-height: 4em;
 	// Softens the settings-change -> DataTable-reinit cycle (see
-	// hooks/use-datatable-init.js): the actual DOM swap is instant, so this
-	// transition is what turns it into a brief fade instead of a hard cut.
+	// datatable-body/src/hooks/use-datatable-init.js): the actual DOM swap
+	// is instant, so this transition is what turns it into a brief fade
+	// instead of a hard cut.
 	opacity: 1;
 	transition: opacity 160ms ease;
 

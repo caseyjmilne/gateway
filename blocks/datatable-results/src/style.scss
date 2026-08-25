@@ -1,0 +1,11 @@
+/**
+ * Styles for the gateway/datatable-results block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ */
+
+.gateway-datatable-results {
+	font-size: 13px;
+	color: #1e1e1e;
+}
