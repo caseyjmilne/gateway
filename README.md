@@ -732,12 +732,33 @@ wrapper gets: no attributes, no context of their own (`gateway/facet`
 nested inside Facets still receives the parent's context exactly as
 before -- Gutenberg's context propagation is transitive through any number
 of intermediate blocks that don't override it, so an extra layer of
-nesting doesn't break it). Each one's `render.php` doesn't need
-`gateway/datatable`'s inner-block-splitting treatment at all: with nothing
-else to interleave around, `echo $content;` (after a `count( $block
-->inner_blocks ) === 0` check, so an unused one renders nothing rather
-than an empty box) is exactly the right output. `gateway/datatable-body`
-is the one with real work to do -- see below.
+nesting doesn't break it). None of the three needs `gateway/datatable`'s
+own inner-block-*splitting* treatment (there's no second zone to
+interleave around) -- but each one's `render.php` still filters its
+children by name explicitly before rendering anything, the same defensive
+pattern `gateway/datatable`'s own render.php uses for its four zones,
+rather than trusting `$content` (WordPress's own unconditional
+concatenation of every child's rendered markup) wholesale. This isn't
+redundant with `allowedBlocks`/`parent`: those only ever stop the
+*inserter* from offering a disallowed child -- neither strips a block
+that ended up here some other way (content saved under an earlier,
+looser version of one of these restrictions -- this plugin has had a few
+across this project's history -- or a block moved in directly via List
+View, which isn't gated the same way the main inserter is). Reported as
+"page sizer appears in header and footer": a `gateway/datatable-page-size`
+block had ended up saved as a child of `gateway/datatable-footer` (Footer
+only ever *allows* Pagination and Results, but nothing had stripped an
+already-misplaced one out again), and `echo $content;` rendered it right
+there alongside them, with no check that it belonged. Explicit per-block
+`render.php` filtering closes that regardless of how a misplaced child
+got there in the first place: Header can only ever show Page Size and
+Search, Footer only Pagination and Results, Facets only `gateway/facet`,
+no matter what their actual saved inner blocks contain. (A block filtered
+out this way still visibly exists in the editor's own InnerBlocks list
+and List View, exactly where it was left -- this only stops it rendering
+on the front end; removing a genuinely misplaced block from a specific
+post is still a manual edit.) `gateway/datatable-body` is the one with
+real work to do -- see below.
 
 ### `gateway/datatable-body`: the table, as a sibling block
 
