@@ -129,8 +129,9 @@ blocks/
     render.php                  PHP render callback: an empty, disabled <select> skeleton
     src/
       index.js                  Editor registration
-      edit.js                   Editor UI: a static preview (no settings to configure)
-      view.js                   Front-end entry: drives the sibling DataTable's page.len() API
+      edit.js                   Editor UI: a *live* preview -- see "A live editor preview" below
+      view.js                   Front-end entry: finds+waits for the table, hands off to attach-page-size.js
+      attach-page-size.js       Shared option-populating/wiring logic, used by both edit.js and view.js
       style.scss                Page Size control styles
     build/                      Compiled output (generated, do not hand-edit)
   datatable-search/
@@ -157,8 +158,9 @@ blocks/
     render.php                  PHP render callback: an empty "Showing X to Y of Z entries" skeleton
     src/
       index.js                  Editor registration
-      edit.js                   Editor UI: a static preview (no settings to configure)
-      view.js                   Front-end entry: builds the info text from the sibling DataTable's page.info()
+      edit.js                   Editor UI: a *live* preview -- see "A live editor preview" below
+      view.js                   Front-end entry: finds+waits for the table, hands off to attach-results.js
+      attach-results.js         Shared info-text-building logic, used by both edit.js and view.js
       style.scss                Results text styles
     build/                      Compiled output (generated, do not hand-edit)
 ```
@@ -1083,19 +1085,21 @@ restyled like any other block, rather than being stuck with whatever
 a specific column or needs to know the parent's `postType`/`columns`/
 `facets` -- each drives one whole-table DataTables feature, so neither
 declares `usesContext` or has attributes. Neither has any
-`InspectorControls`; `gateway/datatable-results`' `edit.js` is a static
-preview, but `gateway/pagination`'s is not any more -- see "A live editor
-preview" below.
+`InspectorControls`; both `edit.js`s are *live* previews now, not static
+ones -- see "A live editor preview, not a static one" below.
 
 **Server-side rendering:** each renders an empty skeleton and nothing
 more -- `gateway/pagination`'s disabled Previous/Next buttons and an empty
 page-number container; `gateway/datatable-results`'s an otherwise-bare,
-empty `<div>`. There's nothing more meaningful to render for either: the
-actual counts depend on DataTables' own client-side paging/filtering
-state, which can also shift as live `gateway/facet` filters are applied,
-neither of which is knowable at server-render time (the same reasoning
-`gateway/facet`'s Select/Checkboxes options rely on real data while the
-*interactivity* is entirely client-side).
+empty `<div>`. There's nothing more meaningful to render *server-side* for
+either: the actual counts depend on DataTables' own client-side paging/
+filtering state, which can also shift as live `gateway/facet` filters are
+applied, neither of which is knowable at server-render time (the same
+reasoning `gateway/facet`'s Select/Checkboxes options rely on real data
+while the *interactivity* is entirely client-side) -- the editor's own
+preview starts from this identical empty skeleton too, populating it
+client-side the same way the front end does (see below), rather than
+inventing a second, server-side-knowable approximation.
 
 **Where they actually render:** below the `<table>`, unconditionally --
 each can only ever be nested inside a `gateway/datatable-footer` block,
@@ -1109,27 +1113,31 @@ there briefly was when facet/pagination shared one flat InnerBlocks list.
 
 ### A live editor preview, not a static one
 
-Reported: "pagination in editor always shows 3 pages even when the real
-number would be different -- isn't reading the actual page size at all."
-Correct: an earlier version of `gateway/pagination`'s `edit.js` hardcoded
-three fake page-number buttons, entirely unrelated to any real table --
-the same "static, non-functional preview" every other block in this
-family (Page Size, Search, Results) still deliberately is, since the real
-state only exists once DataTables has initialized. Pagination is the one
-exception now, because it doesn't have to be: `gateway/datatable-body`'s
-own editor preview already initializes a real, live DataTable instance
-against its `<ServerSideRender>` output (see "Initializing DataTables
-inside the Gutenberg editor" above) -- `gateway/pagination`, a *sibling*
-block, can attach to that exact same instance instead of faking anything.
+Reported, across two rounds: first "pagination in editor always shows 3
+pages even when the real number would be different -- isn't reading the
+actual page size at all"; then, once that was fixed, "fix hardcoded
+Showing 1 to 10 of 20 entries so it shows the accurate statement... we
+also need accurate page sizer because when we add a smaller limit like
+'1' this normally shows on the front-end because it was appended to the
+options... all dynamic segments must operate the same in editor as they
+do on the front-end." Correct both times: earlier versions of
+`gateway/pagination`'s, `gateway/datatable-results`' and `gateway/
+datatable-page-size`'s `edit.js` each hardcoded a fixed, fake preview --
+three page-number buttons, a fixed "Showing 1 to 10 of 20 entries"
+string, and a generic `[10, 25, 50, 100]` option list -- entirely
+unrelated to any real table, the same "static, non-functional preview"
+`gateway/datatable-search`'s still deliberately is (there's no *state* to
+preview for a search box beyond an initial empty value). All three don't
+have to be static, though: `gateway/datatable-body`'s own editor preview
+already initializes a real, live DataTable instance against its
+`<ServerSideRender>` output (see "Initializing DataTables inside the
+Gutenberg editor" above) -- each of these three, a *sibling* block, can
+attach to that exact same instance instead of faking anything, the same
+way its own `view.js` already does on the front end.
 
-- **`src/attach-pagination.js`** (new): the button-building/wiring logic
-  that used to live entirely inside `view.js` -- `getPageWindow()`, and a
-  new `attachPagination( el, table, dataTable )` that wires Previous/Next/
-  page-number clicks to `page()`, re-renders on every `draw`, and returns
-  a cleanup function (removing its own listeners and the DataTables `draw`
-  listener) -- now shared between `view.js` (front end) and `edit.js`
-  (editor), so the exact same logic drives both rather than two
-  independent copies drifting apart.
+The shared mechanism, added for `gateway/pagination` first and then
+reused as-is for the other two:
+
 - **`shared/use-live-datatable-sync.js`** (new): an editor-only hook that
   polls (every 200ms, indefinitely -- not `waitForDataTable()`'s one-shot,
   5-second-timeout wait) for a live DataTable instance among the block's
@@ -1143,13 +1151,6 @@ block, can attach to that exact same instance instead of faking anything.
   with the table than the whole `gateway-datatable-block` wrapper, several
   levels away in some layouts -- an observer broad enough to see it would
   fire far more often than this needs to check.
-- **`gateway/pagination`'s `edit.js`**: renders the same empty skeleton
-  `render.php` does (no placeholder page numbers), gives `useBlockProps()`
-  a ref, and calls `useLiveDataTableSync( ref, attach )` where `attach`
-  calls `attachPagination()` against that same ref's element. The result:
-  correct page counts and disabled states in the editor, and clicking
-  through the preview actually pages it -- not a simulation of what it
-  might look like.
 - **A prerequisite this surfaced:** `findDataTableElement()`
   (`shared/wait-for-datatable.js`) locates the sibling table via
   `.closest( '.gateway-datatable-block' )` -- but `gateway/datatable`'s own
@@ -1160,6 +1161,45 @@ block, can attach to that exact same instance instead of faking anything.
   (every other block's own editor preview was static). Fixed the same
   way: `useBlockProps( { className: 'gateway-datatable-block' } )`,
   matching `render.php`'s own `get_block_wrapper_attributes()` call.
+
+Per block, the same three-part pattern -- a shared `attach*()` function
+(the button-building/text-building/option-populating logic that used to
+live entirely inside `view.js`, now reused by both it and `edit.js`), and
+`edit.js` rendering the identical empty skeleton `render.php` does (no
+placeholder content) while wiring `useLiveDataTableSync()` to it:
+
+- **`gateway/pagination`**: `src/attach-pagination.js`'s
+  `attachPagination( el, table, dataTable )` wires Previous/Next/page
+  -number clicks to `page()` and re-renders on every `draw`. Result:
+  correct page counts and disabled states, and clicking through the
+  preview actually pages it.
+- **`gateway/datatable-results`**: `src/attach-results.js`'s
+  `attachResults( el, table, dataTable )` sets the "Showing X to Y of Z
+  entries" text and re-renders on every `draw`. Result: an accurate,
+  live-updating summary instead of a fixed string.
+- **`gateway/datatable-page-size`**: `src/attach-page-size.js`'s
+  `attachPageSize( el, table, dataTable )` populates the `<select>` from
+  `dataTable.init().lengthMenu` -- the real, already-merged-with-defaults
+  choice list, so a smaller configured Page Size like `1` shows up here
+  exactly like the front end, not just a generic `[10, 25, 50, 100]` --
+  and wires it to `page.len()`. No `draw` listener needed here (unlike
+  the other two): nothing external changes the page length, so a fresh
+  populate on each attach is enough.
+
+**A regression this introduced, caught immediately after ("pagination
+layout is broken, the buttons appear stacked instead of in a row"):**
+`gateway/pagination`'s rewritten `edit.js` passed `{ ref: navRef }` to
+`useBlockProps()` but dropped the `className: 'gateway-pagination'` an
+earlier version had -- the exact missing-`className` mistake "Header/
+body/footer/facets" above already covers, made fresh in the same block
+this session's live-preview work had just touched. `style.scss`'s
+`display: flex` never applied without that class, so Previous/the page
+-number span/Next stacked as ordinary block-level flow. Fixed by restoring
+the className alongside the ref. `gateway/datatable-search`'s `edit.js`
+had the same latent mismatch (a separate nested `<div>` carrying the
+class instead of `useBlockProps()` itself) -- fixed identically here even
+though nothing had reported it yet, now that the pattern's cost (a broken
+layout, not just an inert toolbar control) was freshly obvious.
 
 `gateway/pagination`'s `src/view.js`:
 

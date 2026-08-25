@@ -6,8 +6,8 @@ import { useLiveDataTableSync } from '../../shared/use-live-datatable-sync';
 import { attachPagination } from './attach-pagination';
 
 /**
- * A *live* preview, not a static one like every other block in this
- * family (Page Size, Search, Results): reported as "pagination in editor
+ * A *live* preview (this block was the first of this family -- Page Size,
+ * Search, Results -- to become one): reported as "pagination in editor
  * always shows 3 pages even when the real number would be different --
  * isn't reading the actual page size at all", because an earlier version
  * hardcoded exactly that -- three fake page-number buttons, unrelated to
@@ -28,7 +28,10 @@ import { attachPagination } from './attach-pagination';
  */
 export default function Edit() {
 	const navRef = useRef();
-	const blockProps = useBlockProps( { ref: navRef } );
+	const blockProps = useBlockProps( {
+		className: 'gateway-pagination',
+		ref: navRef,
+	} );
 
 	const attach = useCallback(
 		( table, dataTable ) => attachPagination( navRef.current, table, dataTable ),

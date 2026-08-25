@@ -6,12 +6,13 @@
  * Type or column-config change), and detaching if it disappears entirely
  * (e.g. `gateway/datatable-body` removed from the InnerBlocks tree).
  *
- * Used by gateway/pagination's (and any future block's) own editor
- * preview to make it *live* -- reflecting the real page count/results,
- * not a fixed placeholder unrelated to the table it sits next to -- the
- * same way `gateway/datatable-body`'s own editor preview already is (see
- * that block's use-datatable-init.js), just from a sibling block that
- * doesn't own the table itself.
+ * Used by gateway/pagination's, gateway/datatable-results', and gateway/
+ * datatable-page-size's own editor previews (and any future block's) to
+ * make them *live* -- reflecting the real page count, results summary, and
+ * page-size choices, not a fixed placeholder unrelated to the table each
+ * sits next to -- the same way `gateway/datatable-body`'s own editor
+ * preview already is (see that block's use-datatable-init.js), just from
+ * a sibling block that doesn't own the table itself.
  *
  * Polling, not a MutationObserver, deliberately: unlike `use-datatable
  * -init.js` (which watches one specific, *local* ref'd container it owns),
