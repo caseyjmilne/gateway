@@ -147,12 +147,6 @@ export function initGatewayDataTable( table, options = {} ) {
 		// columns are configurable that column may not exist or may not be
 		// orderable, so only order by it when it actually is.
 		order: firstColumnIsOrderable ? [ [ 0, 'desc' ] ] : [],
-		// bottomEnd is where DataTables' default layout puts its paging
-		// control; null removes just that slot; every other default slot
-		// (pageLength/search/info) is left untouched.
-		...( hasPaginationBlock( table )
-			? { layout: { bottomEnd: null } }
-			: {} ),
 		...options,
 	} );
 }

@@ -1054,6 +1054,24 @@ downward from parent to descendant, never sideways between siblings, so
 Body's own `render.php` has no way to know whether a Header or Footer
 somewhere in the tree contains any of these four.
 
+**A leftover call to the old mechanism's now-deleted `hasPaginationBlock()`
+helper stayed behind in `shared/datatable.js`'s own `initGatewayDataTable()`
+after that switch**, and went unnoticed because nothing in this codebase
+calls that function directly in a way a build would catch: it only ever
+ran inside the DataTables options object literal, at actual init time in
+the browser, throwing a `ReferenceError` that aborted the whole
+`$( table ).DataTable( {...} )` call before it ran. The practical effect
+was silent and total: the `<table>` never actually became a DataTable
+instance at all, so every block that waits on one via `waitForDataTable()`
+-- Page Size, Search, Pagination, Results -- polled for the full 5-second
+timeout and gave up, each remaining in its own empty/disabled placeholder
+state (an unpopulated, disabled Page Size `<select>`; a disabled Search
+`<input>` nobody could type into) with no error visible anywhere except
+the browser console. The fix was simply deleting that dead branch --
+DOM-based suppression, described below, was *already* doing the actual
+work; this leftover call was only ever discarding its return value into
+an options key nothing still read.
+
 The fix is DOM-based instead, and doesn't need any such cross-sibling
 visibility at all: `shared/wait-for-datatable.js`'s
 `hideNativeDataTableWidget( table, widgetClass )` finds `table`'s overall
