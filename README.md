@@ -597,6 +597,34 @@ descendants, in both JS and PHP:
 No REST call, no prop-drilling through the block tree -- just the parent's
 current attribute values, live, wherever a `usesContext` block needs them.
 
+### Styling: font size and the field label
+
+`block.json`'s `"supports": { "typography": { "fontSize": true } }` gives
+`gateway/facet` the native font-size toolbar control (the same one core
+blocks like Paragraph have) -- a site owner can pick a theme.json preset,
+or a custom value, per facet instance. That control applies its chosen
+size to the block's own top-level wrapper element: on the front end,
+that's the exact `<div class="gateway-facet ...">` `render.php` already
+builds via `get_block_wrapper_attributes()` (which automatically merges in
+whatever class/inline style the typography support generates); in the
+editor, it's `FacetPreview`'s own wrapper one level in from
+`useBlockProps()`'s element, which inherits it the same way plain CSS
+inheritance always does.
+
+`style.scss` sets `font-size: 16px` on `.gateway-facet` itself as the
+*default* that control starts from -- previously unset, so the label
+rendered however large whatever font-size happened to be ambient at that
+point in a theme's own styles, which is what made it "appear very large"
+with no Gateway styling actually setting a size at all. `&__label` (the
+field's own caption, e.g. "Post Status") declares no `font-size` of its
+own, specifically so it inherits whichever size is actually in effect --
+this 16px default, or a site owner's override -- rather than being fixed
+at one value regardless of that control; it keeps `font-weight: 600`
+(semibold) independent of size, and `margin: 0 0 4px` (a fixed pixel
+value, not `em`-relative -- so it stays exactly 4px regardless of which
+font size ends up in effect, rather than scaling into a much larger gap
+at a bigger chosen size).
+
 ### `gateway/datatable` growing InnerBlocks support
 
 Making a previously-leaf dynamic block accept children required two real

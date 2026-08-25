@@ -3,14 +3,27 @@
  *
  * Loaded on both the front end and inside the editor iframe (block.json's
  * "style" field is enqueued in both contexts by WordPress core).
+ *
+ * `font-size: 16px` here, on `.gateway-facet` itself, is deliberately the
+ * *default*, not a fixed value: block.json's `supports.typography.fontSize`
+ * gives this block the native font-size toolbar control, which applies its
+ * chosen size (a theme.json preset class, or an inline `style="font-size:
+ * ..."`) to this same element -- `get_block_wrapper_attributes()` merges it
+ * into the exact wrapper `render.php` already gives this class to, and in
+ * the editor, `FacetPreview`'s own wrapper below inherits it the same way
+ * from `useBlockProps()`'s element one level up. `&__label` deliberately
+ * has no `font-size` of its own, so it inherits whichever size is actually
+ * in effect (this default, or a site owner's override) rather than always
+ * being fixed at one value regardless of that control.
  */
 
 .gateway-facet {
 	margin-bottom: 1em;
+	font-size: 16px;
 
 	&__label {
 		display: block;
-		margin-bottom: 0.25em;
+		margin: 0 0 4px;
 		font-weight: 600;
 	}
 
