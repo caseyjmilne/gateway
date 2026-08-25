@@ -1,0 +1,19 @@
+/**
+ * Styles for the gateway/datatable-facets block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ *
+ * Holds gateway/facet children side by side. A min-height keeps this from
+ * being a zero-height, easy-to-miss strip while editing, even before any
+ * facet has been added -- render.php renders nothing at all on the front
+ * end in that case, so this only ever matters in the editor.
+ */
+
+.gateway-datatable-facets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1em;
+	min-height: 2em;
+	margin-bottom: 1em;
+}

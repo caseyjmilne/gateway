@@ -1,1 +1,1 @@
-.gateway-datatable-header{display:flex;flex-wrap:wrap;gap:1em;margin-bottom:1em;min-height:2em}
+.gateway-datatable-header{align-items:center;display:flex;flex-wrap:wrap;gap:1em;justify-content:space-between;margin-bottom:1em;min-height:2em}

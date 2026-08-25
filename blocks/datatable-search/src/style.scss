@@ -1,0 +1,19 @@
+/**
+ * Styles for the gateway/datatable-search block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ */
+
+.gateway-datatable-search {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	font-size: 13px;
+
+	&__input {
+		padding: 4px 6px;
+		border: 1px solid #949494;
+		border-radius: 2px;
+	}
+}

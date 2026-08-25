@@ -1,6 +1,7 @@
 import { useBlockProps, useInnerBlocksProps, InspectorControls } from '@wordpress/block-editor';
 import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
+import { createBlock } from '@wordpress/blocks';
 
 import PostTypeControl from './controls/post-type-control';
 import LimitControl from './controls/limit-control';
@@ -9,54 +10,69 @@ import ColumnsPanel from './controls/columns-panel';
 import FacetsPanel from './controls/facets-panel';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
+import { useRequiredInnerBlocks } from './hooks/use-required-inner-blocks';
 
 const DEFAULT_COLUMNS = [
 	{ key: 'ID', sortable: true },
 	{ key: 'post_title', sortable: true },
 ];
 
-export default function Edit( { attributes, setAttributes } ) {
+// The entire front-end contract, in order: Facets above everything, Header
+// (Page Size + Search) next, then the table itself, then Footer (Results +
+// Pagination) -- see render.php's own comment for how this maps to
+// DataTables' own default layout. useRequiredInnerBlocks() keeps exactly
+// these four present (inserting whichever are missing, without touching
+// any that already exist) rather than a locked `template`/`templateLock:
+// 'all'` -- see that hook's own docblock for why: an existing block saved
+// before a later-added required child (like gateway/datatable-body) would
+// otherwise have that new child's position matched, by the built-in
+// template sync, against whatever *existing* block already happened to
+// sit there -- silently discarding it -- rather than actually inserting
+// the new one.
+const REQUIRED_BLOCKS = [
+	'gateway/datatable-facets',
+	'gateway/datatable-header',
+	'gateway/datatable-body',
+	'gateway/datatable-footer',
+];
+
+/**
+ * @param {string} name One of REQUIRED_BLOCKS.
+ * @return {Object} A freshly created block instance for that name, with its own default children where it needs them.
+ */
+function buildRequiredBlock( name ) {
+	if ( 'gateway/datatable-header' === name ) {
+		return createBlock( name, {}, [
+			createBlock( 'gateway/datatable-page-size' ),
+			createBlock( 'gateway/datatable-search' ),
+		] );
+	}
+
+	if ( 'gateway/datatable-footer' === name ) {
+		return createBlock( name, {}, [
+			createBlock( 'gateway/pagination' ),
+			createBlock( 'gateway/datatable-results' ),
+		] );
+	}
+
+	return createBlock( name );
+}
+
+export default function Edit( { attributes, setAttributes, clientId } ) {
 	const { postType, columns, facets } = attributes;
 	const blockProps = useBlockProps();
 
-	// The InnerBlocks area: exactly three fixed, named slots -- gateway/
-	// datatable-header, gateway/datatable-body, gateway/datatable-footer --
-	// each rendering in that same order both here (see below) and on the
-	// front end (render.php echoes them in this order unconditionally,
-	// regardless of inner block order). `templateLock: 'all'` locks this
-	// list to exactly that skeleton: no inserting, removing, or reordering
-	// at this level, since there's no state where showing them out of order
-	// (or missing one) would make sense -- Body always needs to be able to
-	// show the table, Header/Footer always render where their names say.
-	// (Their own *nested* InnerBlocks -- gateway/facet inside the Header,
-	// gateway/pagination/gateway/datatable-results inside the Footer -- stay
-	// freely editable; this lock only applies to this one, outermost level.)
+	useRequiredInnerBlocks( clientId, REQUIRED_BLOCKS, buildRequiredBlock );
+
 	// Because Body is a genuine sibling block here, rendered in its own
-	// right (see its own edit.js), the editor's visual order now matches
-	// the front end exactly -- Header, then the table, then Footer -- rather
-	// than the table only appearing separately, below this list, via a
-	// <ServerSideRender> of the whole parent (which is what previously made
-	// Header/Footer both appear to sit "above" the table while editing).
-	const innerBlocksProps = useInnerBlocksProps(
-		blockProps,
-		{
-			allowedBlocks: [
-				'gateway/datatable-header',
-				'gateway/datatable-body',
-				'gateway/datatable-footer',
-			],
-			template: [
-				[ 'gateway/datatable-header', {} ],
-				[ 'gateway/datatable-body', {} ],
-				[
-					'gateway/datatable-footer',
-					{},
-					[ [ 'gateway/pagination', {} ], [ 'gateway/datatable-results', {} ] ],
-				],
-			],
-			templateLock: 'all',
-		}
-	);
+	// right (see its own edit.js), the editor's visual order matches the
+	// front end exactly -- Facets, Header, then the table, then Footer --
+	// rather than the table appearing separately, below this list, via a
+	// <ServerSideRender> of the whole parent.
+	const innerBlocksProps = useInnerBlocksProps( blockProps, {
+		allowedBlocks: REQUIRED_BLOCKS,
+		templateLock: false,
+	} );
 
 	// Fetched once per post type and shared by both panels below: "what
 	// fields are available" is the same question for columns (what to

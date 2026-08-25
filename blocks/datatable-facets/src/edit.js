@@ -5,17 +5,13 @@ import {
 } from '@wordpress/block-editor';
 
 /**
- * Just an editable InnerBlocks container restricted to gateway/datatable
- * -page-size and gateway/datatable-search -- no settings of its own, so no
- * InspectorControls.
+ * Just an editable InnerBlocks container restricted to gateway/facet --
+ * no settings of its own, so no InspectorControls.
  */
 export default function Edit() {
 	const blockProps = useBlockProps();
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
-		allowedBlocks: [
-			'gateway/datatable-page-size',
-			'gateway/datatable-search',
-		],
+		allowedBlocks: [ 'gateway/facet' ],
 		renderAppender: InnerBlocks.ButtonBlockAppender,
 		templateLock: false,
 	} );

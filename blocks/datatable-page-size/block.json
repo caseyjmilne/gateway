@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/datatable-page-size",
+	"title": "Data Table Page Size",
+	"category": "widgets",
+	"icon": "list-view",
+	"description": "The \"Show N entries per page\" control for a Data Table block's grid.",
+	"keywords": [ "page size", "length", "entries", "datatable" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/datatable-header" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

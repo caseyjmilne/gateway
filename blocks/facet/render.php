@@ -10,7 +10,7 @@
  * "discoverable by other scripts": any block nested inside a datatable
  * block, not just this one, can read the same context -- context
  * propagates transitively through any number of intermediate blocks (here,
- * gateway/datatable-header, this block's direct parent) that don't
+ * gateway/datatable-facets, this block's direct parent) that don't
  * themselves override it, so this block doesn't need to be a *direct*
  * child of gateway/datatable to see its context.
  *

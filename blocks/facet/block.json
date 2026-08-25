@@ -9,7 +9,7 @@
 	"keywords": [ "facet", "filter", "search", "datatable" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [ "gateway/datatable-header" ],
+	"parent": [ "gateway/datatable-facets" ],
 	"usesContext": [
 		"gateway/datatable/postType",
 		"gateway/datatable/columns",

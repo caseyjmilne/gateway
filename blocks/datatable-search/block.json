@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/datatable-search",
+	"title": "Data Table Search",
+	"category": "widgets",
+	"icon": "search",
+	"description": "The global search box for a Data Table block's grid.",
+	"keywords": [ "search", "filter", "datatable" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/datatable-header" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

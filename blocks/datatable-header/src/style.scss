@@ -4,15 +4,21 @@
  * Loaded on both the front end and inside the editor iframe (block.json's
  * "style" field is enqueued in both contexts by WordPress core).
  *
- * Holds gateway/facet children side by side. A min-height keeps this from
- * being a zero-height, easy-to-miss strip while editing, even before any
- * facet has been added -- render.php renders nothing at all on the front
- * end in that case, so this only ever matters in the editor.
+ * Holds gateway/datatable-page-size and gateway/datatable-search --
+ * `justify-content: space-between` spreads them to opposite ends,
+ * mirroring DataTables' own default layout (`topStart: pageLength`,
+ * `topEnd: search`), the same relative positions these two blocks
+ * replace. A min-height keeps this from being a zero-height, easy-to-miss
+ * strip while editing, even before either has been added -- render.php
+ * renders nothing at all on the front end in that case, so this only ever
+ * matters in the editor.
  */
 
 .gateway-datatable-header {
 	display: flex;
 	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
 	gap: 1em;
 	min-height: 2em;
 	margin-bottom: 1em;
