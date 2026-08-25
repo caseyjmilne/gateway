@@ -989,6 +989,24 @@ comparatively wide, several-button preview in the editor specifically,
 even though neither block nor its CSS actually differed between the two;
 only the available width did.
 
+**`renderAppender` was also part of that layout breaking, separately from
+`flex-wrap`.** `gateway/datatable-footer`'s (and `-header`'s) `edit.js`
+used to pass `renderAppender: InnerBlocks.ButtonBlockAppender` to
+`useInnerBlocksProps()` -- but that appender renders as its own extra flex
+child (a floating "+" button) alongside the two real ones, inside this
+same wrapper `<div>`. `justify-content: space-between` only reads as
+"these two opposite ends" when there are exactly two flex children; with
+a third one present, the *middle* child (Results, in DOM order) lands in
+the middle of the row instead of at its own end, regardless of `flex
+-wrap`. Both `edit.js`s now leave `renderAppender` unset, falling back to
+Gutenberg's own default block appender -- rendered as part of the block
+list chrome around the *last* actual child rather than as an extra flex
+child of the wrapper `<div>` itself, so it no longer competes for a
+position in this layout. `gateway/datatable-facets` (an open-ended list,
+not a fixed two-item `space-between` row) still uses
+`InnerBlocks.ButtonBlockAppender` deliberately -- there, an appender as
+just another item in a wrapping flex list is exactly the right behavior.
+
 **Why blocks, not just leaving DataTables' own built-in widgets in place:**
 so their position on the page is something a site owner controls the same
 way as everything else in the InnerBlocks area, and so their markup can be
