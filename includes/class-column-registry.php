@@ -436,13 +436,8 @@ class Column_Registry {
 				return '';
 			}
 
-			// Comma-joined term names -- this is what's actually rendered
-			// in the cell, so it's what a "Contains"/typed-search facet
-			// matches against. An "Equals" facet instead needs to treat
-			// each comma-separated name as its own list item (a post can
-			// have multiple terms) rather than requiring the whole,
-			// possibly-multi-term cell to match one selected value exactly
-			// -- see the list-item-boundary regex in facet/src/view.js.
+			// Comma-joined term names, for display. What a facet actually
+			// searches against is separate -- see get_cell_filter_value().
 			return implode( ', ', wp_list_pluck( $terms, 'name' ) );
 		}
 
@@ -472,6 +467,80 @@ class Column_Registry {
 			default:
 				return self::stringify( get_post_field( $column['key'], $post_id ) );
 		}
+	}
+
+	/**
+	 * What a facet actually matches a cell against -- rendered onto the
+	 * `<td>` as the `data-filter` attribute DataTables' DOM-sourced tables
+	 * automatically detect and search against instead of the cell's
+	 * rendered HTML (a documented, built-in mechanism: no extra `columns[]`
+	 * config needed, applies to both the global search box and
+	 * `column().search()`).
+	 *
+	 * This exists because get_cell_value() -- the *display* string -- often
+	 * isn't the same as the *raw* value get_facet_options() offers as a
+	 * Select/Checkboxes option: `post_title` is filtered through
+	 * `get_the_title()`, `post_date` through `mysql2date()`, `post_author`
+	 * resolves an ID to a display name, `post_status` resolves a slug to a
+	 * label, and a taxonomy cell shows term *names* while facets match by
+	 * *slug*. Without this, selecting an option a visitor was just shown
+	 * could fail to match the very cell it came from -- exactly the bug
+	 * this method fixes (matching against rendered/filtered display text
+	 * instead of the raw value the option's `value` attribute holds).
+	 *
+	 * Returns every value worth matching -- the raw field/slug *and* the
+	 * display text, when they differ -- as a comma-joined list (the same
+	 * list-item convention a multi-term taxonomy cell already uses), so
+	 * both an exact-match facet (raw value) and the plain "Search:" box
+	 * (someone typing what they see on screen) keep working.
+	 *
+	 * @param int   $post_id Post ID.
+	 * @param array $column  Column definition from get_columns()/get_column().
+	 * @return string
+	 */
+	public static function get_cell_filter_value( $post_id, array $column ) {
+		if ( 'taxonomy' === $column['type'] ) {
+			$terms = get_the_terms( $post_id, $column['key'] );
+
+			if ( empty( $terms ) || is_wp_error( $terms ) ) {
+				return '';
+			}
+
+			return self::join_tokens(
+				array_merge(
+					wp_list_pluck( $terms, 'slug' ),
+					wp_list_pluck( $terms, 'name' )
+				)
+			);
+		}
+
+		if ( 'meta' === $column['type'] ) {
+			// No raw-vs-display split for meta -- get_cell_value() already
+			// returns the unfiltered value.
+			return self::get_cell_value( $post_id, $column );
+		}
+
+		// Core: get_facet_options() builds its Select/Checkboxes options
+		// from a direct `SELECT DISTINCT` on this wp_posts column, i.e. the
+		// unfiltered field value -- so that's the primary match target,
+		// with the formatted display value folded in too when it's
+		// different (so the plain search box can still find a row by what
+		// it actually shows, e.g. an author's name or a formatted date).
+		$raw     = self::stringify( get_post_field( $column['key'], $post_id ) );
+		$display = self::get_cell_value( $post_id, $column );
+
+		return self::join_tokens( array( $raw, $display ) );
+	}
+
+	/**
+	 * Comma-join a list of candidate search tokens, dropping empties and
+	 * duplicates (e.g. when a raw value and its display form are identical).
+	 *
+	 * @param string[] $tokens Candidate tokens.
+	 * @return string
+	 */
+	protected static function join_tokens( array $tokens ) {
+		return implode( ', ', array_values( array_unique( array_filter( $tokens, 'strlen' ) ) ) );
 	}
 
 	/**

@@ -308,7 +308,24 @@ attribute) is silently dropped; an empty result falls back to the same
 formatting -- e.g. `post_date` through `mysql2date()`, `post_content`
 stripped of tags and trimmed to 20 words, `post_status` through its status
 object's label; meta values are cast to a safe display string, JSON-encoding
-arrays/objects). Column order in the rendered `<thead>`/`<tbody>`
+arrays/objects). Every `<td>` also carries a `data-filter` attribute, from
+the separate `Column_Registry::get_cell_filter_value()` -- DataTables
+auto-detects `data-filter` on DOM-sourced cells and searches it instead of
+the rendered HTML/text, for both the global search box and
+`column().search()`, with no extra JS config needed. It exists because a
+cell's *display* value often isn't its *raw* value: `post_title` displays
+through `get_the_title()` inside an `<a>` tag, `post_author` displays a
+name but is stored as an ID, `post_date` is formatted via `mysql2date()`,
+`post_status` shows a label for a stored slug, and a taxonomy cell shows
+term names though its facet options are built from term slugs. A Select
+facet's `<option value>` always comes from the same raw/slug source
+`get_facet_options()` uses (see below), so without `data-filter` an
+exact-match search built from that value could fail to match its own
+source cell -- `get_cell_filter_value()` closes that gap by combining the raw
+value(s) with the display value into one searchable, comma-joined string
+per cell, so both facets and the plain search box keep working off
+whichever form a visitor is looking at. Column order in the rendered
+`<thead>`/`<tbody>`
 *is* DataTables' column order -- there's no separate mapping to keep in
 sync. Each `<th>` also carries `data-orderable="true|false"` from the
 column's `sortable` flag; `shared/datatable.js` reads those attributes and
@@ -548,6 +565,12 @@ the first case where those genuinely differ.
    way. This still matches correctly for an ordinary single-value column
    (core/meta) -- with nothing else in the list, the pattern collapses to
    the same effect `^value$` would have had.
+
+   All of this matching -- Contains and Equals alike -- runs against each
+   cell's `data-filter` attribute, not its rendered text (see
+   `get_cell_filter_value()` above); `view.js` itself needs no awareness of
+   that, since `data-filter` is a plain DataTables convention the library
+   honors automatically once the attribute is present in the markup.
 
 **Only one bundle may ever import `datatables.net-dt`.** An earlier version
 of this had the facet block's `view.js` call the same idempotent

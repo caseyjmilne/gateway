@@ -178,7 +178,7 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 					?>
 					<tr>
 						<?php foreach ( $columns as $column ) : ?>
-							<td>
+							<td data-filter="<?php echo esc_attr( \Gateway\Column_Registry::get_cell_filter_value( $post_id, $column ) ); ?>">
 								<?php if ( 'post_title' === $column['key'] ) : ?>
 									<a href="<?php echo esc_url( get_permalink( $post_id ) ); ?>">
 										<?php echo esc_html( \Gateway\Column_Registry::get_cell_value( $post_id, $column ) ); ?>
