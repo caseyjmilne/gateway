@@ -850,28 +850,44 @@ out precisely:
   `WP_Block` with no real parent, so `$block->context` is empty in that one
   specific request -- not on the front end, not anywhere else `gateway/
   datatable-body` might render, just inside its own editor preview call.
-- **The fix: mirror context into this block's own (otherwise-unused)
-  attributes, from `edit.js`.** `gateway/datatable-body`'s `block.json`
-  declares the same five as both `usesContext` *and* its own attributes.
-  `edit.js` runs a `useEffect` that calls `setAttributes()` with the
-  current context values whenever they change, so `<ServerSideRender
-  block="gateway/datatable-body" attributes={attributes} />` always has
-  something equivalent to send. `render.php` prefers real `$block->context`
-  and only reads these mirrored attributes when context is empty -- so on
-  every render *except* this one editor-preview case, they're inert,
-  stale-by-definition copies that are never actually read.
-  - An `isSynced` check gates which one <ServerSideRender> is called with
-    across the one render right after context changes (`setAttributes()`
-    is async, so `attributes` still holds the *previous* sync on that
-    render) -- a `<Spinner />` shows instead of a request built from
-    stale-or-default values for that one moment.
-  - The sync is wrapped in `__unstableMarkNextChangeAsNotPersistent(
-    { history: 'ignore' } )` (a `core/block-editor` store action). Without
-    it, this effect firing on every page load would mark the post dirty
-    ("unsaved changes") and pollute undo history purely from opening it --
-    for a change nothing about it represents a user edit; the real,
-    undoable source of truth is the parent's own attributes, which this
-    never touches.
+- **The fix: compute `<ServerSideRender>`'s `attributes` prop directly
+  from live context, on every render, in `edit.js`.** `previewAttributes`
+  (a small `{ postType, limit, pageSize, columns, facets }` object,
+  `useMemo`'d against the same context values) is passed straight to
+  `<ServerSideRender block="gateway/datatable-body" attributes={
+  previewAttributes } />` -- computed synchronously from whatever context
+  currently *is*, never read back from this block's own (possibly-stale)
+  persisted attributes.
+  - **An earlier version of this instead mirrored context into this
+    block's own attributes via `setAttributes()`, gated the preview
+    behind an `isSynced` check, and showed a `<Spinner />` until that
+    async mirror caught up** -- reported as "every column is sortable
+    even when Sortable is turned off in the settings", reproduced as the
+    *editor* preview specifically (the front end, which reads live
+    context directly with no mirroring involved, was correct). The
+    rendered markup in the report (`<th data-orderable="true"
+    data-column-key="ID">`) matched this block's own `block.json`
+    *default* value for `columns` -- `[{ key: "ID", sortable: true },
+    { key: "post_title", sortable: true }]` -- exactly, meaning the
+    mirrored copy of `columns` was stuck at that default and never
+    actually being updated, regardless of what the parent's Columns panel
+    said. Computing the preview's attributes directly from context, every
+    render, removes the entire mirror-then-render dependency for what's
+    actually *shown*: the preview can only ever be correct now, not
+    correct-once-a-separate-mirror-eventually-catches-up. No `<Spinner />`
+    is needed either, since there's no async gap left to cover.
+  - **The `setAttributes()` mirror is still kept, best-effort, wrapped in
+    `__unstableMarkNextChangeAsNotPersistent( { history: 'ignore' } )`**
+    (a `core/block-editor` store action -- without it, this effect firing
+    on every page load would mark the post dirty and pollute undo history
+    purely from opening it, for a change that represents no user edit;
+    the real, undoable source of truth is the parent's own attributes,
+    which this never touches). It gives this block's own *persisted*
+    attributes a reasonable fallback for the rare case something renders
+    it via `<ServerSideRender>` without this component's own live context
+    available (e.g. WordPress's own post-preview/revision-diff routes) --
+    but nothing about the editor's own visible preview depends any more
+    on this mirror actually succeeding.
 - **No `usesContext` needed for `data-has-pagination-block`-style
   suppression concerns.** Body doesn't need to know whether a Pagination
   or Results block exists elsewhere in the tree at all any more -- see
