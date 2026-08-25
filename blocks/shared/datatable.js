@@ -3,12 +3,18 @@
  *
  * Lives here -- blocks/shared/, a sibling of the per-block directories
  * webpack.config.js globs for entries, not inside any one block's own src/
- * -- because it's genuinely used across block boundaries: the datatable
- * block's editor (edit.js, via hooks/use-datatable-init.js) and front end
- * (view.js), *and* the facet block's front end (also view.js), which finds
- * a DataTable instance a sibling datatable block already initialized (or
- * initializes it fresh itself, if its own script happens to run first --
- * initGatewayDataTable() is idempotent, see below) before hooking into it.
+ * -- because it's used by both the datatable block's editor (edit.js, via
+ * hooks/use-datatable-init.js) and front end (view.js).
+ *
+ * IMPORTANT: importing this module pulls in 'datatables.net-dt' as a
+ * side effect, and that must only ever happen from bundles that actually
+ * belong to the datatable block. It must NOT be imported from the facet
+ * block (or any other future block) -- see the large comment in
+ * facet/src/view.js for why a second, independently-bundled copy of that
+ * import is an actual bug (duplicated DataTables UI), not just wasted
+ * bytes. Anything that doesn't specifically need to initialize/destroy a
+ * DataTable -- e.g. getColumnIndexByKey() -- lives in shared/dom.js
+ * instead, precisely so it can be imported without this risk.
  */
 
 import $ from 'jquery';
@@ -103,24 +109,6 @@ function getNonOrderableTargets( table ) {
 			return targets;
 		},
 		[]
-	);
-}
-
-/**
- * Find a column's index by the field key render.php wrote onto its <th> as
- * data-column-key -- how a Facet block locates the column it should drive
- * `.column( index ).search()` against. A facet only works for a field
- * that's also a displayed column (the editor warns when it isn't -- see
- * facet-key-control.js), so a facet whose key isn't found here has nothing
- * to hook into and its view.js simply no-ops.
- *
- * @param {HTMLTableElement} table Table element.
- * @param {string}           key   Field key to look for.
- * @return {number} Zero-based column index, or -1 if not found.
- */
-export function getColumnIndexByKey( table, key ) {
-	return Array.from( table.querySelectorAll( 'thead th' ) ).findIndex(
-		( th ) => th.getAttribute( 'data-column-key' ) === key
 	);
 }
 

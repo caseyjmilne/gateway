@@ -486,13 +486,14 @@ cached like column discovery), not a placeholder list.
 ### Front-end hookup (`blocks/facet/src/view.js`)
 
 1. Finds the sibling `<table class="gateway-datatable">` (nearest
-   `.gateway-datatable-block` ancestor) and calls the shared
-   `initGatewayDataTable()` -- **idempotent**, so it doesn't matter whether
-   the datatable block's own `view.js` or this one happens to run first
-   (two separately enqueued block-type scripts, with no ordering
-   guarantee): whichever runs first initializes the table; the other just
-   gets back the same instance.
-2. Locates the target column via the shared `getColumnIndexByKey()`,
+   `.gateway-datatable-block` ancestor) and **waits for** -- rather than
+   initializes -- a DataTable instance on it, polling `$.fn.DataTable
+   .isDataTable( table )` every 50ms for up to 5s. This file must never
+   import `datatables.net-dt` (or `shared/datatable.js`, which does)
+   itself -- see the "one bundle" note below; it's the reason this waits
+   instead of calling `initGatewayDataTable()` directly the way an
+   idempotent-init approach first tried here did.
+2. Locates the target column via `shared/dom.js`'s `getColumnIndexByKey()`,
    matching this facet's `data-facet-key` against each `<th>`'s
    `data-column-key` (written by the datatable's `render.php`).
 3. Wires interaction to `column.search(...).draw()`:
@@ -503,16 +504,38 @@ cached like column discovery), not a placeholder list.
      option shouldn't also match every other value that happens to contain
      it as a substring. Values are regex-escaped first.
 
+**Only one bundle may ever import `datatables.net-dt`.** An earlier version
+of this had the facet block's `view.js` call the same idempotent
+`initGatewayDataTable()` the datatable block uses (reasoning: "whichever
+script runs first initializes it, the other just reuses it, so order
+doesn't matter"). That broke on the front end: `datatable/build/view.js`
+and `facet/build/view.js` are two independently webpack-bundled entries,
+so each `import 'datatables.net-dt'` was its own separate copy of the
+library, and *executing* that import is what attaches `$.fn.DataTable` to
+the shared jQuery global -- running it a second time, from the second
+bundle, reset that global's internal "is this table already a DataTable?"
+registry. Whichever script happened to run second then failed the
+idempotency check it was relying on and initialized the table again --
+visibly, a duplicated "entries per page"/search/pagination UI. The fix:
+`shared/datatable.js` (which imports the library) is only ever imported by
+the datatable block's own `view.js`/`edit.js`; the facet block's `view.js`
+imports only `shared/dom.js` (`getColumnIndexByKey()` -- pure DOM, no
+jQuery/DataTables dependency at all) and plain jQuery, and only ever
+*waits for and reuses* an instance, never creates one.
+
 ### Why `blocks/shared/`, not `blocks/datatable/src/shared/`
 
-`shared/datatable.js` and `shared/use-available-columns.js` moved out of
-the datatable block's own `src/` into `blocks/shared/` (a plain directory,
-no `block.json` -- `webpack.config.js`'s `blocks/*/block.json` glob skips
-it, so it's never mistaken for a block entry) once the facet block needed
-them too: the DataTables helpers, for the idempotent-init trick above; the
-column-fetching hook, for `gateway/facet`'s own `edit.js` to resolve a
-friendly label for its selected facet. Both blocks import them via a
-relative path (`../../shared/...`).
+`shared/datatable.js`, `shared/dom.js`, and `shared/use-available-columns.js`
+moved out of the datatable block's own `src/` into `blocks/shared/` (a
+plain directory, no `block.json` -- `webpack.config.js`'s
+`blocks/*/block.json` glob skips it, so it's never mistaken for a block
+entry) once the facet block needed some of them too: `dom.js`'s
+column-index lookup, and the column-fetching hook for `gateway/facet`'s
+own `edit.js` to resolve a friendly label for its selected facet.
+`datatable.js` moved for the same reason but, per above, is
+import-restricted to the datatable block's own files regardless of where
+it lives. Blocks import what they need via a relative path
+(`../../shared/...`).
 
 ## Extending: future child blocks
 
