@@ -1007,6 +1007,29 @@ not a fixed two-item `space-between` row) still uses
 `InnerBlocks.ButtonBlockAppender` deliberately -- there, an appender as
 just another item in a wrapping flex list is exactly the right behavior.
 
+**Neither of those was the actual root cause, though -- both were real
+bugs, just not *this* one.** The layout still broke in the editor after
+both fixes; inspecting the editor's actual rendered HTML (not just
+reasoning about the CSS in isolation) showed why: the block's wrapper
+`<div>` carried `wp-block-gateway-datatable-footer` (WordPress's own
+generated class) but never `gateway-datatable-footer` -- the one class
+`style.scss`'s `display: flex` and everything else actually target.
+`edit.js` called bare `useBlockProps()`, while `save.js` calls
+`useBlockProps.save( { className: 'gateway-datatable-footer' } )` --
+those two are supposed to describe the *same* wrapper, one for each
+context, and only `save.js` was passing the className. The front end
+(built from `save.js`'s markup) always had the class and always laid
+out correctly; the editor (built from `edit.js`'s) never had it, so no
+flex rule -- `nowrap` or otherwise -- ever applied there at all, and
+children just stacked as ordinary block-level flow. That's what "the
+second item falls under the first" actually was, independent of
+`flex-wrap` or the appender. Fixed by passing the same `className` to
+`useBlockProps()` in `edit.js` as `save.js` already passes to
+`useBlockProps.save()` -- done here, in `gateway/datatable-header`'s
+`edit.js`, and in `gateway/datatable-facets`' for the same reason (it
+has the identical `edit.js`/`save.js` className mismatch, just without a
+`space-between` layout to visibly break over it).
+
 **Why blocks, not just leaving DataTables' own built-in widgets in place:**
 so their position on the page is something a site owner controls the same
 way as everything else in the InnerBlocks area, and so their markup can be

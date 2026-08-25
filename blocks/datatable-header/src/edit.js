@@ -15,9 +15,16 @@ import { useBlockProps, useInnerBlocksProps } from '@wordpress/block-editor';
  * block appender, rendered as part of the block list chrome around the
  * *last* actual child rather than as an extra flex child of this wrapper
  * `<div>` itself.
+ *
+ * `useBlockProps( { className: 'gateway-datatable-header' } )` -- see
+ * gateway/datatable-footer's own edit.js for why this, not bare
+ * `useBlockProps()`, is what actually makes the flex layout apply in the
+ * editor at all: `save.js` passes that className to its own
+ * `useBlockProps.save()`; this file didn't, so the editor's wrapper never
+ * carried the one class `style.scss` targets.
  */
 export default function Edit() {
-	const blockProps = useBlockProps();
+	const blockProps = useBlockProps( { className: 'gateway-datatable-header' } );
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
 		allowedBlocks: [
 			'gateway/datatable-page-size',
