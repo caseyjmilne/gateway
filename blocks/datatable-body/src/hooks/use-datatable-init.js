@@ -21,10 +21,38 @@
  * -link suppression below is inherently editor-only; front-end row links
  * (e.g. a post's title, linked to its permalink) keep working normally
  * there.
+ *
+ * It's also the one place that needs to suppress DataTables' own default
+ * widgets (pageLength/search/info/paging) *itself*, rather than leaving
+ * that to each dedicated block's own view.js the way the front end does
+ * (see shared/wait-for-datatable.js's hideNativeDataTableWidget() and its
+ * callers in gateway/datatable-page-size, -search, gateway/pagination, and
+ * gateway/datatable-results): view.js bundles are front-end-only --
+ * block.json's "viewScript" is never loaded inside the editor -- so
+ * nothing else ever calls that function against this editor-only
+ * DataTable instance. Without it, this block's own preview showed the
+ * full native pageLength/search/info/paging UI (DataTables' default
+ * layout) alongside the dedicated blocks' own placeholder previews
+ * elsewhere in the InnerBlocks tree, reading as duplicates -- reported as
+ * "results and pagination still shows in the body section... duplicate
+ * because we have our own version of these below in the footer".
  */
 
 import { useEffect } from '@wordpress/element';
 import { initGatewayDataTable, destroyGatewayDataTable } from '../../../shared/datatable';
+import { hideNativeDataTableWidget } from '../../../shared/wait-for-datatable';
+
+/**
+ * Every native widget class DataTables' own default layout renders that a
+ * dedicated Gateway block replaces (see each one's own view.js) -- kept
+ * here as one list since, unlike the front end (where each replacement
+ * block only knows about, and suppresses, its own one widget), this editor
+ * -only preview has no per-block visibility into which of the four are
+ * actually present elsewhere in the tree; it always has all of them, the
+ * same way the front end always does once useRequiredInnerBlocks() /
+ * `template` (gateway/datatable's own edit.js) have done their job.
+ */
+const NATIVE_WIDGET_CLASSES = [ 'dt-length', 'dt-search', 'dt-info', 'dt-paging' ];
 
 /**
  * @param {Object} containerRef React ref to the element that will contain the rendered <table>.
@@ -88,6 +116,9 @@ export function useDataTableInit( containerRef, deps = [] ) {
 				destroyGatewayDataTable( currentTable );
 				try {
 					initGatewayDataTable( table );
+					NATIVE_WIDGET_CLASSES.forEach( ( widgetClass ) =>
+						hideNativeDataTableWidget( table, widgetClass )
+					);
 				} catch ( error ) {
 					// Don't let a DataTables init failure break the editor canvas.
 					// eslint-disable-next-line no-console

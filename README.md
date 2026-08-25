@@ -240,6 +240,27 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
    node, and is set up once rather than being torn down and recreated
    alongside every reinit. Since this hook is only ever used from `edit.js`,
    never `view.js`, the suppression is inherently editor-only.
+7. **Suppressing DataTables' own default widgets, here too:** the front end
+   relies on each dedicated replacement block's own `view.js` calling
+   `hideNativeDataTableWidget()` after it finds a live DataTable instance
+   (see "Suppressing DataTables' own default widgets" below) -- but
+   `viewScript` bundles are front-end-only; none of them load inside the
+   editor. Left alone, this block's own editor preview showed the full
+   native pageLength/search/info/paging UI around its table, alongside the
+   dedicated blocks' own placeholder previews elsewhere in the InnerBlocks
+   tree -- reported as "results and pagination still shows in the body
+   section... duplicate because we have our own version of these below in
+   the footer", and it was a real duplicate, not a misreading: DataTables'
+   own default widgets genuinely were rendering there, just never
+   suppressed. `use-datatable-init.js` now calls
+   `hideNativeDataTableWidget()` itself, for all four widget classes,
+   immediately after `initGatewayDataTable()` succeeds -- unlike the front
+   end (where each block only knows about, and suppresses, its own one
+   widget), this is the one place with no per-block visibility into which
+   of the four dedicated blocks exist elsewhere in the tree, so it
+   suppresses all four unconditionally, matching the guarantee
+   `useRequiredInnerBlocks()`/`template` already make: every real
+   `gateway/datatable` instance always has all four.
 
 ### Settings
 
@@ -951,6 +972,15 @@ above); a site owner can remove or add more of either.
   driving `page()`.
 - **`gateway/datatable-results`** -- the "Showing X to Y of Z entries"
   summary, driving off `page.info()`.
+
+`gateway/datatable-footer`'s own `style.scss` lays the two out with
+`justify-content: space-between` (Results and Pagination pushed to
+opposite ends of the row, mirroring DataTables' own default layout --
+`bottomStart: info`, `bottomEnd: paging` -- the same relative positions
+these two blocks replace) and `align-items: center` (aligned to each
+other on that row, rather than to whichever one happens to be taller) --
+the same treatment `gateway/datatable-header` already gives Page Size and
+Search (see "Page Size and Search" below).
 
 **Why blocks, not just leaving DataTables' own built-in widgets in place:**
 so their position on the page is something a site owner controls the same

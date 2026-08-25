@@ -1,1 +1,1 @@
-.gateway-datatable-footer{display:flex;flex-wrap:wrap;gap:1em;margin-top:1em;min-height:2em}
+.gateway-datatable-footer{align-items:center;display:flex;flex-wrap:wrap;gap:1em;justify-content:space-between;margin-top:1em;min-height:2em}
