@@ -9,7 +9,22 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
 
 export default function Edit( { attributes, setAttributes, context } ) {
 	const { facetKey, uiType, compare } = attributes;
-	const blockProps = useBlockProps();
+	// The same classes render.php gives its own wrapper `<div>`, on this
+	// one directly, rather than on a separate inner `<div>` the way
+	// `FacetPreviewContent` below used to render them: `supports.typography
+	// .fontSize`'s native font-size control (block.json) only ever styles
+	// whatever element `useBlockProps()` returns here -- with the classes
+	// (and .gateway-facet's own explicit `font-size: 16px` default,
+	// style.scss) on a *different*, nested element instead, that control's
+	// chosen size landed on this outer element while `.gateway-facet`'s own
+	// rule kept unconditionally overriding it one level in, so live edits
+	// in the editor never visibly changed anything -- even though the same
+	// setup happened to work on the front end, where render.php's version
+	// of this wrapper has always been the one and only `<div>`, not two
+	// nested ones.
+	const blockProps = useBlockProps( {
+		className: `gateway-facet gateway-facet--${ uiType }`,
+	} );
 
 	const postType = context[ 'gateway/datatable/postType' ] || 'post';
 	const parentFacets = context[ 'gateway/datatable/facets' ] || [];
@@ -92,7 +107,7 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					</Notice>
 				) }
 				{ facetKey && isFacetConfigured && isDisplayedColumn && (
-					<FacetPreview
+					<FacetPreviewContent
 						uiType={ uiType }
 						label={ label }
 						defaultValue={ defaultValue }
@@ -104,19 +119,26 @@ export default function Edit( { attributes, setAttributes, context } ) {
 }
 
 /**
- * A static, non-functional preview of the chosen control -- the real,
- * interactive version only exists on the front end (view.js), hooked into
- * an actual DataTable instance; the editor's job here is just to show what
- * kind of control this will be, not to simulate visitor interaction.
+ * A static, non-functional preview of the chosen control's *contents* --
+ * the real, interactive version only exists on the front end (view.js),
+ * hooked into an actual DataTable instance; the editor's job here is just
+ * to show what kind of control this will be, not to simulate visitor
+ * interaction.
+ *
+ * Deliberately no wrapping `<div className="gateway-facet ...">` of its
+ * own -- unlike an earlier version of this component -- so nothing sits
+ * between these controls and `Edit()`'s own `blockProps` element (which
+ * now carries those same classes directly; see its own comment for why
+ * that distinction matters for the native font-size control specifically).
  *
  * `defaultValue` is the parent's preset value for this facet (Facets panel),
  * shown pre-filled here the same way render.php pre-fills the real control
  * on the front end -- so a site owner sees, while editing, that the table
  * is already narrowed by that preset, not just once the page is published.
  */
-function FacetPreview( { uiType, label, defaultValue } ) {
+function FacetPreviewContent( { uiType, label, defaultValue } ) {
 	return (
-		<div className={ `gateway-facet gateway-facet--${ uiType }` }>
+		<>
 			<span className="gateway-facet__label">{ label }</span>
 			{ 'input' === uiType && (
 				<input
@@ -152,6 +174,6 @@ function FacetPreview( { uiType, label, defaultValue } ) {
 					) }
 				</p>
 			) }
-		</div>
+		</>
 	);
 }

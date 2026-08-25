@@ -606,10 +606,23 @@ or a custom value, per facet instance. That control applies its chosen
 size to the block's own top-level wrapper element: on the front end,
 that's the exact `<div class="gateway-facet ...">` `render.php` already
 builds via `get_block_wrapper_attributes()` (which automatically merges in
-whatever class/inline style the typography support generates); in the
-editor, it's `FacetPreview`'s own wrapper one level in from
-`useBlockProps()`'s element, which inherits it the same way plain CSS
-inheritance always does.
+whatever class/inline style the typography support generates). `edit.js`
+gives that same class to its own `useBlockProps()` element directly, for
+the same reason: an earlier version put `gateway-facet` on a *separate*,
+nested `<div>` instead (`FacetPreview`'s own wrapper, one level in from
+`useBlockProps()`'s element) -- reported as "font resize only works on
+the front end... isn't reading the actual [size] at all": with the
+toolbar's chosen size landing on the outer `useBlockProps()` element and
+`.gateway-facet`'s own explicit default (below) declared on that separate
+inner one, the inner element's own rule always won over whatever the
+outer one inherited, so nothing ever visibly changed in the editor. The
+front end coincidentally worked regardless, since `render.php` only ever
+had the one wrapper, not two -- the toolbar's style and `.gateway-facet`'s
+class always landed on the very same element there, and an inline style
+(what the toolbar produces) beats a class selector's rule outright.
+`edit.js`'s preview content (`FacetPreviewContent`) no longer renders its
+own wrapping `<div>` at all -- it renders directly inside `useBlockProps()`'s
+element, matching `render.php`'s own one-wrapper structure.
 
 `style.scss` sets `font-size: 16px` on `.gateway-facet` itself as the
 *default* that control starts from -- previously unset, so the label
@@ -918,7 +931,7 @@ otherwise discovered) options -- e.g. a taxonomy term outside that cap --
 it's resolved and injected as an extra, selected option instead of silently
 going unrepresented (`get_term_by( 'slug', ... )` for taxonomy; core/meta
 values are their own label already). The block editor's own static preview
-(`src/edit.js`'s `FacetPreview`, which doesn't run through render.php) mirrors
+(`src/edit.js`'s `FacetPreviewContent`, which doesn't run through render.php) mirrors
 this too, plus a one-line note naming the preset value, so a site owner sees
 the same thing while editing that a visitor would see live.
 

@@ -8,13 +8,15 @@
  * *default*, not a fixed value: block.json's `supports.typography.fontSize`
  * gives this block the native font-size toolbar control, which applies its
  * chosen size (a theme.json preset class, or an inline `style="font-size:
- * ..."`) to this same element -- `get_block_wrapper_attributes()` merges it
- * into the exact wrapper `render.php` already gives this class to, and in
- * the editor, `FacetPreview`'s own wrapper below inherits it the same way
- * from `useBlockProps()`'s element one level up. `&__label` deliberately
- * has no `font-size` of its own, so it inherits whichever size is actually
- * in effect (this default, or a site owner's override) rather than always
- * being fixed at one value regardless of that control.
+ * ..."`) to this same element -- `get_block_wrapper_attributes()` (render.php)
+ * and `useBlockProps()` (edit.js) both put those classes directly on this
+ * one element in both contexts (an earlier version of edit.js put them on
+ * a separate, nested element instead, which silently broke the toolbar
+ * control in the editor specifically -- see edit.js's own comment).
+ * `&__label` deliberately has no `font-size` of its own, so it inherits
+ * whichever size is actually in effect (this default, or a site owner's
+ * override) rather than always being fixed at one value regardless of
+ * that control.
  */
 
 .gateway-facet {
