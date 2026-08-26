@@ -16,7 +16,14 @@ import classnames from '../utils/classnames';
  * @param {Function} props.onToggle      ( key ) => void -- called when a name is clicked.
  */
 export default function AvailableColumnsList( { columns, selectedKeys, onToggle } ) {
-	const core = columns.filter( ( column ) => 'core' === column.type );
+	// Featured Image (`'thumbnail'`) groups with the "Fields" list here,
+	// alongside Title/Status/Date/etc -- it reads as a normal post-level
+	// field to a site owner picking columns, even though its own `type`
+	// is deliberately distinct from `'core'` for cell-rendering purposes
+	// (see Column_Registry::get_thumbnail_column()).
+	const core = columns.filter(
+		( column ) => 'core' === column.type || 'thumbnail' === column.type
+	);
 	const taxonomy = columns.filter( ( column ) => 'taxonomy' === column.type );
 	const meta = columns.filter( ( column ) => 'meta' === column.type );
 

@@ -222,11 +222,19 @@ $table_id = 'gateway-datatable-' . wp_unique_id();
 				?>
 				<tr>
 					<?php foreach ( $columns as $column ) : ?>
-						<td data-filter="<?php echo esc_attr( \Gateway\Column_Registry::get_cell_filter_value( $post_id, $column ) ); ?>">
+						<td
+							data-filter="<?php echo esc_attr( \Gateway\Column_Registry::get_cell_filter_value( $post_id, $column ) ); ?>"
+							<?php if ( 'thumbnail' === $column['type'] ) : ?>
+								<?php // No text content to sort by (it's an <img>, not a string) -- DataTables reads this attribute over the cell's own content when present, giving it a stable, real sort key (the attachment ID) instead of treating every row as equal. ?>
+								data-order="<?php echo (int) get_post_thumbnail_id( $post_id ); ?>"
+							<?php endif; ?>
+						>
 							<?php if ( 'post_title' === $column['key'] ) : ?>
 								<a href="<?php echo esc_url( get_permalink( $post_id ) ); ?>">
 									<?php echo esc_html( \Gateway\Column_Registry::get_cell_value( $post_id, $column ) ); ?>
 								</a>
+							<?php elseif ( 'thumbnail' === $column['type'] ) : ?>
+								<?php echo \Gateway\Column_Registry::get_cell_value( $post_id, $column ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- get_the_post_thumbnail()'s own already-escaped <img> markup; esc_html() here would print it as literal text instead of rendering the image. ?>
 							<?php else : ?>
 								<?php echo esc_html( \Gateway\Column_Registry::get_cell_value( $post_id, $column ) ); ?>
 							<?php endif; ?>

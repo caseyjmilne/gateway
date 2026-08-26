@@ -85,8 +85,18 @@ export default function FacetsPanel( {
 	}, {} );
 
 	const displayedKeys = displayedColumns.map( ( column ) => column.key );
-	const selectableColumns = availableColumns.filter( ( column ) =>
-		displayedKeys.includes( column.key )
+	const selectableColumns = availableColumns.filter(
+		( column ) =>
+			displayedKeys.includes( column.key ) &&
+			// Filtering a grid by which rows happen to have a particular
+			// featured image doesn't mean anything -- there's no text value
+			// to compare against, unlike every other column type. Excluded
+			// here rather than left to just silently do nothing if picked:
+			// Facet_Query::apply_facets() has no branch for this type
+			// (it's neither meta, taxonomy, nor a real wp_posts column), so
+			// a facet for it would be validated and saved but never
+			// actually filter anything -- confusing, not just unhelpful.
+			'thumbnail' !== column.type
 	);
 
 	return (

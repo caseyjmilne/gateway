@@ -76,6 +76,7 @@ class Column_Registry {
 
 		$columns = array_merge(
 			self::get_core_columns( $post_type ),
+			self::get_thumbnail_column( $post_type ),
 			self::get_taxonomy_columns( $post_type ),
 			self::get_meta_columns( $post_type )
 		);
@@ -204,6 +205,42 @@ class Column_Registry {
 		}
 
 		return $columns;
+	}
+
+	/**
+	 * The Featured Image column, if this post type actually supports
+	 * thumbnails (`add_theme_support( 'post-thumbnails' )`, opted into
+	 * per-post-type same as core does) -- offering it for a type that
+	 * doesn't would just produce an always-empty column, so it's left out
+	 * entirely rather than shown and silently doing nothing. A single
+	 * -item array (not a boolean or null) purely so `get_columns()` can
+	 * fold it into the same `array_merge()` as every other column source.
+	 *
+	 * Its own `type` (`'thumbnail'`) -- distinct from `'core'`, even though
+	 * it displays a `WP_Post` property in the broad sense -- is what tells
+	 * `get_cell_value()` to return pre-rendered `<img>` markup instead of a
+	 * plain string, and `render.php` to `echo` that markup directly rather
+	 * than `esc_html()`-wrapping it (which would print the tag as literal
+	 * text instead of rendering the image). It also opts this column out
+	 * of the Facets panel entirely (`facets-panel.js`) -- filtering a grid
+	 * by which rows happen to have a particular image doesn't mean
+	 * anything, so it's excluded from that picker.
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return array[] Empty, or a single-item array.
+	 */
+	protected static function get_thumbnail_column( $post_type ) {
+		if ( ! post_type_supports( $post_type, 'thumbnail' ) ) {
+			return array();
+		}
+
+		return array(
+			array(
+				'key'   => 'featured_image',
+				'label' => __( 'Featured Image', 'gateway' ),
+				'type'  => 'thumbnail',
+			),
+		);
 	}
 
 	/**
@@ -417,13 +454,22 @@ class Column_Registry {
 	/**
 	 * Render a single column's value for a post, as a plain display string
 	 * (already appropriate to escape and output -- callers still need to
-	 * esc_html() it, this just resolves *what* to show).
+	 * esc_html() it, this just resolves *what* to show) -- **except** for
+	 * `'thumbnail'`, the one column type this returns already-rendered,
+	 * already-escaped `<img>` markup for instead: `esc_html()`-ing that
+	 * would print the tag as literal text rather than rendering the
+	 * image. `render.php` special-cases that one type specifically to
+	 * `echo` it unescaped -- see its own comment there.
 	 *
 	 * @param int   $post_id Post ID.
 	 * @param array $column  Column definition from get_columns()/get_column().
 	 * @return string
 	 */
 	public static function get_cell_value( $post_id, array $column ) {
+		if ( 'thumbnail' === $column['type'] ) {
+			return self::get_thumbnail_html( $post_id );
+		}
+
 		if ( 'meta' === $column['type'] ) {
 			$value = get_post_meta( $post_id, $column['key'], true );
 			return self::stringify( $value );
@@ -470,6 +516,33 @@ class Column_Registry {
 	}
 
 	/**
+	 * A post's featured image, as ready-to-output `<img>` markup -- or an
+	 * empty string if it doesn't have one. `get_the_post_thumbnail()`
+	 * already produces fully-escaped markup (it's a thin wrapper over
+	 * `wp_get_attachment_image()`), so nothing further needs escaping here
+	 * or by callers.
+	 *
+	 * `'thumbnail'` (WordPress' smallest registered image size, cropped to
+	 * a fixed square) rather than `'full'`/`'medium'`: this is a grid cell,
+	 * not a featured-image display -- a full-resolution image would blow
+	 * out both row height and page weight for no benefit here.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string
+	 */
+	public static function get_thumbnail_html( $post_id ) {
+		if ( ! has_post_thumbnail( $post_id ) ) {
+			return '';
+		}
+
+		return get_the_post_thumbnail(
+			$post_id,
+			'thumbnail',
+			array( 'class' => 'gateway-datatable-thumbnail' )
+		);
+	}
+
+	/**
 	 * What a facet actually matches a cell against -- rendered onto the
 	 * `<td>` as the `data-filter` attribute DataTables' DOM-sourced tables
 	 * automatically detect and search against instead of the cell's
@@ -499,6 +572,18 @@ class Column_Registry {
 	 * @return string
 	 */
 	public static function get_cell_filter_value( $post_id, array $column ) {
+		if ( 'thumbnail' === $column['type'] ) {
+			// No text content to search against (the cell is an <img>, not
+			// a string) -- the attachment's own alt text, if set, is the
+			// one thing worth matching a visitor's search against; empty
+			// otherwise, which just means this column never matches a
+			// search term, not that it errors.
+			$attachment_id = get_post_thumbnail_id( $post_id );
+			return $attachment_id
+				? get_post_meta( $attachment_id, '_wp_attachment_image_alt', true )
+				: '';
+		}
+
 		if ( 'taxonomy' === $column['type'] ) {
 			$terms = get_the_terms( $post_id, $column['key'] );
 

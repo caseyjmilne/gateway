@@ -13,6 +13,19 @@
 	}
 }
 
+// Featured Image cells (Column_Registry::get_thumbnail_html()): WordPress'
+// registered 'thumbnail' size defaults to 150x150, sized for a normal
+// content column, not a compact grid row -- caps both dimensions here
+// instead of trusting whatever a theme's own 'thumbnail' size happens to
+// be. object-fit: cover keeps it filling that box without distortion
+// (matching the crop 'thumbnail' already applies at the image-file level).
+.gateway-datatable-thumbnail {
+	display: block;
+	width: 48px;
+	height: 48px;
+	object-fit: cover;
+}
+
 // The facets bar and pagination area now live in their own blocks --
 // gateway/datatable-header and gateway/datatable-footer -- each owning
 // their own layout styles (blocks/datatable-header/src/style.scss,

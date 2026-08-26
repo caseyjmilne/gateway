@@ -354,6 +354,33 @@ falling back to the default `ID`/`post_title` selection if that empties it.
 - **Core fields**: a static, filterable (`gateway_datatable_core_columns`)
   map of `WP_Post` properties to friendly labels (`post_title` → "Title",
   `post_content` → "Content", etc.).
+- **Featured Image**: offered only when the post type actually supports it
+  (`post_type_supports( $post_type, 'thumbnail' )` -- the same theme
+  -support opt-in core itself checks before showing the Featured Image
+  panel in the editor at all), so a post type that can't have one never
+  shows a column that would just always be empty. Its own `type`
+  (`'thumbnail'`) is deliberately distinct from `'core'` -- it's the one
+  column `get_cell_value()` returns pre-rendered, pre-escaped `<img>`
+  markup for (`get_the_post_thumbnail( $post_id, 'thumbnail', ... )`,
+  capped to 48×48 with `object-fit: cover` -- `blocks/datatable/src/
+  style.scss` -- since WordPress' registered `'thumbnail'` size defaults
+  to 150×150, sized for content, not a compact grid row) instead of a
+  plain string, and `render.php`'s cell loop `echo`s that markup directly
+  rather than through `esc_html()` -- which would print the tag as
+  literal text instead of rendering the image. `AvailableColumnsList`
+  groups it into "Fields" (same list as Title/Status/Date/etc.) rather
+  than its own group, since it reads as a normal post-level field to a
+  site owner picking columns even though its `type` differs internally.
+  Sorting has no text to compare (the cell holds an image, not a string),
+  so each `<td>` also carries a `data-order` attribute (the attachment
+  ID) -- DataTables reads that over a cell's own content when present, so
+  the column sorts by a real, stable value instead of every row
+  comparing equal. Excluded from the Facets panel entirely
+  (`facets-panel.js`): filtering by which rows happen to have a
+  particular image has no coherent meaning, and `Facet_Query::
+  apply_facets()` has no branch for it anyway (neither meta, taxonomy,
+  nor a real `wp_posts` column), so a facet for it would validate and
+  save but silently filter nothing -- confusing, not just unhelpful.
 - **Taxonomies** (categories, tags, and any custom taxonomy): every
   taxonomy registered for the post type (`get_object_taxonomies()`) that's
   `public` -- filterable via `gateway_datatable_taxonomy_columns` for sites
