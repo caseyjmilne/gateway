@@ -2108,3 +2108,124 @@ Bundling `illuminate/database` v11 raised the plugin's own minimum PHP
 version from 7.4 to 8.2 (Laravel 11's own requirement) -- reflected in both
 this README's Requirements section and the `Requires PHP` line in
 `gateway.php`'s own plugin header.
+
+## The Gateway admin app
+
+A single top-level "Gateway" page in wp-admin, added as the home for
+configuring the Laravel-models-as-a-data-source work above (starting with
+the database connection those models will use) and whatever future
+model-related screens follow it. The page itself (`Admin_Page`) is nearly
+empty PHP -- one `add_menu_page()` call and an empty `<div
+id="gateway-admin-app">` -- everything else is a React app that mounts into
+that div.
+
+### Plain React + Vite, not `@wordpress/scripts`
+
+Gateway's blocks build with `@wordpress/scripts`/webpack because that's what
+block.json + the block editor expect. The admin app isn't a block and has
+no such expectation, so it's a completely separate, self-contained project
+under `admin-app/` -- its own `package.json`, its own `vite.config.js`, its
+own `node_modules/` -- built with plain [Vite](https://vitejs.dev/) instead.
+This keeps two unrelated build pipelines from sharing dependency versions
+or config, and means the admin app can be developed like any ordinary React
+project (`npm run dev` against Vite's own dev server -- see
+`admin-app/README.md`).
+
+`vite.config.js` builds a single IIFE bundle (`build/app.js` +
+`build/app.css`) rather than Vite's ES-module default: React and
+ReactDOM are bundled directly in, so `Admin_Page` can enqueue it with a
+plain `wp_enqueue_script()`/`wp_enqueue_style()` call -- no `type="module"`,
+no separate externals to also enqueue, no bundler-aware loader needed on
+the WordPress side. Same idea as each block's own committed `build/`
+output, just from a different bundler: **`admin-app/build/` is committed to
+the repo**, so a site installing the plugin never runs `npm install`/`npm
+run build` itself.
+
+`Admin_Page::enqueue_assets()` only loads the bundle on the plugin's own
+page (matched against the exact hook suffix `add_menu_page()` returns, not
+a guessed string) and localizes a `window.GatewayAdmin` object (`apiUrl`,
+a `wp_rest` `nonce`, the app's root element id) the same way the block
+editor's own scripts receive REST connection details -- `admin-app/src/
+api.js` reads it to authenticate `fetch()` calls against `gateway/v1`
+routes as the logged-in administrator viewing the page.
+
+### Database Connection screen
+
+The app's first (currently only) screen. Gateway's blocks read data via
+`WP_Query`/$wpdb today, but the Laravel models from the section above will
+query through their own **PDO** connection instead -- Eloquent doesn't
+speak `$wpdb`'s mysqli protocol. This screen exists to confirm that
+separate connection actually works before any model code depends on it,
+and to fix the one way it commonly doesn't: **the database port**. A
+database's TCP port frequently differs from MySQL's default 3306 in
+practice (a Docker container mapping it to something else is the common
+case) even though `$wpdb` itself keeps working fine on whatever `DB_HOST`
+already resolves to -- there's normally nowhere to correct that just for
+Gateway's own connection without editing `wp-config.php` (which affects
+$wpdb too). This screen adds exactly that one setting.
+
+`Database_Connection` (`includes/class-database-connection.php`) resolves
+its connection settings by copying the same `wp-config.php` constants
+`$wpdb` itself was built from -- `DB_HOST`/`DB_NAME`/`DB_USER`/
+`DB_PASSWORD`, plus `$wpdb->charset`/`$wpdb->collate`/`$wpdb->prefix` --
+reusing WordPress's own `$wpdb->parse_db_host()` to split `DB_HOST` into
+host/port/socket (rather than re-implementing that parsing) so the two
+connections start from an identical understanding of where the database
+is. On top of that, a `gateway_db_custom_port` option can override just
+the port; the screen's "Test Connection" button both saves whatever's in
+the Port field (blank clears the override back to the `DB_HOST`-resolved
+default) and immediately attempts a connection with it, so entering a new
+port and confirming it works is one action.
+
+One real MySQL-client quirk had to be handled explicitly: **when the
+resolved host is literally the string `localhost`**, MySQL's client
+libraries connect via a unix socket by default and silently *ignore* any
+port at all -- which would make a custom-port override appear to do
+nothing on the (very common) `DB_HOST=localhost` setup. `get_config()`
+detects exactly this case (a port override is in effect *and* the host is
+`localhost`) and substitutes `127.0.0.1` instead, which forces a real TCP
+connection on the requested port. Verified directly: the same override
+against a fake `DB_HOST=localhost` measurably switches the connection
+attempt from an instant "no such socket file" failure to an actual TCP
+attempt on the given port.
+
+The PDO connection itself is opened with `PDO::ATTR_TIMEOUT => 3` (a new
+`Database_Connection::CONNECT_TIMEOUT` constant) instead of PHP's own
+effective default (a 30+ second socket timeout) -- a wrong port or an
+unreachable host would otherwise make "Test Connection" hang for that long
+before reporting failure. Verified with a connection attempt aimed at an
+address that hangs rather than refuses: it failed in exactly 3.00 seconds,
+confirming the shorter timeout is what's actually bounding it. The same
+constant is reused wherever this connection's settings are assembled (see
+`get_capsule_config()` below), so every consumer gets the fast-fail
+behavior, not just the test screen.
+
+`GET /gateway/v1/database/config` returns the current settings (never the
+password) to pre-fill the screen on load; `POST /gateway/v1/database/test`
+accepts an optional `port`, saves it via the same validation
+`set_custom_port()` enforces (digits only, 1-65535, or blank), and returns
+`{ success, message, latency_ms, config }` -- `message` is the raw
+`PDOException` message on failure (e.g. "Connection timed out", "Access
+denied for user..."), which is safe to surface since the route is gated on
+`manage_options`, the same capability the page itself requires.
+
+### Wiring the connection up for Laravel models to actually use
+
+Testing a raw PDO connection doesn't by itself give a future Eloquent
+`Model` class anything to query through -- Eloquent needs a connection
+registered with `illuminate/database`'s Capsule manager (see "Laravel
+Models" above), not a bare `$pdo` variable. `Database_Connection::
+get_capsule_config()` reshapes the same settings `test()` uses into the
+exact `'connections' => ['wordpress' => [...]]` array shape Laravel's own
+`config/database.php` uses (driver/host/port/database/username/password/
+unix_socket/charset/collation/prefix/options, `PDO::ATTR_TIMEOUT` included
+in `options` the same way), and `Database_Connection::boot_capsule()`
+registers it as the Capsule's global connection and boots Eloquent.
+`gateway_boot()` calls this on every request (guarded, like
+`vendor/autoload.php`'s own require, by a `class_exists()` check so a
+missing `vendor/` doesn't fatal) -- safe to do unconditionally because
+`Capsule::addConnection()` only stores settings, it doesn't itself touch
+the database; the actual PDO connection stays lazy until a future model's
+first real query. No model classes exist yet to exercise this end of it --
+this just means one won't need any connection setup of its own once it
+does.

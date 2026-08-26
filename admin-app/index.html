@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Gateway admin app -- dev</title>
+	</head>
+	<body>
+		<!--
+			Only used by `npm run dev` (Vite's own dev server) for local
+			iteration outside wp-admin. WordPress never loads this file --
+			Admin_Page::render_page() outputs the real #gateway-admin-app
+			root div, so this one is here purely so `npm run dev` has
+			somewhere to mount into.
+		-->
+		<div id="gateway-admin-app"></div>
+		<script type="module" src="/src/main.jsx"></script>
+	</body>
+</html>

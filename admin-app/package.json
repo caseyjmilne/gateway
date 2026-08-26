@@ -1,0 +1,19 @@
+{
+	"name": "gateway-admin-app",
+	"description": "Gateway's wp-admin React app -- plain React + Vite, deliberately kept separate from the Gutenberg blocks' own @wordpress/scripts build (see this file's own README.md).",
+	"version": "0.1.0",
+	"private": true,
+	"license": "GPL-2.0-or-later",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build"
+	},
+	"dependencies": {
+		"react": "^18.3.1",
+		"react-dom": "^18.3.1"
+	},
+	"devDependencies": {
+		"@vitejs/plugin-react": "^4.3.4",
+		"vite": "^5.4.11"
+	}
+}
