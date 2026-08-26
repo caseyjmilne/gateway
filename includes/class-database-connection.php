@@ -390,6 +390,20 @@ class Database_Connection {
 
 		$capsule = new \Illuminate\Database\Capsule\Manager();
 		$capsule->addConnection( self::get_capsule_config(), 'wordpress' );
+
+		// Capsule's own constructor hardcodes its *default* connection name
+		// to the literal string "default" (Capsule\Manager::
+		// setupDefaultConfiguration()) -- registering ours as "wordpress"
+		// above (rather than "default") is what lets get_capsule_config()'s
+		// shape match the sample 'connections' => ['wordpress' => [...]]
+		// array exactly, but it also means Capsule doesn't know "wordpress"
+		// is the one to fall back to. Without this line, any Eloquent model
+		// that doesn't set its own $connection property -- which is every
+		// model Model_Builder generates -- fails with "Database connection
+		// [default] not configured.", even though the "wordpress" connection
+		// itself is configured correctly and reachable.
+		$capsule->getContainer()['config']['database.default'] = 'wordpress';
+
 		$capsule->setAsGlobal();
 		$capsule->bootEloquent();
 	}

@@ -2521,6 +2521,39 @@ registers it as the Capsule's global connection and boots Eloquent.
 missing `vendor/` doesn't fatal) -- safe to do unconditionally because
 `Capsule::addConnection()` only stores settings, it doesn't itself touch
 the database; the actual PDO connection stays lazy until a future model's
-first real query. No model classes exist yet to exercise this end of it --
-this just means one won't need any connection setup of its own once it
-does.
+first real query.
+
+**A real bug here, fixed**: registering the connection under the
+descriptive name `"wordpress"` (matching the sample `'connections' =>
+['wordpress' => [...]]` shape) rather than Capsule's own hardcoded
+default connection name -- the literal string `"default"`, set in
+Capsule\Manager's own constructor -- meant Capsule genuinely didn't know
+`"wordpress"` was the one to fall back to. Every model `Model_Builder`
+generates relies on exactly that fallback (none of them set their own
+`$connection` property), so the very first model created failed with
+`Database connection [default] not configured.` -- a config-resolution
+error, not a connectivity one; it reproduced identically even against an
+already-confirmed-working connection, since it happened before anything
+tried to actually connect. `boot_capsule()` now also sets
+`$capsule->getContainer()['config']['database.default'] = 'wordpress'`
+right after registering it, which is the one line Capsule needs to
+resolve an unqualified connection request (a model that never names its
+own `$connection`, or `Capsule::connection()`/`Capsule::schema()` called
+with no argument) to `"wordpress"` instead of erroring on `"default"`.
+Verified directly: calling the real `boot_capsule()` and reading
+`Model::getConnectionResolver()->getDefaultConnection()` back confirms
+it resolves to `"wordpress"`, without needing a real database to connect
+to (`addConnection()` itself never connects, so this check needed
+nothing more than the config value actually being set correctly).
+
+`Model_Builder::create()` also now checks `Database_Connection::
+is_healthy()` (its existing health-check cache -- see "Caching the
+health check" above -- not a fresh live check of its own) before writing
+any files, so a genuinely unreachable database is reported clearly and
+immediately rather than surfacing later as a raw exception from
+somewhere inside a migration's `up()`. This wouldn't by itself have
+caught the bug above -- the connection actually was healthy, which is
+exactly what made the error confusing -- but it's what the health-check
+cache was for, so real database unavailability gets a clear answer
+without adding a second live connection attempt of its own alongside the
+one the migration is already about to make.

@@ -83,6 +83,21 @@ class Model_Builder {
 			);
 		}
 
+		// Uses Database_Connection's own health-check cache (Database
+		// Connection screen's "Test Connection" -- or any prior check --
+		// populates it) rather than forcing a fresh connection attempt
+		// here: creating a model is meant to fail fast with a clear reason
+		// when the database is already known to be unreachable, not to add
+		// yet another live connection attempt of its own on top of the one
+		// the migration itself is about to make.
+		if ( ! Database_Connection::is_healthy() ) {
+			return new \WP_Error(
+				'gateway_database_unavailable',
+				__( 'The database connection isn\'t currently working -- check the Database Connection screen before adding a model.', 'gateway' ),
+				array( 'status' => 503 )
+			);
+		}
+
 		self::ensure_directories();
 
 		$version         = self::next_migration_version();
