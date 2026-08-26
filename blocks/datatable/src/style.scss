@@ -168,4 +168,12 @@
 	.components-text-control {
 		margin-bottom: 1em;
 	}
+
+	// Belt-and-suspenders alongside the margin-bottom above: relying only
+	// on the Value field's own trailing margin left "Done" sitting flush
+	// against the input whenever that margin got collapsed against the
+	// modal's own body padding.
+	.components-button.is-primary {
+		margin-top: 0.5em;
+	}
 }
