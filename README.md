@@ -447,31 +447,58 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   has no other way to know it's now stale, since deploying new code doesn't
   by itself trigger `save_post` or wait out the TTL.
 
-### Sort icons always on the right
+### Sort icons always on the right, header titles never shifted
 
-`datatables.net-dt`'s own default stylesheet reverses a header's flex
-layout -- title and sort icon swap sides -- for any column it classifies
-as `dt-type-numeric`/`dt-type-date` (e.g. "ID"), pairing the icon's side
-with that type's own right-aligned cell text. Surfaced by Featured Image
-(above): its `data-order` attachment ID, needed for a real sort key since
-the cell holds an `<img>` rather than text, is exactly what makes
+`datatables.net-dt`'s own default stylesheet gives any column it
+classifies as `dt-type-numeric`/`dt-type-date` (e.g. "ID") two things,
+both meant to pair with that type's own right-aligned cell *content*: it
+reverses the header's flex layout (title and sort icon swap sides), and
+it sets `text-align: right` on the `<th>` itself. Surfaced by Featured
+Image (above): its `data-order` attachment ID, needed for a real sort key
+since the cell holds an `<img>` rather than text, is exactly what makes
 DataTables infer that same numeric type for it too, even though nothing
-about how it *displays* is remotely numeric. Reported as "sorting icons
-appear on the left [for some columns] while on other columns they appear
-on the right... we want the sorting icons to always be on the right" --
-one consistent side, regardless of a column's type, not a fix scoped to
-Featured Image specifically.
+about how it *displays* is remotely numeric.
 
-`blocks/datatable/src/style.scss` forces it directly:
-`table.gateway-datatable thead th div.dt-column-header { flex-direction:
-row !important; }`. `!important` because this overrides a third-party
-library's own default rule -- the same reasoning the `width: 100%` rule
-above already
+- **The icon side, first:** reported as "sorting icons appear on the left
+  [for some columns] while on other columns they appear on the right...
+  we want the sorting icons to always be on the right" -- one consistent
+  side, regardless of a column's type, not a fix scoped to Featured Image
+  specifically.
+- **The title text shift, second:** even though the header is a flex
+  container (`div.dt-column-header`, unaffected by `text-align` for its
+  *own* layout), `text-align` is inherited, and `.dt-column-title` -- a
+  plain text node inside that flex container -- still picks it up from
+  the `<th>`, rendering shifted toward the right edge of its own
+  (`flex-grow: 1`, otherwise-wide) box. A genuinely numeric/date *cell's*
+  content is a real, right-aligned text node too, so it never looked
+  mismatched there -- but Featured Image's cell is a `display: block`
+  `<img>` (`.gateway-datatable-thumbnail` below), and block elements
+  don't respond to a parent's `text-align` for their own position, so
+  only the *heading* shifted right while the image underneath stayed
+  flush left. Reported as "the image sits further left than its heading
+  above," then confirmed as "it is the heading, not the content, that is
+  misaligned." Like the icon side, this affects every column uniformly,
+  not just Featured Image: a narrow column like "ID" has the identical
+  inherited shift today, just imperceptibly, since its `flex-grow: 1`
+  title box has almost no slack to visibly shift within.
+
+`blocks/datatable/src/style.scss` forces both directly:
+
+```scss
+table.gateway-datatable thead th div.dt-column-header {
+	flex-direction: row !important;
+	text-align: left !important;
+}
+```
+
+`!important` on both because this overrides a third-party library's own
+default rules -- the same reasoning the `width: 100%` rule above already
 uses -- not fighting this plugin's own CSS, just guaranteeing precedence
 over `datatables.net-dt`'s stylesheet regardless of load order. Scoped to
-`div.dt-column-header` specifically, not the `th`/`td` themselves: a
-numeric/date column's own right-aligned cell *text* (a separate rule) is
-untouched, since the report was about the header icon only.
+`div.dt-column-header` (and its own descendants, via inheritance) only,
+not the `th`/`td` themselves: a numeric/date column's own cell text
+alignment (a separate, unrelated rule) is untouched, since neither report
+was about cell content.
 
 **Validation, and how columns reach DataTables:** `render.php` never trusts
 the `columns` attribute blindly -- every requested `{ key, sortable }` is

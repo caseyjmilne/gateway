@@ -13,29 +13,48 @@
 	}
 }
 
-// Sort icons always on the right, for every column, regardless of type.
+// Sort icons always on the right, and header titles never shifted right,
+// for every column, regardless of type.
 //
-// `datatables.net-dt`'s own default stylesheet reverses a header's flex
-// layout (title and sort icon swap sides) for any column it classifies as
-// `dt-type-numeric`/`dt-type-date` -- e.g. "ID", or Featured Image (its
-// `data-order` attachment ID, needed for a real sort key since the cell
-// itself holds an `<img>` rather than text, is exactly what makes
+// `datatables.net-dt`'s own default stylesheet gives any column it
+// classifies as `dt-type-numeric`/`dt-type-date` -- e.g. "ID", or Featured
+// Image (its `data-order` attachment ID, needed for a real sort key since
+// the cell itself holds an `<img>` rather than text, is exactly what makes
 // DataTables infer that type -- see Column_Registry::get_thumbnail_column()
-// above). That's a deliberate DataTables convention (pairing the icon's
-// side with numeric cells' own right-aligned text), not a bug -- but
-// reported as "sorting icons appear on the left [for some columns] while
-// on other columns they appear on the right... we want the sorting icons
-// to always be on the right", i.e. one consistent side regardless of a
-// column's type. `!important` because this overrides a third-party
-// library's own default rule, the same reasoning the `width: 100%` rule
-// above already uses -- not fighting this plugin's own CSS, just
-// guaranteeing precedence over datatables.net-dt's stylesheet regardless
-// of load order. Deliberately scoped to `div.dt-column-header` only, not
-// the `th`/`td` themselves -- numeric/date cells' own right-aligned text
-// (a separate rule, `text-align: right`) is untouched, since nothing
-// about this report was about cell content, only the header icon.
+// above) -- two things, both meant to pair with that type's own
+// right-aligned cell *content*: it reverses the header's flex layout
+// (title and sort icon swap sides), and it sets `text-align: right` on the
+// `<th>` itself. That second one matters even though the header is a flex
+// container (`div.dt-column-header`, unaffected by `text-align` for its
+// own layout): `text-align` is inherited, and `.dt-column-title` -- a
+// plain text node inside that flex container -- still picks it up, so the
+// title text renders shifted toward the right edge of its own (`flex-grow:
+// 1`, otherwise-wide) box, while a genuinely numeric/date *cell's* content
+// is a real, right-aligned text node too, so it never looked mismatched
+// there. Featured Image's cell is a `display: block` `<img>` instead
+// (`.gateway-datatable-thumbnail` below) -- block elements don't respond
+// to a parent's `text-align` for their own position -- so only the
+// *heading* shifted right while the image underneath stayed flush left,
+// reported as "the image sits further left than its heading above...
+// [confirmed] it is the heading, not the content, that is misaligned."
+// Both fixes -- reported first for the icon side ("we want the sorting
+// icons to always be on the right"), then for this title-shift -- apply
+// to every column uniformly, not just Featured Image: a narrow column
+// like "ID" has the identical inherited shift today, just imperceptibly,
+// since its `flex-grow: 1` title box has almost no slack to visibly shift
+// within.
+//
+// `!important` on both because this overrides a third-party library's own
+// default rules, the same reasoning the `width: 100%` rule above already
+// uses -- not fighting this plugin's own CSS, just guaranteeing precedence
+// over datatables.net-dt's stylesheet regardless of load order.
+// Deliberately scoped to `div.dt-column-header` (and its own descendants)
+// only, not the `th`/`td` themselves -- a numeric/date column's own cell
+// text alignment (a separate, unrelated rule) is untouched, since nothing
+// about either report was about cell content.
 table.gateway-datatable thead th div.dt-column-header {
 	flex-direction: row !important;
+	text-align: left !important;
 }
 
 // Featured Image cells (Column_Registry::get_thumbnail_html()): WordPress'
