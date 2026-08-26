@@ -16,25 +16,31 @@ import { useDataTableInit } from './hooks/use-datatable-init';
  * on every real render (front end, or this block rendered as part of a full
  * page load).
  *
- * `previewAttributes` (below) is the fix: it's computed fresh from *live*
- * context on every render and passed to <ServerSideRender> directly --
- * never read from this block's own persisted `attributes`. An earlier
+ * `previewAttributes` (below) is the fix for that: it's computed fresh from
+ * *live* context on every render and passed to <ServerSideRender> directly
+ * -- never read from this block's own persisted `attributes`. An earlier
  * version instead mirrored context into this block's own attributes via
  * `setAttributes()`, gated the preview behind an `isSynced` check, and
- * showed a Spinner until that async mirror caught up. That mirror wasn't
- * reliably taking effect -- reported as "every column is sortable even
- * when Sortable is turned off in the settings", reproduced as the
- * *editor* preview specifically (the front end, which reads live context
- * directly with no mirroring involved, was correct). The rendered
- * `<th data-orderable="true">` the report included matches this block's
- * own block.json *default* value for `columns`
- * (`[{ key: "ID", sortable: true }, { key: "post_title", sortable: true }]`)
- * exactly -- meaning the mirrored copy of `columns` was stuck at that
- * default and never actually being updated, regardless of what the parent
- * block's Columns panel said. Computing the preview's attributes directly
- * from context, every render, removes the entire mirror-then-render
- * dependency for what's actually shown: the preview can only ever be
- * *correct* now, not correct-once-the-mirror-eventually-catches-up.
+ * showed a Spinner until that async mirror caught up; that mirror wasn't
+ * reliably taking effect, so this block's own persisted `columns` stayed
+ * stuck at a stale copy. Computing the preview's attributes directly from
+ * context, every render, removes that entire mirror-then-render dependency
+ * for what's actually shown.
+ *
+ * This alone did *not* fully resolve the "every column is sortable even
+ * when Sortable is turned off" report, though -- a second, unrelated bug
+ * was layered underneath it, in `render.php`: <ServerSideRender>, with no
+ * explicit `httpMethod="POST"`, sends `attributes` as GET *query string*
+ * parameters. Query strings have no boolean type, so `sortable: false`
+ * arrives at PHP as the literal string `"false"` -- and PHP's `empty(
+ * "false" )` is `false` (a non-empty string), so code written as `! empty(
+ * $column['sortable'] )` silently evaluates to `true` for exactly the
+ * columns that were supposed to be excluded, but only on this one
+ * query-string-carried path. The front end, which reads a real JSON
+ * boolean straight out of `parse_blocks()`, was never affected -- which is
+ * what made this look like an editor-only bug even after this file's own
+ * fix landed. See `render.php`'s own comment (`rest_sanitize_boolean()`)
+ * for the actual fix, which lives entirely on that side.
  *
  * The `setAttributes()` mirror is still kept below, best-effort: it gives
  * this block's own *persisted* attributes a reasonable fallback for the
@@ -54,15 +60,6 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const pageSize = context[ 'gateway/datatable/pageSize' ] || 10;
 	const columns = context[ 'gateway/datatable/columns' ] || [];
 	const facets = context[ 'gateway/datatable/facets' ] || [];
-
-	// TEMPORARY diagnostic -- remove once the sortable-columns report is
-	// resolved. Confirms exactly what this block receives as context,
-	// directly in the browser, since every downstream step (render.php's
-	// resolution, DataTables' own columnDefs application, and the
-	// attribute-parsing that loads `columns` from saved post content) has
-	// already been verified correct in isolation.
-	// eslint-disable-next-line no-console
-	console.log( 'Gateway datatable-body: received columns context =', columns );
 
 	// What <ServerSideRender> actually renders with -- see the docblock
 	// above. Memoized so it only changes (and only triggers a refetch)

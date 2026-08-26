@@ -88,7 +88,28 @@ if ( ! empty( $raw_columns ) && is_array( $raw_columns ) ) {
 
 		$columns[ $key ] = array_merge(
 			$available_columns[ $key ],
-			array( 'sortable' => ! empty( $requested_column['sortable'] ) )
+			// Not `! empty( $requested_column['sortable'] )`: on every real
+			// render (front end, or a full page load) this is a genuine PHP
+			// boolean, straight from parse_blocks()'s JSON decoding, and
+			// `! empty()` works fine on that. But `gateway/datatable-body`'s
+			// own editor preview (edit.js) arrives via <ServerSideRender>,
+			// which -- with no explicit `httpMethod="POST"` -- sends
+			// `attributes` as GET *query string* parameters
+			// (`@wordpress/server-side-render`'s own default, confirmed
+			// against its source: `addQueryArgs( path, { attributes, ... } )`).
+			// Query strings have no boolean type -- `sortable: false` becomes
+			// the literal text "false" on the wire, and PHP's `empty( "false"
+			// )` is `false` (a non-empty string), making `! empty( "false" )`
+			// evaluate to `true` -- silently flipping every non-sortable
+			// column back to sortable, but only for requests that went
+			// through a query string. `rest_sanitize_boolean()` (WordPress
+			// core, `wp-includes/rest-api.php`) is built for exactly this:
+			// unlike `! empty()`, it specifically treats the strings "false"
+			// and "0" as `false` before falling back to a normal boolean
+			// cast, so it produces the correct result whether `sortable`
+			// arrived as a real boolean (front end) or its query-string
+			// stringified form (editor preview).
+			array( 'sortable' => rest_sanitize_boolean( $requested_column['sortable'] ?? false ) )
 		);
 	}
 }
@@ -105,14 +126,6 @@ if ( empty( $columns ) ) {
 }
 
 $columns = array_values( $columns );
-
-// TEMPORARY diagnostic -- remove once the sortable-columns report is
-// resolved. Shows exactly what this render actually resolved $columns to
-// (including 'sortable'), viewable via "Inspect"/"View Source" on the
-// rendered table, so we can see whether $raw_columns itself already had
-// the wrong 'sortable' value reaching render.php, or whether it's correct
-// here and something *else* is the problem.
-echo "\n<!-- Gateway debug: resolved columns = " . esc_html( wp_json_encode( $columns ) ) . " -->\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 // Resolve + validate the requested facets the same way as columns: a key
 // not in $available_columns for this post type is dropped, and each valid

@@ -861,21 +861,14 @@ out precisely:
   - **An earlier version of this instead mirrored context into this
     block's own attributes via `setAttributes()`, gated the preview
     behind an `isSynced` check, and showed a `<Spinner />` until that
-    async mirror caught up** -- reported as "every column is sortable
-    even when Sortable is turned off in the settings", reproduced as the
-    *editor* preview specifically (the front end, which reads live
-    context directly with no mirroring involved, was correct). The
-    rendered markup in the report (`<th data-orderable="true"
-    data-column-key="ID">`) matched this block's own `block.json`
-    *default* value for `columns` -- `[{ key: "ID", sortable: true },
-    { key: "post_title", sortable: true }]` -- exactly, meaning the
-    mirrored copy of `columns` was stuck at that default and never
-    actually being updated, regardless of what the parent's Columns panel
-    said. Computing the preview's attributes directly from context, every
-    render, removes the entire mirror-then-render dependency for what's
-    actually *shown*: the preview can only ever be correct now, not
-    correct-once-a-separate-mirror-eventually-catches-up. No `<Spinner />`
-    is needed either, since there's no async gap left to cover.
+    async mirror caught up.** That mirror wasn't reliably taking effect,
+    leaving this block's own persisted `columns` stuck at a stale copy --
+    a real bug, part of why "every column is sortable even when Sortable
+    is turned off" was reported, but (see below) not the whole story.
+    Computing the preview's attributes directly from context, every
+    render, removes that entire mirror-then-render dependency for what's
+    actually *shown*. No `<Spinner />` is needed either, since there's no
+    async gap left to cover.
   - **The `setAttributes()` mirror is still kept, best-effort, wrapped in
     `__unstableMarkNextChangeAsNotPersistent( { history: 'ignore' } )`**
     (a `core/block-editor` store action -- without it, this effect firing
@@ -888,6 +881,31 @@ out precisely:
     available (e.g. WordPress's own post-preview/revision-diff routes) --
     but nothing about the editor's own visible preview depends any more
     on this mirror actually succeeding.
+- **The actual, complete root cause: `<ServerSideRender>` sends
+  `attributes` as a GET query string, and query strings have no boolean
+  type.** Fixing the mirror above didn't fully resolve the report --
+  confirmed by adding a temporary `console.log()` of the raw context
+  value, which showed `{ key: "ID", sortable: false }` exactly right,
+  proving the bug was downstream of everything already covered here. With
+  no explicit `httpMethod="POST"`, `@wordpress/server-side-render`
+  defaults to GET, serializing `attributes` via `addQueryArgs()` --
+  confirmed against its own source. A query string has no way to
+  represent a boolean: `sortable: false` arrives at PHP as the *string*
+  `"false"`, and PHP's `empty( "false" )` is `false` (a non-empty
+  string) -- so `render.php`'s original `! empty( $column['sortable'] )`
+  evaluated to `true` for exactly the columns that were supposed to be
+  excluded, but *only* on this one query-string-carried path. The front
+  end, which decodes a real JSON boolean directly out of `parse_blocks()`,
+  was never affected -- which is exactly why this looked like a
+  editor-only bug even after the mirroring fix above landed, and why two
+  separate, real bugs were layered on top of each other here. Fixed in
+  `render.php` with `rest_sanitize_boolean()` (WordPress core,
+  `wp-includes/rest-api.php`) in place of `! empty()`: unlike `empty()`,
+  it specifically treats the strings `"false"` and `"0"` as `false`
+  before falling back to a normal boolean cast, so it produces the
+  correct result whether `sortable` arrived as a real boolean (front end)
+  or its query-string-stringified form (editor preview) -- verified with
+  both inputs directly, not just read through.
 - **No `usesContext` needed for `data-has-pagination-block`-style
   suppression concerns.** Body doesn't need to know whether a Pagination
   or Results block exists elsewhere in the tree at all any more -- see
