@@ -11,6 +11,33 @@ const EMPTY_CONFIG = {
 };
 
 /**
+ * checked_at is a unix timestamp (seconds) from the PHP side -- rendered as
+ * a short relative age so a cached result reads as "checked 4m ago", not a
+ * raw timestamp the admin has to do math on.
+ */
+function formatAge( checkedAt ) {
+	if ( ! checkedAt ) {
+		return '';
+	}
+
+	const seconds = Math.max( 0, Math.round( Date.now() / 1000 - checkedAt ) );
+
+	if ( seconds < 5 ) {
+		return 'just now';
+	}
+	if ( seconds < 60 ) {
+		return `${ seconds }s ago`;
+	}
+
+	const minutes = Math.round( seconds / 60 );
+	if ( minutes < 60 ) {
+		return `${ minutes }m ago`;
+	}
+
+	return `${ Math.round( minutes / 60 ) }h ago`;
+}
+
+/**
  * Lets a site administrator confirm Gateway's own PDO connection -- kept
  * separate from $wpdb, for Laravel-style Eloquent models to use -- can
  * actually reach the database, and override the port when it differs from
@@ -36,6 +63,12 @@ export default function DatabaseConfig() {
 			const data = await apiFetch( '/database/config' );
 			setConfig( data );
 			setPort( data.port || '' );
+			// Usually a cached result (see Database_Connection::check()) --
+			// shows the last known status immediately without forcing a
+			// live check just to render the page.
+			if ( data.status ) {
+				setResult( data.status );
+			}
 		} catch ( error ) {
 			setLoadError( error.message );
 		} finally {
@@ -77,7 +110,10 @@ export default function DatabaseConfig() {
 				custom port if the database isn&rsquo;t reachable on the
 				default 3306 (common when it runs in a container that maps
 				MySQL to a different host port). Connection attempts time out
-				after 3 seconds.
+				after 3 seconds. The status below is normally a cached
+				result -- Gateway only re-checks periodically on its own;
+				click &ldquo;Test Connection&rdquo; for a live check right
+				now.
 			</p>
 
 			{ loadError && (
@@ -187,6 +223,8 @@ export default function DatabaseConfig() {
 						{ result.message }
 						{ null !== result.latency_ms &&
 							` (${ result.latency_ms }ms)` }
+						{ result.cached && result.checked_at &&
+							` -- cached, checked ${ formatAge( result.checked_at ) }` }
 					</p>
 				</div>
 			) }

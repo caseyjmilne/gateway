@@ -2201,13 +2201,99 @@ constant is reused wherever this connection's settings are assembled (see
 behavior, not just the test screen.
 
 `GET /gateway/v1/database/config` returns the current settings (never the
-password) to pre-fill the screen on load; `POST /gateway/v1/database/test`
-accepts an optional `port`, saves it via the same validation
-`set_custom_port()` enforces (digits only, 1-65535, or blank), and returns
-`{ success, message, latency_ms, config }` -- `message` is the raw
+password) to pre-fill the screen on load, plus a `status` field (see
+caching below); `POST /gateway/v1/database/test` accepts an optional
+`port`, saves it via the same validation `set_custom_port()` enforces
+(digits only, 1-65535, or blank), and returns `{ success, message,
+latency_ms, checked_at, cached, config }` -- `message` is the raw
 `PDOException` message on failure (e.g. "Connection timed out", "Access
 denied for user..."), which is safe to surface since the route is gated on
 `manage_options`, the same capability the page itself requires.
+
+### Caching the health check
+
+A live check (`Database_Connection::test()`) opens a real PDO connection
+and runs a query -- worth doing when an admin explicitly clicks "Test
+Connection", but not worth repeating on every single request a future
+Laravel model might make. Once a database is reachable it essentially
+stays that way; there's little to gain from re-verifying constantly, and
+real cost (a network round trip, bounded by the 3-second timeout but not
+free) in doing so. `Database_Connection::check()` wraps `test()` in a
+cache -- the same "check occasionally, otherwise presume the last answer
+still holds" pattern as a Laravel `Cache::remember()` health check, built
+here on WordPress's own transient API (`get_transient()`/
+`set_transient()`) rather than Laravel's cache facade:
+
+```php
+public static function check( array $overrides = array(), $force = false ) {
+	if ( ! $force ) {
+		$cached = get_transient( self::CACHE_KEY );
+		if ( is_array( $cached ) ) {
+			$cached['cached'] = true;
+			return $cached;
+		}
+	}
+
+	$result = self::test();
+	set_transient( self::CACHE_KEY, $result, self::cache_ttl() );
+
+	$result['cached'] = false;
+	return $result;
+}
+```
+
+A few decisions specific to WordPress's transient API (rather than a
+straight port of the Laravel snippet this was modeled on):
+
+- **The cached value is the whole result array, never a raw boolean.**
+  `get_transient()` returns exactly `false` both when a transient is
+  *missing* and when the cached value legitimately *is* `false` -- storing
+  a bare success/fail boolean would make those two cases indistinguishable
+  (Laravel's cache store doesn't have this ambiguity, so `Cache::remember`
+  can return a raw `bool` safely). Wrapping the boolean inside an array
+  that's never itself `false` sidesteps it -- `is_array( $cached )` is an
+  unambiguous "was this actually cached" check.
+- **Both outcomes get cached, success and failure alike** -- once *any*
+  check has run, its result is presumed current for the full TTL, matching
+  the provided `Cache::remember()` example's own behavior (it caches
+  whatever its closure returns, unconditionally) rather than treating
+  failures specially.
+- **The default TTL is 15 minutes** (`Database_Connection::CACHE_TTL`,
+  filterable via `gateway_db_health_cache_ttl`) -- longer than the
+  1-minute example this was modeled on. The goal here is specifically to
+  check *infrequently*: a working connection, once established, is
+  expected to keep working, so there's more to gain from avoiding
+  unnecessary checks than from catching a rare mid-flight outage a few
+  minutes sooner.
+- **A non-empty `$overrides` always bypasses the cache**, in both
+  directions -- it represents a one-off, not-yet-persisted config (the
+  admin screen never actually exercises this path currently, since
+  `set_custom_port()` persists a new port *before* `check()` runs, but the
+  method stays safe for a future caller that does want to try a port
+  without saving it first). Caching that result under the one shared cache
+  key would risk a later default-config check incorrectly reusing someone
+  else's one-off result.
+- **Changing the port clears the cache.** `set_custom_port()` calls
+  `Database_Connection::clear_cache()` on any actual change -- a cached
+  "healthy" result from the *old* port must never be presumed to describe
+  the new one.
+- **The admin screen's "Test Connection" button always forces a live
+  check** (`check( array(), true )`), still repopulating the cache with
+  whatever it finds -- a button with that exact label handing back a
+  stale cached answer instead of actually checking would be misleading,
+  but there's no reason to throw away a fresh, real result once it's been
+  paid for.
+
+`Database_Connection::is_healthy( $force = false )` is a thin boolean
+wrapper around `check()`, added for a future call site (e.g. a Laravel
+model's own code) that just wants a yes/no gate before doing real work,
+without needing the full result shape `check()`/`test()` return.
+
+The admin screen's own `GET /database/config` response now includes this
+cached status (`status: { success, message, latency_ms, checked_at,
+cached }`) so the screen shows the last known state -- labeled "cached,
+checked Nm ago" when it is one -- immediately on load, without forcing a
+live check just to render the page.
 
 ### Wiring the connection up for Laravel models to actually use
 

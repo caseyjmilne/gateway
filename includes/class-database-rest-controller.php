@@ -74,16 +74,30 @@ class Database_REST_Controller {
 	}
 
 	/**
+	 * Includes the last known health-check status (usually a cached one --
+	 * see Database_Connection::check()) alongside the static config, so the
+	 * admin screen can show a status on load without forcing a live check
+	 * just to render the page.
+	 *
 	 * @return \WP_REST_Response
 	 */
 	public static function get_config() {
-		return rest_ensure_response( Database_Connection::public_config( Database_Connection::get_config() ) );
+		$config = Database_Connection::public_config( Database_Connection::get_config() );
+
+		$status = Database_Connection::check();
+		unset( $status['config'] ); // Already covered by $config itself.
+		$config['status'] = $status;
+
+		return rest_ensure_response( $config );
 	}
 
 	/**
 	 * If a 'port' param is present, it's saved (or, if blank, clears the
 	 * override) before testing -- so the admin screen's "Test Connection"
 	 * button both persists and verifies a newly-entered port in one action.
+	 * Always a live, uncached check (and re-populates the cache with its
+	 * result) -- a button explicitly labeled "Test Connection" should never
+	 * hand back a stale cached answer.
 	 *
 	 * @param \WP_REST_Request $request Request.
 	 * @return \WP_REST_Response|\WP_Error
@@ -99,6 +113,6 @@ class Database_REST_Controller {
 			);
 		}
 
-		return rest_ensure_response( Database_Connection::test() );
+		return rest_ensure_response( Database_Connection::check( array(), true ) );
 	}
 }

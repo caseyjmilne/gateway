@@ -49,6 +49,23 @@ class Database_Connection {
 	const CONNECT_TIMEOUT = 3;
 
 	/**
+	 * Transient key the last health check result (see check()) is cached
+	 * under.
+	 */
+	const CACHE_KEY = 'gateway_db_health';
+
+	/**
+	 * Default cache lifetime, in seconds, for check()/is_healthy() -- once
+	 * a check (successful or not) has run, its result is presumed current
+	 * for this long rather than re-checking on every call. Kept fairly
+	 * long: a working database connection essentially never becomes
+	 * unreachable moment-to-moment on its own, so there's little value in
+	 * re-checking often -- filterable (gateway_db_health_cache_ttl) for a
+	 * site that wants tighter or looser staleness.
+	 */
+	const CACHE_TTL = 15 * MINUTE_IN_SECONDS;
+
+	/**
 	 * Resolve the connection settings to use, copied from the same
 	 * wp-config.php constants $wpdb itself connects with.
 	 *
@@ -134,6 +151,7 @@ class Database_Connection {
 
 		if ( '' === $port ) {
 			delete_option( self::OPTION_CUSTOM_PORT );
+			self::clear_cache();
 			return true;
 		}
 
@@ -142,6 +160,10 @@ class Database_Connection {
 		}
 
 		update_option( self::OPTION_CUSTOM_PORT, $port );
+		// The cached health check was for the old port -- it says nothing
+		// about whether this new one works, so it can't be presumed valid
+		// any more.
+		self::clear_cache();
 		return true;
 	}
 
@@ -183,10 +205,13 @@ class Database_Connection {
 	}
 
 	/**
-	 * Attempt a connection and report the result -- never throws.
+	 * Attempt a connection and report the result -- never throws. This is
+	 * always a live check; see check() for the cached version most callers
+	 * outside the admin screen's own "Test Connection" button should use
+	 * instead.
 	 *
 	 * @param array $overrides Passed through to get_config()/connect().
-	 * @return array{success:bool,message:string,latency_ms:?int,config:array}
+	 * @return array{success:bool,message:string,latency_ms:?int,checked_at:int,config:array}
 	 */
 	public static function test( array $overrides = array() ) {
 		$config = self::get_config( $overrides );
@@ -196,6 +221,7 @@ class Database_Connection {
 				'success'    => false,
 				'message'    => __( 'The pdo_mysql PHP extension is not available on this server.', 'gateway' ),
 				'latency_ms' => null,
+				'checked_at' => time(),
 				'config'     => self::public_config( $config ),
 			);
 		}
@@ -210,6 +236,7 @@ class Database_Connection {
 				'success'    => true,
 				'message'    => __( 'Connection successful.', 'gateway' ),
 				'latency_ms' => (int) round( ( microtime( true ) - $started ) * 1000 ),
+				'checked_at' => time(),
 				'config'     => self::public_config( $config ),
 			);
 		} catch ( \PDOException $e ) {
@@ -217,9 +244,94 @@ class Database_Connection {
 				'success'    => false,
 				'message'    => $e->getMessage(),
 				'latency_ms' => (int) round( ( microtime( true ) - $started ) * 1000 ),
+				'checked_at' => time(),
 				'config'     => self::public_config( $config ),
 			);
 		}
+	}
+
+	/**
+	 * Filters how long (in seconds) check()'s result is cached before a
+	 * live check runs again.
+	 *
+	 * @return int Seconds.
+	 */
+	public static function cache_ttl() {
+		/**
+		 * Filters Database_Connection's health-check cache lifetime.
+		 *
+		 * @param int $ttl Seconds. Default 900 (15 minutes).
+		 */
+		return (int) apply_filters( 'gateway_db_health_cache_ttl', self::CACHE_TTL );
+	}
+
+	/**
+	 * test(), but cached: once a check has run, its result (success or
+	 * failure alike) is presumed current for cache_ttl() seconds rather
+	 * than opening a fresh connection on every call -- a working database
+	 * connection essentially never becomes unreachable moment-to-moment on
+	 * its own, so there's little value in re-testing on every request the
+	 * way test() itself does.
+	 *
+	 * @param array $overrides Passed through to test(). A non-empty
+	 *                          $overrides always bypasses the cache
+	 *                          entirely (neither read nor written) --
+	 *                          it represents a one-off, not-yet-persisted
+	 *                          config (e.g. "try this port before saving
+	 *                          it"), and caching that under the one shared
+	 *                          cache key would risk a later default-config
+	 *                          check incorrectly reusing someone else's
+	 *                          one-off result.
+	 * @param bool  $force     True to skip the cached value and check
+	 *                          live (still re-populating the cache
+	 *                          afterward) -- used by the admin screen's
+	 *                          own "Test Connection" button, which should
+	 *                          always reflect a fresh check.
+	 * @return array Same shape as test(), plus 'cached' (bool).
+	 */
+	public static function check( array $overrides = array(), $force = false ) {
+		if ( ! empty( $overrides ) ) {
+			$result           = self::test( $overrides );
+			$result['cached'] = false;
+			return $result;
+		}
+
+		if ( ! $force ) {
+			$cached = get_transient( self::CACHE_KEY );
+
+			if ( is_array( $cached ) ) {
+				$cached['cached'] = true;
+				return $cached;
+			}
+		}
+
+		$result = self::test();
+		set_transient( self::CACHE_KEY, $result, self::cache_ttl() );
+
+		$result['cached'] = false;
+		return $result;
+	}
+
+	/**
+	 * Convenience boolean wrapper around check() -- for future call sites
+	 * (e.g. a Laravel model's caller wanting to fail gracefully) that only
+	 * care whether the connection is currently presumed good, not the full
+	 * detail check()/test() return.
+	 *
+	 * @param bool $force Passed through to check().
+	 * @return bool
+	 */
+	public static function is_healthy( $force = false ) {
+		$result = self::check( array(), $force );
+		return ! empty( $result['success'] );
+	}
+
+	/**
+	 * Discard the cached health check result, so the next check()/
+	 * is_healthy() call re-checks live regardless of cache_ttl().
+	 */
+	public static function clear_cache() {
+		delete_transient( self::CACHE_KEY );
 	}
 
 	/**
