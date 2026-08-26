@@ -42,6 +42,9 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-data-cards-rest-controller.php
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-database-connection.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-database-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-admin-page.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-registry.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-registry.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-migration-registry.php';
 
 /**
  * Boot the plugin.
@@ -60,5 +63,13 @@ function gateway_boot() {
 	// future Laravel model class can `extends Model` immediately.
 	\Gateway\Database_Connection::boot_capsule();
 	\Gateway\Admin_Page::init();
+
+	// Gives model/migration classes (defined wherever this plugin or a
+	// future integration puts them) a fixed point in the request lifecycle
+	// to call Model_Registry::register()/Migration_Registry::register() --
+	// fired after boot_capsule() above, so Eloquent is already usable by
+	// the time anything registered here gets touched.
+	do_action( 'gateway_register_models' );
+	do_action( 'gateway_register_migrations' );
 }
 add_action( 'plugins_loaded', 'gateway_boot' );

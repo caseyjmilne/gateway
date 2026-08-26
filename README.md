@@ -2109,6 +2109,76 @@ version from 7.4 to 8.2 (Laravel 11's own requirement) -- reflected in both
 this README's Requirements section and the `Requires PHP` line in
 `gateway.php`'s own plugin header.
 
+### Model_Registry and Migration_Registry
+
+No model or migration classes exist yet, but plenty of future code will
+need to answer "what models/migrations does this app actually have" --
+a future admin screen listing them, block editor code offering "which
+model" as a data source alongside post types, a "run pending migrations"
+action. Rather than each of those scanning a directory of files (fragile,
+and modeling classes don't have to live in any one predictable place) or
+re-deriving the list its own way, `Model_Registry` and `Migration_Registry`
+(`includes/class-model-registry.php`/`class-migration-registry.php`) are
+the one place a class registers itself, and the one place anything else
+asks for the full list back.
+
+Registering a model is a single call, made right after the class itself
+is defined:
+
+```php
+class Widget extends \Illuminate\Database\Eloquent\Model {
+	protected $table = 'widgets';
+}
+\Gateway\Model_Registry::register( Widget::class );
+```
+
+`register()` accepts either form -- the class itself via PHP's `::class`
+(the form above; nothing is instantiated), or an actual instance
+(`Model_Registry::register( new Widget() )`, which just reads
+`get_class()` back off it) -- registering a model never needs (or
+triggers) a database connection either way. A class that doesn't
+actually extend `Illuminate\Database\Eloquent\Model` is rejected (via
+`_doing_it_wrong()`, not a fatal error -- one misregistered class
+shouldn't be able to take every other already-registered one down with
+it) rather than silently accepted, the same "never let something
+unrecognized in" posture `Column_Registry` already takes for columns.
+`Model_Registry::all()` returns every registered model's class name;
+`has()`/`count()`/`unregister()` round out the API.
+
+`Migration_Registry` is -- deliberately -- the exact same mechanism
+pointed at a different base class (`Illuminate\Database\Migrations\Migration`
+instead of `Eloquent\Model`):
+
+```php
+class CreateWidgetsTable extends \Illuminate\Database\Migrations\Migration {
+	public function up() { /* ... */ }
+	public function down() { /* ... */ }
+}
+\Gateway\Migration_Registry::register( CreateWidgetsTable::class );
+```
+
+Both are thin subclasses of one shared `Registry` (`includes/
+class-registry.php`) -- a subclass only names its own bucket
+(`registry_key()`) and the base class its members must extend
+(`required_base()`); `Registry` itself implements `register()`/`all()`/
+`has()`/`count()`/`unregister()` once. One PHP subtlety worth calling
+out: `Registry`'s list of registered classes is a *single* static
+property, bucketed internally by each subclass's own `registry_key()`,
+rather than `protected static $items = array();` redeclared per
+subclass -- PHP only gives a static property independent storage per
+subclass when the subclass itself redeclares it; inherited as-is, both
+subclasses would silently share one underlying list. Verified directly:
+registering models and migrations side by side confirms each registry's
+`count()` reflects only its own, and that a model registered under
+`Model_Registry` is correctly rejected by `Migration_Registry::has()`.
+
+Nothing calls `register()` yet -- to give future model/migration classes
+a fixed point in the request lifecycle to do so, `gateway_boot()` fires
+two plain action hooks, `gateway_register_models` and
+`gateway_register_migrations`, right after `Database_Connection::
+boot_capsule()` (so Eloquent is already usable by anything hooked in
+here) and before the admin page boots.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for
