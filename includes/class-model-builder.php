@@ -1,0 +1,314 @@
+<?php
+/**
+ * Turns a single "Title" (from the admin app's Models screen) into a
+ * working Eloquent model: a generated model class, a generated migration
+ * that creates its table, both written to wp-content/gateway/{models,
+ * migrations}, loaded and registered immediately, and -- unlike a normal
+ * Laravel workflow, where `artisan migrate` is a separate, deliberate step
+ * -- the migration is run immediately too, so the table exists by the time
+ * this returns. A future admin screen will let migrations be run on
+ * demand (see Migration_Runner); this is the one case where Gateway runs
+ * one on its own, because a model with no table yet isn't usable for
+ * anything.
+ *
+ * Generated files are deliberately unnamespaced, and reference Illuminate
+ * classes by fully-qualified name (`\Illuminate\...`) rather than `use`
+ * imports -- avoids any chance of a title like "Model" or "Migration"
+ * producing a class that collides with an import of the same name in its
+ * own file (`class Model extends Model` from `use ... as Model;` would be
+ * a fatal error). Matches classic (pre-namespaced) Laravel migration
+ * stubs, which took the same unnamespaced approach for the same reason:
+ * files that get dropped into a shared location by name, not composed
+ * into an app's own namespace tree.
+ *
+ * @package Gateway
+ */
+
+namespace Gateway;
+
+defined( 'ABSPATH' ) || exit;
+
+class Model_Builder {
+
+	/**
+	 * Option name the next migration version number is stored under -- a
+	 * single, plugin-wide, monotonically increasing counter (not
+	 * per-table), so "version 4" unambiguously identifies one specific
+	 * migration regardless of which table it belongs to.
+	 */
+	const OPTION_NEXT_VERSION = 'gateway_next_migration_version';
+
+	/**
+	 * Create a model: derive its class/table name from $title, write the
+	 * model + migration files, load and register both classes, and run
+	 * the migration -- the table exists by the time this returns
+	 * successfully.
+	 *
+	 * @param string $title Free-text title, e.g. "Blog Post".
+	 * @return array{class:string,table:string,migration_class:string,migration_version:int}|\WP_Error
+	 */
+	public static function create( $title ) {
+		$title = trim( (string) $title );
+
+		if ( '' === $title ) {
+			return new \WP_Error(
+				'gateway_model_title_required',
+				__( 'Please enter a title.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$class_name = self::class_name_from_title( $title );
+
+		if ( '' === $class_name || ! preg_match( '/^[A-Za-z_][A-Za-z0-9_]*$/', $class_name ) ) {
+			return new \WP_Error(
+				'gateway_model_invalid_title',
+				__( 'Title must contain at least one letter.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$table_name       = self::table_name_for_class( $class_name );
+		$migration_class  = self::migration_class_for_table( $table_name );
+
+		if ( class_exists( $class_name, false ) || class_exists( $migration_class, false ) ) {
+			return new \WP_Error(
+				'gateway_model_exists',
+				sprintf(
+					/* translators: %s: model class name */
+					__( 'A model named "%s" already exists.', 'gateway' ),
+					$class_name
+				),
+				array( 'status' => 409 )
+			);
+		}
+
+		self::ensure_directories();
+
+		$version         = self::next_migration_version();
+		$model_path      = trailingslashit( GATEWAY_MODELS_DIR ) . $class_name . '.php';
+		$migration_path  = trailingslashit( GATEWAY_MIGRATIONS_DIR ) . self::migration_filename( $version, $table_name );
+
+		if ( file_exists( $model_path ) || file_exists( $migration_path ) ) {
+			return new \WP_Error(
+				'gateway_model_exists',
+				sprintf(
+					/* translators: %s: model class name */
+					__( 'A model named "%s" already exists.', 'gateway' ),
+					$class_name
+				),
+				array( 'status' => 409 )
+			);
+		}
+
+		$written_model     = false === file_put_contents( $model_path, self::model_template( $class_name, $table_name ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		$written_migration = $written_model ? true : false === file_put_contents( $migration_path, self::migration_template( $migration_class, $table_name, $version ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+
+		if ( $written_model || $written_migration ) {
+			self::cleanup_files( $model_path, $migration_path );
+			return new \WP_Error(
+				'gateway_model_write_failed',
+				__( 'Could not write the model/migration files -- check that wp-content/gateway is writable.', 'gateway' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		require_once $model_path;
+		require_once $migration_path;
+		Model_Registry::register( $class_name );
+		Migration_Registry::register( $migration_class );
+
+		$run_result = Migration_Runner::run( $migration_class );
+
+		if ( is_wp_error( $run_result ) ) {
+			// The table was never created -- don't leave a model file
+			// behind that looks usable but isn't backed by a real table.
+			Model_Registry::unregister( $class_name );
+			Migration_Registry::unregister( $migration_class );
+			self::cleanup_files( $model_path, $migration_path );
+			return $run_result;
+		}
+
+		return array(
+			'class'              => $class_name,
+			'table'              => $table_name,
+			'migration_class'    => $migration_class,
+			'migration_version'  => $version,
+		);
+	}
+
+	/**
+	 * The migration class name a given table's create-table migration
+	 * always uses -- shared between create() (when generating it) and
+	 * Model_REST_Controller (when looking it back up for a model it didn't
+	 * itself just create), so the naming convention lives in exactly one
+	 * place.
+	 *
+	 * @param string $table_name Table name, e.g. "blog_posts".
+	 * @return string e.g. "CreateBlogPostsTable".
+	 */
+	public static function migration_class_for_table( $table_name ) {
+		return 'Create' . \Illuminate\Support\Str::studly( $table_name ) . 'Table';
+	}
+
+	/**
+	 * @param string $class_name Model class name, e.g. "BlogPost".
+	 * @return string Table name, e.g. "blog_posts" -- same convention
+	 *                Eloquent's own Model::getTable() would infer by
+	 *                default, computed explicitly so the generated model
+	 *                can set $table itself (see model_template()) and
+	 *                never depend on that inference matching what the
+	 *                migration actually created.
+	 */
+	private static function table_name_for_class( $class_name ) {
+		return \Illuminate\Support\Str::snake( \Illuminate\Support\Str::pluralStudly( $class_name ) );
+	}
+
+	/**
+	 * @param string $title Free-text title.
+	 * @return string PascalCase class name, or '' if nothing alphanumeric
+	 *                survives sanitizing (e.g. a title that's pure
+	 *                punctuation).
+	 */
+	private static function class_name_from_title( $title ) {
+		// Strip anything that isn't a letter, digit, space, hyphen, or
+		// underscore before studly-casing -- Str::studly() only treats
+		// those last three as word separators, so stray punctuation would
+		// otherwise survive straight into the class name (e.g. "Foo!"
+		// would studly-case to "Foo!", not a valid PHP identifier).
+		$clean = preg_replace( '/[^A-Za-z0-9 _-]+/', '', $title );
+
+		return \Illuminate\Support\Str::studly( $clean );
+	}
+
+	/**
+	 * @param int    $version    Migration version number.
+	 * @param string $table_name Table name.
+	 * @return string e.g. "000004_create_blog_posts_table.php" -- the
+	 *                zero-padded version prefix keeps a plain directory
+	 *                listing in creation order, matching classic Laravel
+	 *                migration filenames' own timestamp-prefix purpose.
+	 */
+	private static function migration_filename( $version, $table_name ) {
+		return sprintf( '%06d_create_%s_table.php', $version, $table_name );
+	}
+
+	/**
+	 * Claim the next migration version number. A single counter shared
+	 * across every model (not one per table) -- see OPTION_NEXT_VERSION.
+	 *
+	 * @return int
+	 */
+	private static function next_migration_version() {
+		$version = (int) get_option( self::OPTION_NEXT_VERSION, 1 );
+		update_option( self::OPTION_NEXT_VERSION, $version + 1 );
+		return $version;
+	}
+
+	/**
+	 * Create wp-content/gateway/{models,migrations} if either is missing.
+	 * Normally already done by gateway_activate() on plugin activation --
+	 * this is a defensive fallback for e.g. a site that had the directory
+	 * removed after activation, so a save never fails just because of a
+	 * missing folder.
+	 */
+	private static function ensure_directories() {
+		if ( ! is_dir( GATEWAY_MODELS_DIR ) ) {
+			wp_mkdir_p( GATEWAY_MODELS_DIR );
+		}
+		if ( ! is_dir( GATEWAY_MIGRATIONS_DIR ) ) {
+			wp_mkdir_p( GATEWAY_MIGRATIONS_DIR );
+		}
+	}
+
+	/**
+	 * Remove whichever of the two files actually got written -- used both
+	 * when a write fails partway through and when the migration itself
+	 * fails to run, so a broken attempt never leaves a half-created model
+	 * behind for the next request's Directory_Loader to pick up.
+	 *
+	 * @param string $model_path     Path that would have been the model file.
+	 * @param string $migration_path Path that would have been the migration file.
+	 */
+	private static function cleanup_files( $model_path, $migration_path ) {
+		if ( file_exists( $model_path ) ) {
+			wp_delete_file( $model_path );
+		}
+		if ( file_exists( $migration_path ) ) {
+			wp_delete_file( $migration_path );
+		}
+	}
+
+	/**
+	 * @param string $class_name Model class name.
+	 * @param string $table_name Table name.
+	 * @return string PHP source for the model file.
+	 */
+	private static function model_template( $class_name, $table_name ) {
+		return <<<PHP
+<?php
+/**
+ * Gateway-generated Eloquent model -- created via the admin app's Models
+ * screen. Safe to hand-edit (e.g. add relationships, casts, accessors);
+ * only re-generated if this model is deleted and re-created with the same
+ * title.
+ */
+
+class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
+
+	/**
+	 * @var string
+	 */
+	protected \$table = '{$table_name}';
+}
+
+PHP;
+	}
+
+	/**
+	 * @param string $migration_class Migration class name.
+	 * @param string $table_name      Table name.
+	 * @param int    $version         Migration version number.
+	 * @return string PHP source for the migration file.
+	 */
+	private static function migration_template( $migration_class, $table_name, $version ) {
+		return <<<PHP
+<?php
+/**
+ * Gateway-generated migration -- creates the "{$table_name}" table. Run
+ * automatically once, immediately after being generated (see
+ * Model_Builder::create()); a future admin screen will be able to re-run
+ * it (Migration_Runner::run() is idempotent per \$version) if needed.
+ */
+
+class {$migration_class} extends \\Illuminate\\Database\\Migrations\\Migration {
+
+	/**
+	 * Identifies this migration to Migration_Runner, which tracks
+	 * completed migrations by version number rather than class name.
+	 *
+	 * @var int
+	 */
+	public \$version = {$version};
+
+	/**
+	 * @return void
+	 */
+	public function up() {
+		Schema::create( '{$table_name}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {
+			\$table->id();
+			\$table->timestamps();
+		} );
+	}
+
+	/**
+	 * @return void
+	 */
+	public function down() {
+		Schema::dropIfExists( '{$table_name}' );
+	}
+}
+
+PHP;
+	}
+}

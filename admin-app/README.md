@@ -17,10 +17,19 @@ npm run build
 ```
 
 `npm run build` produces `build/app.js` and `build/app.css` -- a single,
-dependency-free bundle (Vite configured for IIFE output; see
+self-contained bundle (Vite configured for IIFE output; see
 `vite.config.js`'s own comment for why) that `Admin_Page` enqueues directly
-with `wp_enqueue_script()`/`wp_enqueue_style()`, no bundler-aware loader
-needed on the WordPress side.
+with `wp_enqueue_script()`/`wp_enqueue_style()` -- every dependency
+(React, ReactDOM, `react-router-dom`) is bundled straight into `app.js`,
+no separate script tags or bundler-aware loader needed on the WordPress
+side.
+
+Routing is `react-router-dom`'s `HashRouter` (URLs like `#/models/Widget`)
+rather than `BrowserRouter` -- this app lives at one fixed wp-admin URL
+(`admin.php?page=gateway`) that WordPress's own PHP routing owns, so
+there's no server-side route for a real path like
+`admin.php?page=gateway/models/Widget` to hit on refresh or a bookmark.
+The hash fragment sidesteps that entirely.
 
 **`build/` is committed to the repository**, same as every block's own
 `build/` directory -- a site installing this plugin never runs `npm

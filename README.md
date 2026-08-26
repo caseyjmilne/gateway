@@ -2172,12 +2172,122 @@ registering models and migrations side by side confirms each registry's
 `count()` reflects only its own, and that a model registered under
 `Model_Registry` is correctly rejected by `Migration_Registry::has()`.
 
-Nothing calls `register()` yet -- to give future model/migration classes
-a fixed point in the request lifecycle to do so, `gateway_boot()` fires
-two plain action hooks, `gateway_register_models` and
-`gateway_register_migrations`, right after `Database_Connection::
-boot_capsule()` (so Eloquent is already usable by anything hooked in
-here) and before the admin page boots.
+`Model_Builder` and `Directory_Loader` (both below) are the two real
+callers now, but a plain extensibility path stays in place for a model/
+migration class defined some other way: `gateway_boot()` fires two
+action hooks, `gateway_register_models` and `gateway_register_migrations`,
+right after `Database_Connection::boot_capsule()` (so Eloquent is already
+usable by anything hooked in here) and before `Directory_Loader` runs.
+
+### Model_Builder: generating and running a model on the fly
+
+The admin app's Models screen (below) turns a single "Title" field into a
+working model -- a generated Eloquent model class, a generated migration
+that creates its table, and the table itself, all before the request that
+submitted the form returns. `Model_Builder::create( $title )`
+(`includes/class-model-builder.php`) is where all of that actually
+happens.
+
+**Where generated files live.** `wp-content/gateway/models/` and
+`wp-content/gateway/migrations/` -- deliberately *outside* the plugin's
+own directory (`GATEWAY_MODELS_DIR`/`GATEWAY_MIGRATIONS_DIR`, defined
+alongside `GATEWAY_PLUGIN_DIR` itself in `gateway.php`, but built from
+`WP_CONTENT_DIR` instead). These are generated *user data* -- specific to
+what a site owner has actually built -- not plugin code, so they belong
+somewhere that survives a plugin update or reinstall, the same reasoning
+behind `wp-content/uploads`. `gateway_activate()` creates both on plugin
+activation (`wp_mkdir_p()`, idempotent if they already exist);
+`Model_Builder` also creates them defensively at save time, so a save
+never fails just because a directory got removed after activation.
+
+**Deriving names from the title.** The vendored `illuminate/support`
+package (a dependency of `illuminate/database` -- see "What's vendored,
+and why" above) does the real work here, the same way Laravel's own
+`make:model` would: stray punctuation is stripped first (so a title like
+"Blog Post!!" doesn't survive straight into an invalid class name), then
+`Str::studly()` gives the class name (`BlogPost`) and `Str::snake(
+Str::pluralStudly( $class_name ) )` gives the table name (`blog_posts`)
+-- including correctly-irregular plurals (`Category` -> `categories`,
+via `doctrine/inflector` underneath `Str::plural()`), not a naive
+"add an s". The model file explicitly sets `$table` to this computed
+name rather than relying on Eloquent's own default-table-name inference
+to independently arrive at the same string -- one computation, used by
+both the model and the migration, instead of two that merely usually
+agree.
+
+**Generated files are unnamespaced**, and reference Illuminate classes by
+fully-qualified name (`\Illuminate\Database\Eloquent\Model`) rather than
+a `use` import. This avoids a real, if narrow, hazard: a title like
+"Model" or "Migration" would otherwise produce `class Model extends
+Model` in a file that also has `use Illuminate\Database\Eloquent\Model;`
+-- a fatal "cannot declare class, name already in use" error, since the
+import and the declaration would collide. Referencing the base class by
+its full name sidesteps this for any title at all, with no reserved-word
+list to maintain. This is also exactly the shape classic (pre-namespaced)
+Laravel migration stubs used, for the same underlying reason: files
+dropped into a shared location by name, not composed into an app's own
+namespace tree.
+
+**Migration versioning.** Every generated migration declares a public
+`$version` (a single, plugin-wide, monotonically increasing integer --
+`gateway_next_migration_version`, not one counter per table, so "version
+4" unambiguously identifies one specific migration regardless of which
+table it belongs to) and its filename is version-prefixed
+(`000004_create_blog_posts_table.php`) purely so a plain directory
+listing sorts in creation order -- the same purpose Laravel's own
+timestamp-prefixed migration filenames serve, just a simpler counter
+since nothing here needs to merge migration histories across branches.
+`Migration_Runner` (`includes/class-migration-runner.php`) is what
+actually makes the version number useful: `run( $migration_class )` calls
+its `up()` and records the version as done (a `gateway_ran_migrations`
+option, version number => class + timestamp) -- idempotent, since a
+version already recorded is treated as an immediate success rather than
+running `up()` a second time. `has_run( $version )`,
+`latest_ran_version()`, and `latest_registered_version()` (the highest
+version among everything `Migration_Registry` currently knows about,
+whether run or not) are there specifically so a future "run pending
+migrations" screen has what it needs already built -- not part of this
+change, but this is what "so we can track if the latest migration has
+been run" is for.
+
+**Running the migration immediately** is the one deliberate departure
+from a normal Laravel workflow, where `artisan migrate` is always a
+separate, later step: here, a model with no backing table yet isn't
+useful for anything, so `create()` calls `Migration_Runner::run()` as
+part of the same request that generated the files. If that run fails
+(the database is unreachable, a stray syntax issue in a hand-edited
+template, etc.), both generated files are deleted and both classes
+unregistered rather than left behind -- a half-created model (a class
+that looks usable but has no real table) would be worse than the create
+request simply failing outright.
+
+**`Schema::create(...)`, without Laravel's facade system.** Real Laravel
+migrations call the `Schema` facade, which resolves through Laravel's
+service container to the current connection's schema builder -- nothing
+this plugin sets up, since it runs Eloquent standalone via Capsule (see
+"Wiring the connection up for Laravel models" above), with no container
+for a real facade to resolve against. `includes/class-schema-facade.php`
+defines a small stand-in: a bare, unnamespaced `Schema` class (so
+unnamespaced generated migrations can call it unqualified, exactly like
+real Laravel migrations do) whose `__callStatic()` proxies every call
+straight to `Capsule::schema()`. `Schema::create()`, `Schema::table()`,
+`Schema::dropIfExists()`, etc. all work in a generated migration exactly
+as they would in a real Laravel one.
+
+**Auto-loading what's on disk.** `Directory_Loader::load( $dir,
+$registry_class )` (`includes/class-directory-loader.php`) is what makes
+"every model/migration is always available" true regardless of how it
+got onto disk (generated by `Model_Builder`, or hand-added) --
+`gateway_boot()` calls it once for each directory/registry pair on every
+request, before the `gateway_register_models`/`gateway_register_migrations`
+hooks above. For each `.php` file in the directory, it snapshots
+`get_declared_classes()`, `require_once`s the file, and registers
+whichever class newly appeared -- diffing declared classes rather than
+guessing a class name from the file name is what lets this one generic
+method serve both models and migrations (and any hand-added file using
+any naming convention at all), the same reasoning `Registry` itself
+used to share one implementation between `Model_Registry` and
+`Migration_Registry`.
 
 ## The Gateway admin app
 
@@ -2218,6 +2328,35 @@ a `wp_rest` `nonce`, the app's root element id) the same way the block
 editor's own scripts receive REST connection details -- `admin-app/src/
 api.js` reads it to authenticate `fetch()` calls against `gateway/v1`
 routes as the logged-in administrator viewing the page.
+
+### Models screens (list + detail)
+
+The app's other screen (alongside Database Connection below), and the
+one at `/` -- what most visits to the page are actually for. Routed with
+`react-router-dom`'s `HashRouter` (URLs like `#/models/BlogPost`) rather
+than `BrowserRouter`: this app is loaded from one single, fixed wp-admin
+URL (`admin.php?page=gateway`) that WordPress's own PHP routing owns, so
+there's no server-side route for a real path like
+`admin.php?page=gateway/models/BlogPost` for a browser refresh or
+bookmark to actually hit -- the hash fragment sidesteps needing one
+entirely, while still making each model's own URL bookmarkable and the
+back button behave normally.
+
+`ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is the
+"Title" form described above, plus the list of every model that already
+exists (`GET /gateway/v1/models`) -- each row links to `ModelDetail`
+(`admin-app/src/screens/ModelDetail.jsx`, route `/models/:className`),
+which fetches that one model's detail (`GET /gateway/v1/models/<class>`)
+and shows its table name plus its migration's version and whether it has
+actually run. Both screens' data comes from
+`Model_REST_Controller::describe_model()` -- one shared shape for both
+the list and the detail view, so a status badge in the list ("✅ Ready"
+vs "⚠️ Migration not run") and the fuller status line on the detail page
+are never at risk of disagreeing. That method resolves a model's
+migration by re-deriving its class name from the model's own table via
+`Model_Builder::migration_class_for_table()` -- the same naming
+convention `create()` used to generate it -- rather than storing the
+model-to-migration link anywhere separately.
 
 ### Database Connection screen
 
