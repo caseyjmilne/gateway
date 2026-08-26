@@ -380,8 +380,9 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   Featured Image got classified `dt-type-numeric` -- the same class a
   genuinely numeric column like "ID" gets -- and that class carries its
   own header layout in `datatables.net-dt`'s default CSS, moving the sort
-  icon to the *left* of the title (see "Sort icons always on the right"
-  below for the fix, which applies to every column, not just this one).
+  icon to the *left* of the title (see "Sort icons, header titles, and
+  cell content" below for the fix, which applies to every column, not
+  just this one).
   Excluded from the Facets panel entirely
   (`facets-panel.js`): filtering by which rows happen to have a
   particular image has no coherent meaning, and `Facet_Query::
@@ -447,17 +448,19 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   has no other way to know it's now stale, since deploying new code doesn't
   by itself trigger `save_post` or wait out the TTL.
 
-### Sort icons always on the right, header titles never shifted
+### Sort icons, header titles, and cell content: always left, never resized by a theme
 
 `datatables.net-dt`'s own default stylesheet gives any column it
-classifies as `dt-type-numeric`/`dt-type-date` (e.g. "ID") two things,
-both meant to pair with that type's own right-aligned cell *content*: it
+classifies as `dt-type-numeric`/`dt-type-date` (e.g. "ID") three things,
+all meant to pair with that type's own right-aligned cell *content*: it
 reverses the header's flex layout (title and sort icon swap sides), and
-it sets `text-align: right` on the `<th>` itself. Surfaced by Featured
-Image (above): its `data-order` attachment ID, needed for a real sort key
-since the cell holds an `<img>` rather than text, is exactly what makes
-DataTables infer that same numeric type for it too, even though nothing
-about how it *displays* is remotely numeric.
+it sets `text-align: right` on the `<th>` *and* the `<td>` itself.
+Surfaced by Featured Image (above): its `data-order` attachment ID,
+needed for a real sort key since the cell holds an `<img>` rather than
+text, is exactly what makes DataTables infer that same numeric type for
+it too, even though nothing about how it *displays* is remotely numeric.
+
+Each report generalized the fix a little further:
 
 - **The icon side, first:** reported as "sorting icons appear on the left
   [for some columns] while on other columns they appear on the right...
@@ -477,28 +480,54 @@ about how it *displays* is remotely numeric.
   only the *heading* shifted right while the image underneath stayed
   flush left. Reported as "the image sits further left than its heading
   above," then confirmed as "it is the heading, not the content, that is
-  misaligned." Like the icon side, this affects every column uniformly,
-  not just Featured Image: a narrow column like "ID" has the identical
-  inherited shift today, just imperceptibly, since its `flex-grow: 1`
-  title box has almost no slack to visibly shift within.
+  misaligned."
+- **The cell content itself, third:** once the "ID" heading was forced
+  left, its actual numeric content ("8") stayed right-aligned inside its
+  `<td>` -- `datatables.net-dt`'s `dt-type-numeric`/`dt-type-date` rule
+  applies to cells too, not just headers -- so the two now visibly
+  disagreed within the same column. Reported as "fix the alignment so
+  content sits left even if it is numeric."
 
-`blocks/datatable/src/style.scss` forces both directly:
+All three affect every column uniformly, not just Featured Image or ID: a
+narrow column has had the identical inherited title-shift the whole time,
+just imperceptible, since its `flex-grow: 1` title box has almost no
+slack to visibly shift within -- it only became obvious once real numeric
+cell content was compared directly against it.
+
+`blocks/datatable/src/style.scss` forces all three directly:
 
 ```scss
 table.gateway-datatable thead th div.dt-column-header {
 	flex-direction: row !important;
+}
+
+table.gateway-datatable thead th,
+table.gateway-datatable tbody td {
 	text-align: left !important;
 }
 ```
 
-`!important` on both because this overrides a third-party library's own
-default rules -- the same reasoning the `width: 100%` rule above already
-uses -- not fighting this plugin's own CSS, just guaranteeing precedence
-over `datatables.net-dt`'s stylesheet regardless of load order. Scoped to
-`div.dt-column-header` (and its own descendants, via inheritance) only,
-not the `th`/`td` themselves: a numeric/date column's own cell text
-alignment (a separate, unrelated rule) is untouched, since neither report
-was about cell content.
+`!important` throughout because this overrides a third-party library's
+own default rules -- the same reasoning the `width: 100%` rule above
+already uses -- not fighting this plugin's own CSS, just guaranteeing
+precedence over `datatables.net-dt`'s stylesheet regardless of load
+order.
+
+**Header text size:** also reported as rendering too large -- a theme's
+own `table th` styling, sized for a handful of prose columns, not a
+compact data grid. Normalized on `.dt-column-title` (the text node
+itself, not the `<th>`/`div.dt-column-header` around it) to a fixed
+16px with a 4px bottom margin, so the sort-icon glyph next to it
+(`.dt-column-order`, already sized relative to its own `<th>` via
+`datatables.net-dt`'s own `font-size: 0.8em`) scales down together with
+it rather than being pinned to some other fixed size independently:
+
+```scss
+table.gateway-datatable thead th .dt-column-title {
+	font-size: 16px !important;
+	margin-bottom: 4px !important;
+}
+```
 
 **Validation, and how columns reach DataTables:** `render.php` never trusts
 the `columns` attribute blindly -- every requested `{ key, sortable }` is
