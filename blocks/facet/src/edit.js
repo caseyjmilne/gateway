@@ -2,9 +2,9 @@ import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
 import { PanelBody, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
-import FacetKeyControl from './controls/facet-key-control';
-import UiTypeControl from './controls/ui-type-control';
-import CompareControl from './controls/compare-control';
+import FacetKeyControl from '../../shared/controls/facet-key-control';
+import UiTypeControl from '../../shared/controls/ui-type-control';
+import CompareControl from '../../shared/controls/compare-control';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 
 export default function Edit( { attributes, setAttributes, context } ) {

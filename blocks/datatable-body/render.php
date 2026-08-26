@@ -128,41 +128,15 @@ if ( empty( $columns ) ) {
 $columns = array_values( $columns );
 
 // Resolve + validate the requested facets the same way as columns: a key
-// not in $available_columns for this post type is dropped, and each valid
-// facet's 'type' (core|meta|taxonomy) is taken from Column_Registry, never
-// trusted from the attribute, since Facet_Query routes each type very
-// differently (a mislabeled facet could otherwise dodge the SQL-safety
-// allow-list core facets go through).
-$facets = array();
-
-if ( ! empty( $raw_facets ) && is_array( $raw_facets ) ) {
-	foreach ( $raw_facets as $requested_facet ) {
-		if ( empty( $requested_facet['key'] ) ) {
-			continue;
-		}
-
-		$key = is_string( $requested_facet['key'] ) ? trim( $requested_facet['key'] ) : '';
-
-		if ( '' === $key || ! isset( $available_columns[ $key ] ) ) {
-			continue;
-		}
-
-		$value = isset( $requested_facet['value'] ) ? (string) $requested_facet['value'] : '';
-
-		// An incomplete facet (no value entered yet) filters nothing --
-		// skip it rather than querying for an empty value.
-		if ( '' === $value ) {
-			continue;
-		}
-
-		$facets[] = array(
-			'key'     => $key,
-			'type'    => $available_columns[ $key ]['type'],
-			'compare' => isset( $requested_facet['compare'] ) ? $requested_facet['compare'] : '=',
-			'value'   => $value,
-		);
-	}
-}
+// not in $available_columns for this post type -- or not isFilterable --
+// is dropped, and each valid facet's 'type' (core|meta|taxonomy) is taken
+// from Column_Registry, never trusted from the attribute, since
+// Facet_Query routes each type very differently (a mislabeled facet
+// could otherwise dodge the SQL-safety allow-list core facets go
+// through). Shared with gateway/data-cards/render.php and
+// Data_Cards_REST_Controller -- see Facet_Query::validate_facets()'s own
+// docblock.
+$facets = is_array( $raw_facets ) ? \Gateway\Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
 $query_args = array(
 	'post_type'      => $post_type,

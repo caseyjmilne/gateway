@@ -12,7 +12,7 @@
 import { useState } from '@wordpress/element';
 import { Button } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import classnames from '../utils/classnames';
+import classnames from '../../../shared/classnames';
 
 /**
  * @param {Object}   props

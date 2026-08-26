@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/card-facet",
+	"title": "Card Facet",
+	"category": "widgets",
+	"icon": "filter",
+	"description": "An interactive filter control for one of a Data Cards block's configured facets.",
+	"keywords": [ "facet", "filter", "search", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [
+		"gateway/data-cards-facets",
+		"gateway/data-cards",
+		"gateway/data-cards-header",
+		"gateway/data-cards-footer"
+	],
+	"usesContext": [
+		"gateway/data-cards/postType",
+		"gateway/data-cards/facets"
+	],
+	"attributes": {
+		"facetKey": {
+			"type": "string",
+			"default": ""
+		},
+		"uiType": {
+			"type": "string",
+			"default": "input"
+		},
+		"compare": {
+			"type": "string",
+			"default": "contains"
+		}
+	},
+	"supports": {
+		"html": false,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

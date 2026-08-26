@@ -26,7 +26,7 @@
  *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: postType, limit, pageSize.
+ * @var array    $attributes Block attributes: postType, limit, pageSize, facets.
  * @var string   $content    Unused -- see gateway/datatable/render.php's
  *                            own docblock for why (four named zones can't
  *                            be represented by one flat concatenated string).
@@ -62,10 +62,27 @@ $template_blocks = $body_block && ! empty( $body_block->parsed_block['innerBlock
 	? $body_block->parsed_block['innerBlocks']
 	: array();
 
+// Resolve + validate this block's own configured facets (its Facets
+// panel, mirroring gateway/datatable's own) the same defensive way
+// gateway/datatable-body/render.php validates its own -- a key not
+// currently isFilterable for this post type is dropped, never trusted
+// from the attribute. Default values take effect right here, on the
+// always-fresh initial query -- a visitor's own live changes are a
+// separate, later concern (Data_Cards_REST_Controller).
+$available_columns = array();
+
+foreach ( \Gateway\Column_Registry::get_columns( $post_type ) as $available_column ) {
+	$available_columns[ $available_column['key'] ] = $available_column;
+}
+
+$raw_facets = $attributes['facets'] ?? array();
+$facets     = is_array( $raw_facets ) ? \Gateway\Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
+
 // Page 0 (zero-based, see Data_Cards_Renderer's own docblock), no search --
 // the always-fresh state for a real, full-page render. Later pages/searches
 // are fetched by the front end via Data_Cards_REST_Controller.
 $query_args = \Gateway\Data_Cards_Renderer::get_query_args( $post_type, 0, $page_size, '' );
+$query_args = \Gateway\Facet_Query::apply_facets( $query_args, $facets );
 $query      = new WP_Query( $query_args );
 
 $html       = \Gateway\Data_Cards_Renderer::render_items( $query, $template_blocks, $limit, 0, $page_size );
@@ -103,8 +120,24 @@ $markup_by_name = array(
 	'gateway/data-cards-footer' => '',
 );
 
+// gateway/card-facet is allowed THREE places (its own block.json's
+// "parent"): the dedicated gateway/data-cards-facets zone (falls under
+// the $markup_by_name lookup above like any other named zone), OR loose,
+// directly here as a sibling of the four zones -- which $markup_by_name's
+// fixed-key lookup alone can't render, since it isn't one of those four
+// names. Collected separately and rendered right after the Facets zone,
+// regardless of where among the other zones it actually sits in the
+// editor's own InnerBlocks list -- simpler and more predictable than
+// trying to preserve its exact interleaved position.
+$facets_zone_markup  = '';
+$loose_facets_markup = '';
+
 foreach ( $block->inner_blocks as $inner_block ) {
-	if ( isset( $markup_by_name[ $inner_block->name ] ) ) {
+	if ( 'gateway/data-cards-facets' === $inner_block->name ) {
+		$facets_zone_markup .= $inner_block->render();
+	} elseif ( 'gateway/card-facet' === $inner_block->name ) {
+		$loose_facets_markup .= $inner_block->render();
+	} elseif ( isset( $markup_by_name[ $inner_block->name ] ) ) {
 		$markup_by_name[ $inner_block->name ] .= $inner_block->render();
 	}
 }
@@ -116,6 +149,8 @@ foreach ( $block->inner_blocks as $inner_block ) {
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-data-cards-block' ) );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
+	<?php echo $facets_zone_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- gateway/data-cards-facets' own escaped output ('' if absent/empty). ?>
+	<?php echo $loose_facets_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each loose gateway/card-facet child's own escaped output. ?>
 	<?php foreach ( $markup_by_name as $markup ) : ?>
 		<?php if ( '' !== $markup ) : ?>
 			<?php echo $markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each named child's own escaped output. ?>

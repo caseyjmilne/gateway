@@ -4,9 +4,11 @@
  *
  * A single-slot InnerBlocks wrapper for the Data Cards' pagination and
  * results controls -- always rendered below the grid, by construction
- * (it's the only place in the parent's InnerBlocks area gateway/
+ * (it's one of the places in the parent's InnerBlocks area gateway/
  * data-cards-pagination and gateway/data-cards-results are allowed to
  * live; see each one's own "parent" restriction in its block.json).
+ * gateway/card-facet is also allowed here (one of its own three allowed
+ * homes) -- included in $allowed_names below for the same reason.
  * Direct copy of gateway/datatable-footer's own render.php, renamed --
  * see that file's docblock for why $content is unused and every child is
  * filtered by name explicitly instead.
@@ -20,7 +22,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$allowed_names = array( 'gateway/data-cards-pagination', 'gateway/data-cards-results' );
+$allowed_names = array( 'gateway/data-cards-pagination', 'gateway/data-cards-results', 'gateway/card-facet' );
 $markup        = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {

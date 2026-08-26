@@ -83,6 +83,18 @@ class Data_Cards_REST_Controller {
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
 					),
+					'facets'      => array(
+						'type'    => 'string',
+						'default' => '',
+						// Deliberately no sanitize_callback here --
+						// sanitize_text_field() strips tag-like sequences,
+						// which a legitimate facet *value* could contain,
+						// corrupting the JSON before it's ever decoded.
+						// get_items() below json_decode()s this raw and
+						// validates every field of the result explicitly
+						// (Facet_Query::validate_facets()), which is the
+						// real trust boundary here, not this callback.
+					),
 				),
 			)
 		);
@@ -124,7 +136,25 @@ class Data_Cards_REST_Controller {
 		$limit           = absint( $request->get_param( 'limit' ) );
 		$search          = (string) $request->get_param( 'search' );
 
+		// A visitor's own live facet state (see shared/cards.js's
+		// collectActiveFacets()) -- json_decode()'d and re-validated here,
+		// never trusted as-is: Facet_Query::validate_facets() drops
+		// anything whose key isn't a real, isFilterable column for this
+		// post type, exactly the same boundary
+		// gateway/data-cards/render.php applies to its own configured
+		// (default-value) facets.
+		$raw_facets = json_decode( (string) $request->get_param( 'facets' ), true );
+
+		$available_columns = array();
+
+		foreach ( Column_Registry::get_columns( $post_type ) as $available_column ) {
+			$available_columns[ $available_column['key'] ] = $available_column;
+		}
+
+		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
+
 		$query_args = Data_Cards_Renderer::get_query_args( $post_type, $page, $page_size, $search );
+		$query_args = Facet_Query::apply_facets( $query_args, $facets );
 		$query      = new \WP_Query( $query_args );
 
 		$html       = Data_Cards_Renderer::render_items( $query, $template_blocks, $limit, $page, $page_size );

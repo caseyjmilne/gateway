@@ -1,3 +1,10 @@
+// @use rules must come before any other rule in the file -- see
+// available Columns list / Columns+Facets config tables / Default-value
+// modal styling, moved to shared/facets-controls.scss, at the bottom of
+// this file for the "why" (kept the explanatory comment down there,
+// alongside where the styles used to live, rather than only up here).
+@use '../../shared/facets-controls';
+
 /**
  * Styles for the gateway/datatable block.
  *
@@ -120,136 +127,9 @@ table.gateway-datatable thead th .dt-column-title {
 	}
 }
 
-// Available columns: click-to-toggle list (no checkboxes/radios -- the
-// "selected" state lives entirely in the button's own styling).
-.gateway-columns-available {
-	&__group {
-		margin-bottom: 1em;
-
-		&:last-child {
-			margin-bottom: 0;
-		}
-	}
-
-	&__group-title {
-		margin: 0 0 0.5em;
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: #757575;
-	}
-
-	&__list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	&__item {
-		display: inline-block;
-		padding: 4px 10px;
-		border: 1px solid #949494;
-		border-radius: 2px;
-		background: #fff;
-		color: #1e1e1e;
-		font-size: 12px;
-		line-height: 1.4;
-		cursor: pointer;
-
-		&:hover {
-			border-color: #1e1e1e;
-		}
-
-		&.is-selected {
-			border-color: var( --wp-admin-theme-color, #3858e9 );
-			background: var( --wp-admin-theme-color, #3858e9 );
-			color: #fff;
-		}
-	}
-}
-
-// Selected-columns config: drag-and-drop reorder + sortable toggle.
-.gateway-columns-config {
-	width: 100%;
-	margin-top: 1em;
-	border-collapse: collapse;
-
-	th {
-		padding: 4px 6px;
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: #757575;
-		text-align: left;
-	}
-
-	&__handle-col,
-	&__remove-col {
-		width: 1.5em;
-	}
-
-	&__remove {
-		color: #cc1818;
-
-		&:hover:not( :disabled ) {
-			color: #cc1818;
-		}
-	}
-
-	&__row {
-		border-top: 1px solid #e0e0e0;
-
-		&.is-dragging {
-			opacity: 0.4;
-		}
-
-		&.is-drop-target {
-			box-shadow: inset 0 2px 0 var( --wp-admin-theme-color, #3858e9 );
-		}
-
-		td {
-			padding: 6px;
-			vertical-align: middle;
-		}
-	}
-
-	// Only the handle is draggable (see column-config-table.js /
-	// facet-config-table.js) -- the "grab" cursor lives here, not on the
-	// row, so it doesn't imply the rest of the row can start a drag too.
-	&__handle {
-		cursor: grab;
-		color: #949494;
-		text-align: center;
-		letter-spacing: -1px;
-	}
-
-	&__empty {
-		font-style: italic;
-		color: #757575;
-	}
-}
-
-// The Default modal (facet-config-table.js): Compare + Value get their own
-// room here instead of competing for width inside the table row -- that
-// per-row min-width sizing (removed) is exactly what used to force the
-// Facets panel's table into horizontal scrolling in the Inspector
-// sidebar's own limited width.
-.gateway-facet-default-modal {
-	.components-select-control,
-	.components-text-control {
-		margin-bottom: 1em;
-	}
-
-	// Belt-and-suspenders alongside the margin-bottom above: relying only
-	// on the Value field's own trailing margin left "Done" sitting flush
-	// against the input whenever that margin got collapsed against the
-	// modal's own body padding.
-	.components-button.is-primary {
-		margin-top: 0.5em;
-	}
-}
+// Available Columns list, the Columns/Facets config tables, and the
+// Facets panel's Default-value modal -- moved to shared/facets-controls.scss
+// (imported at the very top of this file, since @use must precede every
+// other rule) once gateway/data-cards needed the same Facets panel UI
+// (its own style.scss imports the same partial). See that file's own
+// docblock.

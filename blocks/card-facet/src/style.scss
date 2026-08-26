@@ -1,0 +1,50 @@
+/**
+ * Styles for the gateway/card-facet block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Direct
+ * copy of gateway/facet's own style.scss, renamed -- see that file's
+ * docblock for why `font-size: 16px` lives directly on `.gateway-card-facet`
+ * itself (the native font-size toolbar control's own target), not a
+ * nested element.
+ */
+
+.gateway-card-facet {
+	margin-bottom: 1em;
+	font-size: 16px;
+
+	&__label {
+		display: block;
+		margin: 0 0 4px;
+		font-weight: 600;
+	}
+
+	&__input,
+	&__select {
+		width: 100%;
+		max-width: 20em;
+		padding: 6px 8px;
+		border: 1px solid #757575;
+		border-radius: 2px;
+	}
+
+	&__checkboxes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5em 1em;
+	}
+
+	&__checkbox-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35em;
+		font-weight: normal;
+	}
+
+	&__default-note {
+		margin: 0.35em 0 0;
+		font-size: 0.85em;
+		font-style: italic;
+		color: #757575;
+	}
+}

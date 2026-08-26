@@ -7,7 +7,7 @@
  */
 
 import { __ } from '@wordpress/i18n';
-import classnames from '../utils/classnames';
+import classnames from '../classnames';
 
 /**
  * @param {Object}   props

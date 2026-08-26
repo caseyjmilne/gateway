@@ -67,9 +67,18 @@ class Facet_Query {
 	/**
 	 * Layer validated facets onto a set of WP_Query args.
 	 *
+	 * `$facet['value']` may be a single string (the common case -- an
+	 * Input or single Select choice) or an array of strings (a
+	 * Checkboxes facet with more than one box checked -- see
+	 * validate_facets(), the one place that ever produces the array
+	 * form). An array value always means "match any of these" (OR'd
+	 * together) regardless of `compare` -- matches gateway/facet's own
+	 * client-side checkbox behavior (multiple checked boxes OR-match),
+	 * which this makes possible server-side too.
+	 *
 	 * @param array $query_args WP_Query arguments to modify.
 	 * @param array $facets     Validated facets, each with at least
-	 *                          'key', 'type' ('core'|'meta'|'taxonomy'), 'compare', 'value'.
+	 *                          'key', 'type' ('core'|'meta'|'taxonomy'), 'compare', 'value' (string|string[]).
 	 * @return array Modified query args.
 	 */
 	public static function apply_facets( array $query_args, array $facets ) {
@@ -82,28 +91,33 @@ class Facet_Query {
 		$core_facets = array();
 
 		foreach ( $facets as $facet ) {
-			$compare = self::sanitize_compare( $facet['compare'] );
+			$compare  = self::sanitize_compare( $facet['compare'] );
+			$is_multi = is_array( $facet['value'] );
 
 			if ( 'meta' === $facet['type'] ) {
 				$meta_query[] = array(
 					'key'     => $facet['key'],
 					'value'   => $facet['value'],
-					'compare' => $compare,
+					// An array value is always an OR-match across every
+					// checked box, regardless of the facet's own compare --
+					// same reasoning as the taxonomy branch below.
+					'compare' => $is_multi ? 'IN' : $compare,
 				);
 			} elseif ( 'taxonomy' === $facet['type'] ) {
 				// Term membership is inherently binary -- ">"/"LIKE"/etc.
 				// from the general compare vocabulary don't have a coherent
 				// meaning here, so this only ever distinguishes IN vs. NOT IN.
+				// `terms` already accepts an array of slugs natively.
 				$tax_query[] = array(
 					'taxonomy' => $facet['key'],
 					'field'    => 'slug',
-					'terms'    => array( $facet['value'] ),
+					'terms'    => $is_multi ? array_values( $facet['value'] ) : array( $facet['value'] ),
 					'operator' => '!=' === $compare ? 'NOT IN' : 'IN',
 				);
 			} elseif ( self::sanitize_core_column( $facet['key'] ) ) {
 				$core_facets[] = array(
 					'key'     => $facet['key'],
-					'compare' => $compare,
+					'compare' => $is_multi ? 'IN' : $compare,
 					'value'   => $facet['value'],
 				);
 			}
@@ -132,7 +146,14 @@ class Facet_Query {
 	 * (via the private query var apply_facets() sets). Every column and
 	 * comparison operator is checked against a fixed allow-list before
 	 * ever being placed into the SQL string; the value is always passed
-	 * through $wpdb->prepare()'s placeholder, never interpolated directly.
+	 * through $wpdb->prepare()'s placeholder(s), never interpolated
+	 * directly.
+	 *
+	 * `'IN'` is a value apply_facets() sets directly (never sanitized
+	 * through sanitize_compare()'s own allow-list, which doesn't include
+	 * it) whenever a facet's value is an array -- a Checkboxes facet with
+	 * more than one box checked. Handled as its own case here: one
+	 * placeholder per value, still fully `$wpdb->prepare()`'d.
 	 *
 	 * @param string    $where WHERE clause built so far.
 	 * @param \WP_Query $query Current query.
@@ -148,12 +169,28 @@ class Facet_Query {
 		global $wpdb;
 
 		foreach ( $facets as $facet ) {
-			$column  = self::sanitize_core_column( $facet['key'] );
-			$compare = self::sanitize_compare( $facet['compare'] );
+			$column = self::sanitize_core_column( $facet['key'] );
 
 			if ( ! $column ) {
 				continue;
 			}
+
+			if ( 'IN' === $facet['compare'] ) {
+				$values = array_values( array_filter( (array) $facet['value'], 'strlen' ) );
+
+				if ( empty( $values ) ) {
+					continue;
+				}
+
+				$placeholders = implode( ', ', array_fill( 0, count( $values ), '%s' ) );
+
+				// $column is allow-listed above; every value is its own
+				// prepared placeholder, never interpolated.
+				$where .= $wpdb->prepare( " AND {$wpdb->posts}.{$column} IN ({$placeholders})", $values ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+				continue;
+			}
+
+			$compare = self::sanitize_compare( $facet['compare'] );
 
 			$value = in_array( $compare, array( 'LIKE', 'NOT LIKE' ), true )
 				? '%' . $wpdb->esc_like( $facet['value'] ) . '%'
@@ -165,6 +202,81 @@ class Facet_Query {
 		}
 
 		return $where;
+	}
+
+	/**
+	 * Validate a raw, client-supplied (or attribute-stored) facet list
+	 * against a post type's actual available columns -- the one place
+	 * this check happens, shared by every caller that ever hands facets
+	 * to apply_facets() with data that didn't originate from trusted PHP
+	 * code: `datatable-body/render.php` (the block's own saved `facets`
+	 * attribute -- a site owner's own choice, but still validated the
+	 * same way any post_content could be hand-edited), `gateway/data-cards/render.php`
+	 * (its own saved `facets` attribute, same reasoning), and
+	 * `Data_Cards_REST_Controller` (a visitor's live request -- the one
+	 * case this is a genuine trust boundary, not just defense in depth).
+	 *
+	 * Drops a facet entirely (rather than coercing it into something
+	 * "safe") whenever: its key isn't in `$available_columns` at all; that
+	 * column's `isFilterable` is false; or it resolves to an empty value
+	 * (nothing to filter by). Accepts `value` as a string (the common
+	 * case) or an array of strings (a Checkboxes facet with more than one
+	 * box checked) -- normalizing the array form by dropping empty/non
+	 * -string entries, and dropping the whole facet if that empties it too.
+	 *
+	 * @param array $raw_facets        Untrusted facets, each with at least 'key' and 'value'.
+	 * @param array $available_columns Column_Registry::get_columns() results, keyed by column 'key'.
+	 * @return array[] Validated facets: [ 'key', 'type', 'compare', 'value' (string|string[]) ][].
+	 */
+	public static function validate_facets( array $raw_facets, array $available_columns ) {
+		$facets = array();
+
+		foreach ( $raw_facets as $requested_facet ) {
+			if ( empty( $requested_facet['key'] ) ) {
+				continue;
+			}
+
+			$key = is_string( $requested_facet['key'] ) ? trim( $requested_facet['key'] ) : '';
+
+			if ( '' === $key || ! isset( $available_columns[ $key ] ) || empty( $available_columns[ $key ]['isFilterable'] ) ) {
+				continue;
+			}
+
+			$raw_value = $requested_facet['value'] ?? null;
+
+			if ( is_array( $raw_value ) ) {
+				$value = array_values(
+					array_filter(
+						array_map(
+							static function ( $item ) {
+								return is_scalar( $item ) ? (string) $item : '';
+							},
+							$raw_value
+						),
+						'strlen'
+					)
+				);
+
+				if ( empty( $value ) ) {
+					continue;
+				}
+			} else {
+				$value = is_scalar( $raw_value ) ? (string) $raw_value : '';
+
+				if ( '' === $value ) {
+					continue;
+				}
+			}
+
+			$facets[] = array(
+				'key'     => $key,
+				'type'    => $available_columns[ $key ]['type'],
+				'compare' => isset( $requested_facet['compare'] ) ? $requested_facet['compare'] : '=',
+				'value'   => $value,
+			);
+		}
+
+		return $facets;
 	}
 
 	/**
@@ -257,15 +369,45 @@ class Facet_Query {
 			// phpcs:enable
 		}
 
-		$options = array_map(
-			static function ( $value ) {
-				return array(
-					'value' => $value,
-					'label' => $value,
-				);
-			},
-			array_values( array_filter( (array) $values, 'strlen' ) )
-		);
+		$values = array_values( array_filter( (array) $values, 'strlen' ) );
+
+		if ( 'core' === $column['type'] && 'post_author' === $column['key'] ) {
+			// The raw values here are user IDs, not names -- showing them
+			// as-is would make a "post_author" Select/Checkboxes facet
+			// list raw numeric IDs as its visible option text. One
+			// get_users() call for the whole batch, not one query per ID.
+			$users     = get_users(
+				array(
+					'include' => array_map( 'absint', $values ),
+					'fields'  => array( 'ID', 'display_name' ),
+				)
+			);
+			$names_by_id = array();
+
+			foreach ( $users as $user ) {
+				$names_by_id[ (string) $user->ID ] = $user->display_name;
+			}
+
+			$options = array_map(
+				static function ( $value ) use ( $names_by_id ) {
+					return array(
+						'value' => $value,
+						'label' => isset( $names_by_id[ $value ] ) ? $names_by_id[ $value ] : $value,
+					);
+				},
+				$values
+			);
+		} else {
+			$options = array_map(
+				static function ( $value ) {
+					return array(
+						'value' => $value,
+						'label' => $value,
+					);
+				},
+				$values
+			);
+		}
 
 		set_transient(
 			$cache_key,

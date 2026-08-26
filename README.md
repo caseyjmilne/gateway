@@ -1814,3 +1814,181 @@ with no DataTables dependency to begin with:
 All five moves are behavior-unchanged relocations -- every existing
 caller was updated to import from the new location, nothing about how
 any of them work changed.
+
+## Facets for Data Cards (`isFilterable`/`facetType` + `gateway/card-facet`)
+
+`gateway/datatable`'s own facets flow bundles two things together: a
+top-level **Facets panel** (pick which fields become facets, set each
+one's **default value** via the "Default" button + modal), and a
+**column-index-based front-end binding** (`gateway/facet` finds its
+target column via `getColumnIndexByKey()` and drives `dataTable.column(idx)
+.search()`) that only works because a facet's field is also required to
+be a currently *displayed column*. Data Cards has no columns and no
+`<table>` to bind to by index, so only the second half doesn't transfer
+-- the first half (a top-level place to configure a facet and its
+default) still does, and in fact has to: there's no sensible per-instance
+"default value" home on a freely-placed filter block itself, since
+several instances could exist for the same field, or none at all.
+
+So this reuses the table's actual shape -- a top-level `facets` attribute
++ Facets panel + Default-value modal, `providesContext`'d down -- and
+only drops the parts that were specifically about columns: the "must
+also be a displayed column" gate, and the column-index front-end binding
+(replaced with the same REST-refetch mechanism Data Cards already uses
+for Search/Pagination/Page Size).
+
+### `isFilterable` / `facetType` (`Column_Registry`)
+
+Every column `Column_Registry::get_columns()` returns now also carries:
+```php
+[ ..., 'isFilterable' => bool, 'facetType' => string[] ]
+// facetType is a subset of ['input', 'select', 'checkboxes']; [] when isFilterable is false.
+```
+Says whether a field is suitable for use as a facet at all, and with
+which UI types -- a Select of every distinct `post_content` value is
+nonsense, and a taxonomy has no free-text compare mode `Facet_Query`
+implements. Used by both Facets panels' own field pickers, and by
+`gateway/card-facet`'s own `UiTypeControl` usage to trim which UI types
+make sense for the chosen field.
+
+- **Thumbnail** (`get_thumbnail_column()`): never filterable -- already
+  excluded from the Facets panel before this; now explicit.
+- **Taxonomy** (`get_taxonomy_columns()`): always filterable,
+  `['select', 'checkboxes']` only -- `apply_facets()`'s taxonomy branch
+  is a `tax_query` IN/NOT-IN by term slug, no free-text mode.
+- **Core** (`get_core_columns()`): a new `FILTERABLE_CORE_COLUMNS`
+  allow-list (filterable via `gateway_datatable_filterable_core_columns`,
+  mirroring `Facet_Query::ALLOWED_CORE_COLUMNS`'s own pattern) --
+  `ID`/`post_title`/`post_content`/`post_excerpt`/`post_name`/`post_parent`
+  get `['input']` (free text; a Select of every distinct title would be
+  unusable); `post_status`/`post_author` get `['select', 'checkboxes']`
+  (small, enumerable sets); `post_date`/`post_modified`/`menu_order`/
+  `comment_count` aren't filterable at all -- meaningful filtering on
+  those wants a real range/comparison UI neither `gateway/facet` nor
+  `gateway/card-facet` implements (their live compare vocabulary is
+  `contains`/`equals` only), so offering them would be a confusing dead
+  end, not a real choice.
+
+  One real, if narrow, behavior change for the *existing* table: a facet
+  on one of those four newly-excluded core fields can no longer be newly
+  added or re-added from the picker (an already-saved one keeps working,
+  since reconciliation only checks "is this key still a displayed
+  column," not `isFilterable`) -- a deliberate quality trim, not an
+  oversight; see `FILTERABLE_CORE_COLUMNS`'s own docblock for the
+  reasoning per field.
+- **Meta** (`get_meta_columns()`): always filterable, all three UI types
+  -- no *new* restriction here. WordPress core has no reliable per-key
+  *type* info for the common case (an unregistered-but-detected meta key,
+  most of what `get_used_meta_keys()` surfaces) to narrow against; a new
+  `gateway_datatable_meta_facet_type` filter lets a site that knows more
+  about a given key (e.g. its own `register_post_meta()` `'type'` arg)
+  narrow it later.
+
+**`Facet_Query::get_facet_options()` fix**, needed to make `post_author`
+genuinely usable as a Select/Checkboxes facet: its core-column branch
+used to show raw numeric user IDs as the visible option text (a plain
+`SELECT DISTINCT post_author`, with no name resolution). Now resolves
+each distinct ID to its display name via one batched `get_users()` call,
+keeping the raw ID as the actual matched `value`.
+
+### `Facet_Query::validate_facets()` -- one shared trust boundary, three callers
+
+Previously, `datatable-body/render.php` validated its own `facets`
+attribute inline (a key not in the post type's available columns is
+dropped, never trusted). Extracted into `Facet_Query::validate_facets(
+$raw_facets, $available_columns )`, with two additions: it also drops a
+facet whose column has `isFilterable !== true`, and it accepts `value` as
+a string *or an array of strings* (a Checkboxes facet with more than one
+box checked -- see below). Three callers now share it:
+`datatable-body/render.php` (refactored, behavior-unchanged), `gateway/data-cards/render.php`
+(new -- validating the block's own configured `facets` attribute before
+applying it to the initial query), and `Data_Cards_REST_Controller` (new
+-- validating a visitor's live facet state on every fetch, the one case
+this is a genuine trust boundary rather than defense in depth).
+
+**Checkboxes send every checked value, OR'd together.** A real gap
+otherwise: `apply_facets()` only ever accepted one scalar `value` per
+facet, even though `gateway/facet`'s own client-side checkbox handling
+already OR-matches multiple checked boxes -- shipping `gateway/card-facet`
+checkboxes that silently used only the first would be a known,
+avoidable bug. `tax_query`'s `terms` already accepts an array of slugs
+natively; the meta branch gets `compare: 'IN'` when the value is an
+array; the core-column `posts_where` branch gets a new
+`IN (%s, %s, ...)` case, still fully `$wpdb->prepare()`'d.
+
+### The top-level Facets panel, generalized for reuse
+
+`FacetsPanel`, `FacetConfigTable` (the table + per-row "Default" button
++ modal), and `FACET_COMPARE_OPTIONS` moved from `gateway/datatable/src/controls/`
+to `blocks/shared/controls/`, alongside `AvailableColumnsList` and the
+tiny `classnames()` helper both of those already depended on (and, for
+the editor styling to actually follow -- block.json's own CSS enqueuing
+is per-block -- `.gateway-columns-available`/`.gateway-columns-config`/
+`.gateway-facet-default-modal` moved to a new `shared/facets-controls.scss`,
+`@use`'d from both `gateway/datatable`'s and `gateway/data-cards`'s own
+`style.scss`).
+
+The one real change: `FacetsPanel` used to compute its own selectable
+-fields list internally, from two props (`availableColumns`,
+`displayedColumns` -- `gateway/datatable`-specific, since Data Cards has
+no "displayed columns" concept at all). It now takes an already-filtered
+`selectableColumns` prop the caller computes:
+- `gateway/datatable/src/edit.js`: displayed columns ∩ `isFilterable`.
+- `gateway/data-cards/src/edit.js` (new): `isFilterable` alone.
+
+`gateway/data-cards` gains a `facets` attribute (`[{key, compare,
+value}]`, same shape as the table's own), `providesContext`'d as
+`gateway/data-cards/facets`, and its own "Facets" Inspector panel using
+the same relocated `FacetsPanel` -- including the exact same Default
+-value modal. `useReconcileFieldList` (already generic, already used
+twice by `gateway/datatable/edit.js` -- also relocated to `shared/hooks/`)
+reconciles it against `isFilterable` fields the same way.
+
+### `gateway/data-cards-facets` (new zone) + `gateway/card-facet` (new block)
+
+A fourth required, self-healing zone -- `gateway/data-cards-facets`, a
+direct copy of `gateway/datatable-facets`' own shape -- joins Header/Body/
+Footer as `gateway/data-cards`' own children, rendered first (Facets,
+Header, Body, Footer, matching the table family's fixed order exactly).
+It's the *encouraged* home for `gateway/card-facet` blocks, not the only
+one: per explicit request, `gateway/card-facet`'s own `block.json`
+`parent` also lists `gateway/data-cards`, `gateway/data-cards-header`, and
+`gateway/data-cards-footer` directly -- never `gateway/data-cards-body`
+(the repeated template), where a filter would render once per visible
+card with no well-defined way to reconcile conflicting values. Each of
+those three other homes' own `allowedBlocks`/`$allowed_names` (editor
+*and* render.php -- both need to agree, or the block silently never
+renders even if the inserter offers it) was updated to match. A loose
+`gateway/card-facet` dropped directly under `gateway/data-cards` itself
+(a sibling of the four named zones, not nested in any of them) is
+collected and rendered right after the Facets zone, regardless of where
+among the other zones it actually sits in the editor's own list --
+simpler and more predictable than preserving its exact interleaved
+position.
+
+`gateway/card-facet` itself is `gateway/facet/render.php` and `edit.js`
+minus the "is it a displayed column" half of every check (no counterpart
+exists for cards) -- `FacetKeyControl` (help text genericized),
+`UiTypeControl` (gains an optional `allowedTypes` prop, trimmed here to
+the selected field's own `facetType`), and `CompareControl` are all
+reused as-is from their new `shared/controls/` home. Its own front end
+(`view.js`) doesn't build a request payload itself: `shared/cards.js`'s
+`fetchCardsPage()` already gathers every currently-active card-facet
+under the same grid on *every* fetch (`collectActiveFacets()` --
+searches `.gateway-card-facet` elements, reads each one's current
+value(s) by its `data-ui-type`, resolves "contains"/"equals" to the real
+`LIKE`/`=` `Facet_Query` operators), so a Pagination click or Page Size
+change never silently drops an active filter, and `gateway/card-facet`'s
+own `view.js` just needs to trigger a fetch (debounced 300ms for the
+`input` UI type, matching `gateway/facet`'s own and
+`gateway/data-cards-search`'s reasoning).
+
+Because each card-facet's own DOM value already reflects its default
+(pre-filled server-side by `render.php`, the exact same "Facets panel
+preset" mechanism `gateway/facet` already uses) unless a visitor changed
+it, `collectActiveFacets()` naturally captures the full effective filter
+state -- defaults and live edits alike -- with no separate merge step.
+And since `gateway/data-cards/render.php` now also resolves, validates,
+and applies its own `facets` attribute to the *initial* query (the one
+real change to that file for this feature), a configured default value
+takes effect on first paint, exactly like the table.

@@ -11,7 +11,7 @@
 
 import { Notice, Spinner } from '@wordpress/components';
 
-import AvailableColumnsList from './available-columns-list';
+import AvailableColumnsList from '../../../shared/controls/available-columns-list';
 import ColumnConfigTable from './column-config-table';
 
 /**

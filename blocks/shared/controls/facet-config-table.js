@@ -23,7 +23,7 @@
 import { useState } from '@wordpress/element';
 import { Button, Modal, SelectControl, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import classnames from '../utils/classnames';
+import classnames from '../classnames';
 import { FACET_COMPARE_OPTIONS } from './facet-compare-options';
 
 // Term membership is inherently binary -- the rest of FACET_COMPARE_OPTIONS

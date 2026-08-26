@@ -1,0 +1,15 @@
+/**
+ * Styles for the gateway/data-cards-facets block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Direct
+ * copy of gateway/datatable-facets' own style.scss, renamed.
+ */
+
+.gateway-data-cards-facets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1em;
+	min-height: 2em;
+	margin-bottom: 1em;
+}

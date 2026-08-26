@@ -26,6 +26,86 @@ export function findCardsGridElement( el ) {
 }
 
 /**
+ * Gather every currently-active gateway/card-facet filter under the same
+ * grid as `gridEl`, regardless of which specific block triggered a fetch
+ * -- the fetch equivalent of DataTables' own multi-column search state
+ * (each column's `search()` call independently contributes to the same
+ * overall result, without the caller needing to know about the others).
+ *
+ * Each card-facet's own current DOM value already reflects its default
+ * (pre-filled server-side by render.php) unless a visitor changed it, so
+ * reading "current value" here naturally captures the full effective
+ * filter state -- defaults and live edits alike -- with no separate
+ * merge step.
+ *
+ * `compare` is resolved here, not trusted from the block's own
+ * `data-compare` attribute directly: that attribute only ever means
+ * something for the "input" UI type (`gateway/card-facet/render.php`'s
+ * own docblock -- Select/Checkboxes are always exact matches), and its
+ * two values ("contains"/"equals") are this block's own front-end
+ * vocabulary, not the SQL-level operators `Facet_Query::apply_facets()`
+ * actually expects ('LIKE'/'=') -- translated here, once, rather than
+ * asking the server to understand a second vocabulary.
+ *
+ * @param {HTMLElement} gridEl The grid's wrapper element.
+ * @return {Array<{key: string, compare: string, value: (string|string[])}>}
+ */
+export function collectActiveFacets( gridEl ) {
+	const wrapper = gridEl.closest( '.gateway-data-cards-block' );
+
+	if ( ! wrapper ) {
+		return [];
+	}
+
+	const facets = [];
+
+	wrapper.querySelectorAll( '.gateway-card-facet' ).forEach( ( facetEl ) => {
+		const key = facetEl.getAttribute( 'data-facet-key' );
+		const uiType = facetEl.getAttribute( 'data-ui-type' );
+
+		if ( ! key ) {
+			return;
+		}
+
+		let value;
+
+		if ( 'checkboxes' === uiType ) {
+			value = Array.from(
+				facetEl.querySelectorAll( '.gateway-card-facet__checkbox:checked' )
+			).map( ( checkbox ) => checkbox.value );
+
+			if ( ! value.length ) {
+				return;
+			}
+		} else {
+			const field = facetEl.querySelector(
+				'select' === uiType
+					? '.gateway-card-facet__select'
+					: '.gateway-card-facet__input'
+			);
+
+			value = field ? field.value : '';
+
+			if ( ! value ) {
+				return;
+			}
+		}
+
+		// Select/Checkboxes are always exact matches; only "input" has a
+		// real contains-vs-equals choice (see this function's own docblock).
+		let compare = '=';
+
+		if ( 'input' === uiType ) {
+			compare = 'equals' === facetEl.getAttribute( 'data-compare' ) ? '=' : 'LIKE';
+		}
+
+		facets.push( { key, compare, value } );
+	} );
+
+	return facets;
+}
+
+/**
  * Fetch one page of a Data Cards grid from its REST endpoint.
  *
  * `page` is zero-based throughout (see Data_Cards_Renderer's own
@@ -57,6 +137,15 @@ export async function fetchCardsPage( { gridEl, page, search = '' } ) {
 
 	if ( search ) {
 		url.searchParams.set( 'search', search );
+	}
+
+	// Gathered fresh on every fetch, not just ones a facet itself
+	// triggers -- a Pagination click or Page Size change must not
+	// silently drop an active filter (see this function's own callers).
+	const facets = collectActiveFacets( gridEl );
+
+	if ( facets.length ) {
+		url.searchParams.set( 'facets', JSON.stringify( facets ) );
 	}
 
 	const response = await fetch( url.toString(), { credentials: 'omit' } );
@@ -126,6 +215,26 @@ export function handleCardsFetchError( error ) {
 
 	// eslint-disable-next-line no-console
 	console.error( 'Gateway Data Cards: failed to fetch.', error );
+}
+
+/**
+ * Debounce a function -- shared by gateway/data-cards-search and
+ * gateway/card-facet's own view.js (both fire a fetch per keystroke
+ * otherwise, unlike gateway/datatable-search's own deliberately-undebounced
+ * input, which drives cheap client-side DataTables search instead of a
+ * network request -- see each of those two view.js files for the same
+ * reasoning, restated where the debounce is actually used).
+ *
+ * @param {Function} fn   Function to debounce.
+ * @param {number}   wait Delay in milliseconds.
+ * @return {Function} Debounced wrapper.
+ */
+export function debounce( fn, wait ) {
+	let timeout;
+	return ( ...args ) => {
+		clearTimeout( timeout );
+		timeout = setTimeout( () => fn( ...args ), wait );
+	};
 }
 
 /**

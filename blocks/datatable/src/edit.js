@@ -7,9 +7,9 @@ import PostTypeControl from '../../shared/controls/post-type-control';
 import LimitControl from '../../shared/controls/limit-control';
 import PageSizeControl from '../../shared/controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
-import FacetsPanel from './controls/facets-panel';
+import FacetsPanel from '../../shared/controls/facets-panel';
 import { useAvailableColumns } from '../../shared/use-available-columns';
-import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
+import { useReconcileFieldList } from '../../shared/hooks/use-reconcile-field-list';
 import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-blocks';
 
 const DEFAULT_COLUMNS = [
@@ -139,6 +139,16 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		setAttributes( { facets: value } )
 	);
 
+	// FacetsPanel's own toggle list, narrowed two ways: still a displayed
+	// column (unchanged reasoning, above), AND now isFilterable -- e.g. a
+	// numeric/date field with no useful contains/equals semantics is no
+	// longer offered even if it happens to be displayed. See
+	// Column_Registry::FILTERABLE_CORE_COLUMNS's own docblock.
+	const displayedKeys = columns.map( ( column ) => column.key );
+	const selectableFacetColumns = availableColumns.filter(
+		( column ) => displayedKeys.includes( column.key ) && column.isFilterable
+	);
+
 	return (
 		<>
 			<InspectorControls>
@@ -168,11 +178,15 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
 						availableColumns={ availableColumns }
-						displayedColumns={ columns }
+						selectableColumns={ selectableFacetColumns }
 						isLoading={ isLoadingColumns }
 						error={ columnsError }
 						facets={ facets }
 						onChange={ ( value ) => setAttributes( { facets: value } ) }
+						emptyMessage={ __(
+							'Select one or more columns above before adding facets.',
+							'gateway'
+						) }
 					/>
 				</PanelBody>
 			</InspectorControls>

@@ -1,14 +1,18 @@
 /**
- * "Compare" select control for the facet block's "Input" UI type: how the
+ * "Compare" select control for a facet block's "Input" UI type: how the
  * *live* filter matches as a visitor types.
  *
- * Deliberately just two options -- DataTables' client-side column search
- * has no built-in numeric/date comparison operators (">", ">=", etc.), only
- * substring or regex matching, so that's what these two map onto directly
- * rather than promising a broader vocabulary the front end can't back up.
- * Only relevant for "Input": Select/Checkboxes are always exact matches
- * against a fixed list of values, so this control isn't shown for those
- * (see edit.js).
+ * Deliberately just two options -- neither DataTables' client-side column
+ * search (gateway/facet) nor gateway/data-cards' REST-fetch filtering
+ * (gateway/card-facet) implements numeric/date comparison operators
+ * (">", ">=", etc.), only substring or exact matching, so that's what
+ * these two map onto directly rather than promising a broader vocabulary
+ * neither front end can back up. Only relevant for "Input": Select/
+ * Checkboxes are always exact matches against a fixed list of values, so
+ * this control isn't shown for those (see each block's own edit.js).
+ *
+ * Originally lived under blocks/facet/src/controls/ as gateway/facet's
+ * own control; moved here once gateway/card-facet needed the same one.
  */
 
 import { SelectControl } from '@wordpress/components';

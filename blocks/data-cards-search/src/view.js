@@ -16,22 +16,10 @@ import {
 	fetchCardsPage,
 	renderCardsPage,
 	handleCardsFetchError,
+	debounce,
 } from '../../shared/cards';
 
 const DEBOUNCE_MS = 300;
-
-/**
- * @param {Function} fn   Function to debounce.
- * @param {number}   wait Delay in milliseconds.
- * @return {Function} Debounced wrapper.
- */
-function debounce( fn, wait ) {
-	let timeout;
-	return ( ...args ) => {
-		clearTimeout( timeout );
-		timeout = setTimeout( () => fn( ...args ), wait );
-	};
-}
 
 /**
  * @param {HTMLElement} el This block's own wrapper element.

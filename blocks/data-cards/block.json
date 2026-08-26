@@ -21,12 +21,20 @@
 		"pageSize": {
 			"type": "number",
 			"default": 12
+		},
+		"facets": {
+			"type": "array",
+			"default": [],
+			"items": {
+				"type": "object"
+			}
 		}
 	},
 	"providesContext": {
 		"gateway/data-cards/postType": "postType",
 		"gateway/data-cards/limit": "limit",
-		"gateway/data-cards/pageSize": "pageSize"
+		"gateway/data-cards/pageSize": "pageSize",
+		"gateway/data-cards/facets": "facets"
 	},
 	"supports": {
 		"html": false,

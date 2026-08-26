@@ -6,20 +6,35 @@ import { createBlock } from '@wordpress/blocks';
 import PostTypeControl from '../../shared/controls/post-type-control';
 import LimitControl from '../../shared/controls/limit-control';
 import PageSizeControl from '../../shared/controls/page-size-control';
+import FacetsPanel from '../../shared/controls/facets-panel';
+import { useAvailableColumns } from '../../shared/use-available-columns';
+import { useReconcileFieldList } from '../../shared/hooks/use-reconcile-field-list';
 import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-blocks';
 
-// The entire front-end contract, in order: Header (Page Size + Search)
-// above the grid, the grid itself, then Footer (Results + Pagination) --
-// mirrors gateway/datatable's own three-of-its-four zones (no Facets
-// equivalent in this family -- see README.md for why). useRequiredInnerBlocks()
-// keeps exactly these three present (inserting whichever are missing,
-// without touching any that already exist) rather than a locked
-// `template`/`templateLock: 'all'` -- see that hook's own docblock for why.
+// The entire front-end contract, in order: Facets above everything,
+// Header (Page Size + Search) next, the grid itself, then Footer
+// (Results + Pagination) -- mirrors gateway/datatable's own four zones
+// exactly (see README.md for the "why" behind reusing the table's own
+// top-level Facets panel/Default-value UI here, just without its
+// "displayed column" gate). useRequiredInnerBlocks() keeps exactly these
+// four present (inserting whichever are missing, without touching any
+// that already exist) -- see that hook's own docblock for why, over a
+// locked `template`/`templateLock: 'all'`.
 const REQUIRED_BLOCKS = [
+	'gateway/data-cards-facets',
 	'gateway/data-cards-header',
 	'gateway/data-cards-body',
 	'gateway/data-cards-footer',
 ];
+
+// The four fixed zones above, plus gateway/card-facet itself: one of its
+// three allowed homes is directly here, as a sibling of the four zones
+// (the other two are inside gateway/data-cards-header/-footer -- see
+// each one's own edit.js) -- see that block's own "parent" restriction
+// in its block.json. Deliberately NOT added to REQUIRED_BLOCKS itself:
+// it's optional and repeatable, not a fixed named zone
+// useRequiredInnerBlocks() should ever insert or self-heal.
+const ALLOWED_BLOCKS = [ ...REQUIRED_BLOCKS, 'gateway/card-facet' ];
 
 /**
  * @param {string} name One of REQUIRED_BLOCKS.
@@ -44,7 +59,7 @@ function buildRequiredBlock( name ) {
 }
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
-	const { postType } = attributes;
+	const { postType, facets } = attributes;
 	// `className: 'gateway-data-cards-block'` -- matching render.php's own
 	// `get_block_wrapper_attributes()` call -- so this element is findable
 	// by that class in the editor too, not just the front end: shared/
@@ -57,8 +72,9 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	useRequiredInnerBlocks( clientId, REQUIRED_BLOCKS, buildRequiredBlock );
 
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
-		allowedBlocks: REQUIRED_BLOCKS,
+		allowedBlocks: ALLOWED_BLOCKS,
 		template: [
+			[ 'gateway/data-cards-facets', {} ],
 			[
 				'gateway/data-cards-header',
 				{},
@@ -80,6 +96,29 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		templateLock: false,
 	} );
 
+	// Fetched once per post type, purely to know which fields are
+	// isFilterable -- gateway/data-cards has no "displayed columns" step
+	// (no columns concept at all), so unlike gateway/datatable's own
+	// Facets panel, this is the *only* narrowing this block's own picker
+	// needs.
+	const {
+		availableColumns,
+		isLoading: isLoadingColumns,
+		error: columnsError,
+	} = useAvailableColumns( postType );
+
+	const selectableFacetColumns = availableColumns.filter(
+		( column ) => column.isFilterable
+	);
+
+	// Drops a facet whose field is no longer filterable for the (possibly
+	// new) post type -- same reconciliation gateway/datatable/edit.js
+	// already runs against its own displayed columns, applied against
+	// this block's own narrower "selectable" list instead.
+	useReconcileFieldList( selectableFacetColumns, facets, ( value ) =>
+		setAttributes( { facets: value } )
+	);
+
 	return (
 		<>
 			<InspectorControls>
@@ -95,6 +134,16 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 					<PageSizeControl
 						value={ attributes.pageSize }
 						onChange={ ( value ) => setAttributes( { pageSize: value } ) }
+					/>
+				</PanelBody>
+				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
+					<FacetsPanel
+						availableColumns={ availableColumns }
+						selectableColumns={ selectableFacetColumns }
+						isLoading={ isLoadingColumns }
+						error={ columnsError }
+						facets={ facets }
+						onChange={ ( value ) => setAttributes( { facets: value } ) }
 					/>
 				</PanelBody>
 			</InspectorControls>

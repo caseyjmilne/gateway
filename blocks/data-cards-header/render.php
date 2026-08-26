@@ -4,12 +4,14 @@
  *
  * A single-slot InnerBlocks wrapper for the Data Cards' Page Size and
  * Search controls -- always rendered above the grid, by construction
- * (it's the only place in the parent's InnerBlocks area gateway/
- * data-cards-page-size and gateway/data-cards-search are allowed to live;
- * see each one's own "parent" restriction in its block.json). Direct copy
- * of gateway/datatable-header's own render.php, renamed -- see that
- * file's docblock for why $content is unused and every child is filtered
- * by name explicitly instead.
+ * (it's one of the places in the parent's InnerBlocks area gateway/
+ * data-cards-page-size and gateway/data-cards-search are allowed to
+ * live; see each one's own "parent" restriction in its block.json).
+ * gateway/card-facet is also allowed here (one of its own three allowed
+ * homes) -- included in $allowed_names below for the same reason.
+ * Direct copy of gateway/datatable-header's own render.php, renamed --
+ * see that file's docblock for why $content is unused and every child is
+ * filtered by name explicitly instead.
  *
  * @package Gateway
  *
@@ -20,7 +22,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$allowed_names = array( 'gateway/data-cards-page-size', 'gateway/data-cards-search' );
+$allowed_names = array( 'gateway/data-cards-page-size', 'gateway/data-cards-search', 'gateway/card-facet' );
 $markup        = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {

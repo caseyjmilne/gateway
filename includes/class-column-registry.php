@@ -32,6 +32,38 @@ class Column_Registry {
 	const CACHE_TTL = 15 * MINUTE_IN_SECONDS;
 
 	/**
+	 * Which core (WP_Post field) columns are offered as facets, and which
+	 * UI types (subset of 'input'/'select'/'checkboxes') make sense for
+	 * each -- the same allow-list *shape* as ALLOWED_CORE_COLUMNS in
+	 * Facet_Query, but a distinct list: that one is a SQL-injection safety
+	 * boundary (every core column safe to interpolate at all); this one is
+	 * a UX judgment (which of those are actually *useful* to filter by,
+	 * and how). A key absent here is simply not filterable -- see
+	 * get_core_columns()'s own use of this.
+	 *
+	 * Deliberately excludes: post_date/post_modified (meaningful filtering
+	 * wants a real date-range UI; gateway/facet's live compare vocabulary
+	 * is contains/equals only), menu_order/comment_count (numeric fields
+	 * with no useful contains/equals semantics, and no range UI either).
+	 * post_title/post_content/post_excerpt/post_name/post_parent are free
+	 * -text ('input' only -- a Select of every distinct title would be
+	 * unusable); post_status/post_author are small, enumerable sets
+	 * ('select'/'checkboxes' only -- see get_facet_options()'s own
+	 * post_author-specific label-resolution fix, needed to make that one
+	 * actually usable).
+	 */
+	const FILTERABLE_CORE_COLUMNS = array(
+		'ID'           => array( 'input' ),
+		'post_title'   => array( 'input' ),
+		'post_content' => array( 'input' ),
+		'post_excerpt' => array( 'input' ),
+		'post_name'    => array( 'input' ),
+		'post_parent'  => array( 'input' ),
+		'post_status'  => array( 'select', 'checkboxes' ),
+		'post_author'  => array( 'select', 'checkboxes' ),
+	);
+
+	/**
 	 * Hook cache invalidation into WordPress.
 	 */
 	public static function init() {
@@ -57,7 +89,18 @@ class Column_Registry {
 	/**
 	 * Get every available column for a post type: core WP_Post fields plus
 	 * registered/discovered post meta, each as:
-	 * [ 'key' => string, 'label' => string, 'type' => 'core'|'meta'|'taxonomy' ].
+	 * [ 'key' => string, 'label' => string, 'type' => 'core'|'meta'|'taxonomy'|'thumbnail',
+	 *   'isFilterable' => bool, 'facetType' => string[] ].
+	 *
+	 * `isFilterable`/`facetType` (a subset of `'input'`/`'select'`/
+	 * `'checkboxes'`, empty when `isFilterable` is false) say whether a
+	 * column is suitable for use as a facet, and with which UI types --
+	 * consumed by both `gateway/datatable`'s own Facets panel and
+	 * `gateway/data-cards`'s (`shared/controls/facets-panel.js`) to decide
+	 * which fields to offer at all, and by `gateway/card-facet`'s own
+	 * `UiTypeControl` usage to trim which UI types make sense for the
+	 * chosen field. See each column-producing method below for the
+	 * reasoning behind its own values.
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[] Column definitions.
@@ -194,13 +237,35 @@ class Column_Registry {
 			unset( $labels['post_parent'] );
 		}
 
+		/**
+		 * Filters which core columns are offered as facets, and with which
+		 * UI types -- see FILTERABLE_CORE_COLUMNS's own docblock for the
+		 * reasoning behind the defaults. Map of field key => array of
+		 * 'input'/'select'/'checkboxes'; a key absent here is not
+		 * filterable at all.
+		 *
+		 * @param array  $filterable_core_columns Map of field key => allowed UI types.
+		 * @param string $post_type               Post type slug.
+		 */
+		$filterable_core_columns = apply_filters(
+			'gateway_datatable_filterable_core_columns',
+			self::FILTERABLE_CORE_COLUMNS,
+			$post_type
+		);
+
 		$columns = array();
 
 		foreach ( $labels as $key => $label ) {
+			$facet_type = isset( $filterable_core_columns[ $key ] ) && is_array( $filterable_core_columns[ $key ] )
+				? array_values( $filterable_core_columns[ $key ] )
+				: array();
+
 			$columns[] = array(
-				'key'   => $key,
-				'label' => $label,
-				'type'  => 'core',
+				'key'          => $key,
+				'label'        => $label,
+				'type'         => 'core',
+				'isFilterable' => ! empty( $facet_type ),
+				'facetType'    => $facet_type,
 			);
 		}
 
@@ -221,10 +286,10 @@ class Column_Registry {
 	 * `get_cell_value()` to return pre-rendered `<img>` markup instead of a
 	 * plain string, and `render.php` to `echo` that markup directly rather
 	 * than `esc_html()`-wrapping it (which would print the tag as literal
-	 * text instead of rendering the image). It also opts this column out
-	 * of the Facets panel entirely (`facets-panel.js`) -- filtering a grid
+	 * text instead of rendering the image). `isFilterable => false` opts
+	 * this column out of every Facets picker entirely -- filtering a grid
 	 * by which rows happen to have a particular image doesn't mean
-	 * anything, so it's excluded from that picker.
+	 * anything.
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[] Empty, or a single-item array.
@@ -236,9 +301,11 @@ class Column_Registry {
 
 		return array(
 			array(
-				'key'   => 'featured_image',
-				'label' => __( 'Featured Image', 'gateway' ),
-				'type'  => 'thumbnail',
+				'key'          => 'featured_image',
+				'label'        => __( 'Featured Image', 'gateway' ),
+				'type'         => 'thumbnail',
+				'isFilterable' => false,
+				'facetType'    => array(),
 			),
 		);
 	}
@@ -250,6 +317,10 @@ class Column_Registry {
 	 * internal-only taxonomy's terms. Unlike meta, this is a pure
 	 * registration lookup (no "in use" sampling, no cache-staleness
 	 * concern) since taxonomy registration is static and authoritative.
+	 *
+	 * Always `isFilterable => true, facetType => ['select', 'checkboxes']`
+	 * -- `Facet_Query::apply_facets()`'s taxonomy branch is a `tax_query`
+	 * IN/NOT-IN by term slug only, no free-text ("input") mode.
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[]
@@ -264,9 +335,11 @@ class Column_Registry {
 			}
 
 			$columns[] = array(
-				'key'   => $taxonomy->name,
-				'label' => $taxonomy->label,
-				'type'  => 'taxonomy',
+				'key'          => $taxonomy->name,
+				'label'        => $taxonomy->label,
+				'type'         => 'taxonomy',
+				'isFilterable' => true,
+				'facetType'    => array( 'select', 'checkboxes' ),
 			);
 		}
 
@@ -340,6 +413,33 @@ class Column_Registry {
 				 */
 				'label' => apply_filters( 'gateway_datatable_column_label', self::humanize( $key ), $key, $post_type ),
 				'type'  => 'meta',
+				// Always filterable, with the full UI-type vocabulary --
+				// unlike core/taxonomy columns, WordPress core has no
+				// reliable per-key *type* info for the common case (an
+				// unregistered-but-detected meta key, most of what
+				// get_used_meta_keys() surfaces below) to narrow this
+				// against, so restricting it here would just be guessing.
+				// A site that DOES know more about a given key (e.g. its
+				// own register_post_meta() 'type' arg) can narrow it via
+				// this filter.
+				'isFilterable' => true,
+				'facetType'    => apply_filters(
+					/**
+					 * Filters which UI types (subset of 'input'/'select'/
+					 * 'checkboxes') a meta column offers as a facet.
+					 * Defaults to all three for every meta key -- see this
+					 * method's own docblock for why nothing narrows it by
+					 * default.
+					 *
+					 * @param string[] $facet_type Allowed UI types.
+					 * @param string   $key        Raw meta key.
+					 * @param string   $post_type  Post type slug.
+					 */
+					'gateway_datatable_meta_facet_type',
+					array( 'input', 'select', 'checkboxes' ),
+					$key,
+					$post_type
+				),
 			);
 		}
 
