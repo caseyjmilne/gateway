@@ -1,9 +1,10 @@
 /**
- * "Limit" number field for the datatable block's Inspector panel.
+ * "Limit" number field, shared by every block's Inspector panel that needs
+ * a "maximum items" setting (gateway/datatable, gateway/data-cards).
  *
- * Accepts only non-negative integers; 0 means "no limit". Kept as its own
- * component (like PostTypeControl) so future child blocks/settings panels
- * can reuse it.
+ * Accepts only non-negative integers; 0 means "no limit". Originally lived
+ * under blocks/datatable/src/controls/ as the first consumer; moved here,
+ * unchanged, alongside PostTypeControl once gateway/data-cards needed it too.
  */
 
 import { useEffect, useState } from '@wordpress/element';

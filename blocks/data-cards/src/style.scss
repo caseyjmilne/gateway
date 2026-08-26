@@ -1,0 +1,18 @@
+/**
+ * Styles for the gateway/data-cards block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Minimal,
+ * unlike gateway/datatable's own style.scss: there's no third-party
+ * library (DataTables) default styling to override here -- the actual
+ * grid layout comes entirely from gateway/data-cards-body's own
+ * `supports.layout`/`supports.spacing.blockGap` (see its own style.scss).
+ */
+
+.gateway-data-cards-block {
+	// Guards against a very wide card (an image wider than its column, a
+	// long unbroken string in a Title/Excerpt block) pushing the whole
+	// grid wider than its container -- the same overflow-x gateway/
+	// datatable's own block wrapper already uses, for the same reason.
+	overflow-x: auto;
+}

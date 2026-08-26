@@ -3,14 +3,14 @@ import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { createBlock } from '@wordpress/blocks';
 
-import PostTypeControl from './controls/post-type-control';
-import LimitControl from './controls/limit-control';
-import PageSizeControl from './controls/page-size-control';
+import PostTypeControl from '../../shared/controls/post-type-control';
+import LimitControl from '../../shared/controls/limit-control';
+import PageSizeControl from '../../shared/controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
 import FacetsPanel from './controls/facets-panel';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from './hooks/use-reconcile-field-list';
-import { useRequiredInnerBlocks } from './hooks/use-required-inner-blocks';
+import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-blocks';
 
 const DEFAULT_COLUMNS = [
 	{ key: 'ID', sortable: true },

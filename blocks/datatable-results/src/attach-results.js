@@ -13,36 +13,12 @@
  */
 
 import { hideNativeDataTableWidget } from '../../shared/wait-for-datatable';
-
-/**
- * @param {number} count Number of entries.
- * @return {string} 'entry' for exactly 1, 'entries' otherwise.
- */
-export function pluralizeEntries( count ) {
-	return 1 === count ? 'entry' : 'entries';
-}
-
-/**
- * @param {Object} info The DataTables `page.info()` result.
- * @return {string} The "Showing X to Y of Z entries" (or filtered/empty variant) text.
- */
-export function buildInfoText( info ) {
-	if ( 0 === info.recordsDisplay ) {
-		return `Showing 0 to 0 of 0 ${ pluralizeEntries( 0 ) }`;
-	}
-
-	let text = `Showing ${ info.start + 1 } to ${ info.end } of ${
-		info.recordsDisplay
-	} ${ pluralizeEntries( info.recordsDisplay ) }`;
-
-	if ( info.recordsDisplay !== info.recordsTotal ) {
-		text += ` (filtered from ${ info.recordsTotal } total ${ pluralizeEntries(
-			info.recordsTotal
-		) })`;
-	}
-
-	return text;
-}
+// pluralizeEntries()/buildInfoText() moved to shared/results-text.js (pure
+// functions of a plain `{ start, end, recordsDisplay, recordsTotal }`
+// object, no DataTables dependency) so gateway/data-cards-results can
+// reuse the exact same wording against a REST-fetch response, without a
+// second, silently-divergent copy of it.
+import { buildInfoText } from '../../shared/results-text';
 
 /**
  * @param {HTMLElement}      el        The results block's own wrapper element.

@@ -26,6 +26,8 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-block-loader.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-column-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-columns-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-facet-query.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-data-cards-renderer.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-data-cards-rest-controller.php';
 
 /**
  * Boot the plugin.
@@ -35,5 +37,8 @@ function gateway_boot() {
 	\Gateway\Column_Registry::init();
 	\Gateway\Columns_REST_Controller::init();
 	\Gateway\Facet_Query::init();
+	// Data_Cards_Renderer is a pure static helper with no hooks of its own
+	// (see its own docblock) -- required above, but nothing to init() here.
+	\Gateway\Data_Cards_REST_Controller::init();
 }
 add_action( 'plugins_loaded', 'gateway_boot' );

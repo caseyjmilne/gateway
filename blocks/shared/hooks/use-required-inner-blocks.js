@@ -1,8 +1,12 @@
 /**
- * Self-heals gateway/datatable's required, named children (Facets, Header,
- * Body, Footer) -- inserting any that are missing, at the correct
+ * Self-heals a parent block's required, named children (e.g.
+ * gateway/datatable's Facets/Header/Body/Footer, or gateway/data-cards'
+ * Header/Body/Footer) -- inserting any that are missing, at the correct
  * position, WITHOUT touching any that already exist (their own attributes
- * and nested inner blocks included).
+ * and nested inner blocks included). Fully generic (`clientId, required,
+ * buildBlock`), so it moved here from blocks/datatable/src/hooks/ -- its
+ * first consumer, not its only one -- once gateway/data-cards needed the
+ * exact same self-heal for its own fixed set of named children.
  *
  * Why this exists instead of relying on `template` + `templateLock: 'all'`
  * (an earlier version of this used exactly that): that lock's own built-in

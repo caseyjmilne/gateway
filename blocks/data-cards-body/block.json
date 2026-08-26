@@ -1,0 +1,40 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-cards-body",
+	"title": "Data Cards Template",
+	"category": "widgets",
+	"icon": "layout",
+	"description": "Design one card here -- it's repeated for every matched post. Drop in Post Title, Post Featured Image, Post Excerpt, or any other block.",
+	"keywords": [ "template", "card", "post template", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/data-cards" ],
+	"usesContext": [
+		"gateway/data-cards/postType",
+		"gateway/data-cards/limit",
+		"gateway/data-cards/pageSize"
+	],
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "wide", "full" ],
+		"layout": {
+			"allowSwitching": false,
+			"default": {
+				"type": "grid"
+			}
+		},
+		"spacing": {
+			"blockGap": {
+				"__experimentalDefault": "1.25em"
+			},
+			"__experimentalDefaultControls": {
+				"blockGap": true
+			}
+		}
+	},
+	"style": "file:./build/style-view.css",
+	"editorScript": "file:./build/index.js",
+	"render": "file:./render.php"
+}

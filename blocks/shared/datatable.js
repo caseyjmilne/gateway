@@ -24,6 +24,14 @@
 import $ from 'jquery';
 import 'datatables.net-dt';
 
+// buildLengthMenu()/DEFAULT_LENGTH_MENU moved to shared/length-menu.js (a
+// pure (pageSize) => number[] transform, no DataTables dependency) so
+// gateway/data-cards-page-size's editor preview can reuse the exact same
+// logic without transitively importing 'datatables.net-dt' via this file
+// -- see this file's own docblock for why that import must stay confined
+// to gateway/datatable's own view.js/edit.js.
+import { buildLengthMenu } from './length-menu';
+
 /**
  * Default DataTables options for every Gateway datatable instance.
  */
@@ -34,14 +42,6 @@ const DEFAULT_OPTIONS = {
 	order: [ [ 0, 'desc' ] ],
 	responsive: false,
 };
-
-/**
- * "Show X entries" choices offered alongside the block's own Page Size
- * setting -- rendered exactly as-is if Page Size matches one of these,
- * otherwise the configured value is folded in so the dropdown always
- * reflects what's actually showing.
- */
-const DEFAULT_LENGTH_MENU = [ 10, 25, 50, 100 ];
 
 /**
  * Read the block's Page Size setting off the table (render.php writes it as
@@ -61,24 +61,6 @@ function getPageLengthFromTable( table ) {
 	const parsed = parseInt( raw, 10 );
 
 	return Number.isNaN( parsed ) || parsed <= 0 ? null : parsed;
-}
-
-/**
- * Build a `lengthMenu` array guaranteed to include `pageLength`, so the
- * "Show X entries" control never shows a value that isn't actually an
- * option in its own dropdown.
- *
- * @param {number|null} pageLength The configured page length, if any.
- * @return {number[]} Sorted, deduplicated length menu.
- */
-function buildLengthMenu( pageLength ) {
-	if ( ! pageLength ) {
-		return DEFAULT_LENGTH_MENU;
-	}
-
-	return [ ...new Set( [ pageLength, ...DEFAULT_LENGTH_MENU ] ) ].sort(
-		( a, b ) => a - b
-	);
 }
 
 /**

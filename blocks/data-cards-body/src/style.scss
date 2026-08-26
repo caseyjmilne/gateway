@@ -1,0 +1,33 @@
+/**
+ * Styles for the gateway/data-cards-body block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ *
+ * The grid itself is a <ul> (see render.php) -- resets the browser's
+ * default list styling (bullets, indent) so it reads as a plain grid of
+ * cards, not a bulleted list. Column layout/gap itself is left to
+ * block.json's own `supports.layout`/`supports.spacing.blockGap` --
+ * WordPress' own grid-layout support already generates the necessary
+ * `display: grid`/`grid-template-columns`/`gap` rules for whatever
+ * wrapper class it assigns, the same way it does for core/post-template's
+ * own grid view, so there's nothing to duplicate here.
+ */
+
+.gateway-data-cards-grid {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+// Each rendered card <li> (see Data_Cards_Renderer::render_items()) --
+// get_post_class()'s own classes (post-{ID}, type-{post_type}, etc.) ride
+// alongside this one, matching core/post-template's own per-item <li>
+// convention exactly.
+.gateway-data-cards-grid__item {
+	// Intentionally minimal: the card's actual visual design comes
+	// entirely from whatever blocks the user drops into the template
+	// (their own spacing/color/typography choices) -- this block
+	// shouldn't impose an opinion on top of that.
+	list-style: none;
+}

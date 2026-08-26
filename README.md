@@ -1531,8 +1531,11 @@ would use too.
   init time -- see "Suppressing DataTables' own default widgets" above for
   why the latter can't work once the table and its replacement blocks are
   siblings rather than parent/child.
-- **Controls:** `controls/post-type-control.js` is already a standalone
-  component for reuse in a future query/settings block.
+- **Controls:** `shared/controls/post-type-control.js`,
+  `limit-control.js`, and `page-size-control.js` are already standalone
+  components for reuse in a future query/settings block -- `gateway/data-cards`
+  (below) is exactly that "future block": all three moved here from
+  `gateway/datatable`'s own `controls/`, unchanged, once it needed them too.
 - **A new leaf block that belongs in Facets, Header, or Footer:** add it as
   an allowed child of that existing block (update that block's own
   `edit.js` `allowedBlocks`, and the new block's own `"parent"`) -- no
@@ -1549,3 +1552,265 @@ would use too.
   and repairs it too) and to the lookup array in that block's `render.php`,
   and echo it wherever it belongs. The mechanism already supports any
   number of named zones, not just these four.
+
+## Data Cards: a repeated card template (`gateway/data-cards` block)
+
+A second grid block, alongside `gateway/datatable`: same idea (post type,
+Limit, Page Size, Search, Page Size control, Pagination, Results), but
+instead of columns picked from `Column_Registry` and laid out as `<table>`
+rows, the user designs **one card** -- any blocks at all, commonly
+Featured Image + Title + Excerpt -- and it's repeated once per matched
+post. Modeled directly on WordPress core's own Query Loop / Post Template
+blocks (`core/query` + `core/post-template`), including their editing UX:
+click any card in the editor canvas to make *that* post's copy the real,
+editable one; every other card is an inert preview, not a separate
+"pattern," so editing the template once changes every card everywhere.
+
+### Why this couldn't just be `gateway/datatable` with a different layout
+
+DataTables owns an entire `<table>` and paginates/searches/sorts it
+entirely client-side, over one result set fetched once. A card template
+is fundamentally different: it's arbitrary, user-authored InnerBlocks,
+repeated per post -- not a scalar value per column -- so there's no
+`<td>` for `Column_Registry::get_cell_value()` to return a string into.
+DataTables was never going to render that, and there's no version of
+"just configure it differently" that changes what a card template *is*.
+So this block:
+
+- Does its own real, **server-side pagination/search** (a new REST route,
+  `gateway/v1/data-cards/<post_type>` -- `Data_Cards_REST_Controller`),
+  rather than DataTables' client-side paging over one fetched-once result
+  set.
+- Renders the SAME `gateway/data-cards-search`/`-page-size`/`-pagination`/
+  `-results` *roles* as the table family, as their own dedicated blocks
+  (not the same block names -- see "Why separate blocks, not shared
+  ones" below), wired to fetch instead of a DataTables API instance.
+- Uses `BlockContextProvider` + `useBlockPreview` for the template editing
+  UX (see "The card template block" below) -- something no block in this
+  plugin needed before, because every earlier InnerBlocks area here was
+  either a fixed set of named children (`gateway/datatable`'s own four
+  zones) or a flat, independently-edited list (`gateway/facet` inside
+  Facets) -- never "one authored subtree, cloned per row of data."
+
+### The block family
+
+Mirrors `gateway/datatable`'s own composition almost exactly -- a
+top-level parent with three fixed, named, self-healing children (no
+Facets zone; not asked for, and `Facet_Query`'s discrete exact-match
+facets don't map cleanly onto arbitrary InnerBlocks fields -- can follow
+`gateway/facet`'s own pattern later if a concrete need shows up):
+
+```
+gateway/data-cards               <- postType, limit, pageSize; providesContext
+├─ gateway/data-cards-header
+│  ├─ gateway/data-cards-page-size
+│  └─ gateway/data-cards-search
+├─ gateway/data-cards-body        <- the card template (see below)
+└─ gateway/data-cards-footer
+   ├─ gateway/data-cards-pagination
+   └─ gateway/data-cards-results
+```
+
+`gateway/data-cards/render.php` and `gateway/data-cards/src/edit.js`
+(required-children self-heal, `template` seeding, `PostTypeControl`/
+`LimitControl`/`PageSizeControl` in the Inspector) are close enough to
+`gateway/datatable`'s own that there was nothing to design here -- the one
+real difference is explained in "One query, three siblings" below.
+
+### The card template block (`gateway/data-cards-body`)
+
+This is the one block in this plugin with a real Post-Template-style
+editing UX, and the one place this feature's core mechanism lives.
+
+**Editor (`edit.js`):** `getBlocks(clientId)` reads the template's own
+live InnerBlocks; `getEntityRecords('postType', postType, { per_page:
+pageSize })` (via `@wordpress/core-data`) fetches a page-1 preview list of
+real posts, exactly like `core/post-template`'s own editor preview does.
+One `useState` tracks which post is "active." For every queried post, a
+`BlockContextProvider` supplies `{ postId, postType }` (the same
+un-namespaced context keys core's own Post Title/Post Featured Image/Post
+Excerpt/etc. blocks already read -- so those blocks, and any other core
+block, work inside this template with zero Gateway-specific "field"
+blocks needed at all); inside that provider, the active post gets the
+real, editable template (`useInnerBlocksProps`, seeded with a Featured
+Image + Title + Excerpt starter via `template` on first insert -- nothing
+stops removing/replacing any of it), and every post (active one included)
+also gets an always-mounted `__experimentalUseBlockPreview` clone,
+`display: none`d exactly when it's the active one. Clicking a preview
+makes its post active. This -- rendering a preview for every item and
+hiding, never unmounting, the active one's -- is deliberately copied from
+`core/post-template/edit.js`'s own documented reasoning: "a preview is
+rendered for each block context, but the preview for the active block
+context is hidden. This ensures that when it is displayed again, the
+cached rendering of the block preview is used, instead of having to
+re-render the preview from scratch."
+
+**Front end / real render (`render.php`):** ported from WordPress core's
+own `render_block_core_post_template()` (`packages/block-library/src/post-template/index.php`
+in a `wordpress/gutenberg` checkout), confirmed against that source
+directly rather than reverse-engineered from behavior:
+
+1. `$block->parsed_block['innerBlocks']` -- the authored template -- read
+   directly off the already-instantiated `WP_Block` (a public property,
+   same as `gateway/datatable-body/render.php` already relies on).
+2. For each matched post: `$query->the_post()` (real WordPress Loop state
+   -- global `$post`, `get_the_ID()`, etc. -- not just the block-context
+   injection below, since arbitrary content dropped into the template,
+   e.g. a shortcode, might read post data the old-fashioned way instead
+   of via context); an early-priority `render_block_context` filter
+   injecting `postId`/`postType`; then the template is rendered via a
+   *synthetic* wrapper block (`blockName` set to the never-registered
+   `core/null`, so `WP_Block` resolves no block type for it and just
+   concatenates its innerBlocks/innerContent raw -- no render callback,
+   no block-supports wrapper of its own) -- `(new WP_Block($wrapper))->render(['dynamic' => false])`.
+   Exactly core's own trick for the identical problem (avoiding infinite
+   recursion into the wrapping block's own render callback).
+3. `wp_reset_postdata()` after -- "it's safest to always restore" is core's
+   own reasoning, quoted directly, and applies here unchanged.
+
+All of this lives in the new `Data_Cards_Renderer` service class
+(`includes/class-data-cards-renderer.php`), not scattered across
+`render.php` files -- `render_items()` is the per-post loop above,
+reused by both the initial page's SSR (see "One query, three siblings")
+and every later page `Data_Cards_REST_Controller` serves.
+
+### One query, three siblings
+
+Three of this family's blocks need the SAME query result: the grid itself
+(Body), and Pagination/Results -- both nested under Footer -- need the
+real page count and result totals to render *real* initial state (see
+"PHP renders real state up front" below), not an empty skeleton. Those
+are independently-dispatched sibling blocks (`gateway/data-cards/render.php`
+finds and calls `->render()` on each by name, the same pattern
+`gateway/datatable/render.php` already uses for its own four zones), and
+WordPress block context only ever flows from ancestor to descendant, never
+sideways between siblings -- so none of them can see what another
+computed. Re-running the same `WP_Query` redundantly in each of their own
+`render.php` calls would work, but at the cost of the exact thing "PHP
+renders real state up front" exists for.
+
+Solved the same way WordPress' own Loop API solves the identical
+"sibling template code needs to share state" problem (`global $post`,
+`global $wp_query`): `gateway/data-cards/render.php` -- the one common
+ancestor -- runs the query, renders every card, and computes pager
+metadata ONCE, stores it via `Data_Cards_Renderer::set_current( $state )`
+immediately before dispatching Header/Body/Footer, and calls
+`Data_Cards_Renderer::clear_current()` immediately after, so it never
+leaks into a second, unrelated Data Cards block on the same page. Body,
+Pagination, and Results' own `render.php` files just call `get_current()`
+and render what they're given; if it's `null` (rendered outside a
+`gateway/data-cards` parent -- moved out via List View, previewed
+standalone), they render nothing rather than guessing.
+
+### PHP renders real state up front
+
+Unlike `gateway/datatable-search`/`-page-size`/`gateway/pagination`/
+`gateway/datatable-results` (empty/disabled skeletons, because
+DataTables' page count/length menu/info string are genuinely unknowable
+until the client-side library initializes), none of that applies here --
+the query already ran before any of these render. So:
+
+- `gateway/data-cards-page-size` renders real `<option>`s
+  (`Data_Cards_Renderer::build_length_menu()`, a PHP port of
+  `shared/length-menu.js`'s `buildLengthMenu()` -- itself split out of
+  `shared/datatable.js` so this block's *editor* preview could reuse it
+  too, without transitively importing `datatables.net-dt`), not empty.
+- `gateway/data-cards-pagination` renders real Previous/Next/page-number
+  buttons (`Data_Cards_Renderer::build_page_window()`, a PHP port of
+  `shared/pagination-window.js`'s `getPageWindow()`).
+- `gateway/data-cards-results` renders the real "Showing X to Y of Z
+  entries" text directly (`Data_Cards_Renderer::build_info_text()`, a PHP
+  port of `shared/results-text.js`'s `buildInfoText()`).
+- `gateway/data-cards-search`'s input starts enabled, not disabled --
+  there's no live library instance to wait for at all.
+
+To be precise about what this buys: the grid, its pager buttons/dropdown,
+and its result count all show *correct* content immediately, with no
+flash of an empty shell before JavaScript runs -- there's no version of
+this block that looks broken with JavaScript disabled. Actually paging,
+searching, or changing page size still needs `view.js` (a `<button
+type="button">` has no native behavior of its own) -- this is "no
+incorrect initial state," not "works with JavaScript off."
+
+### Server-driven pagination without trusting the client
+
+`gateway/data-cards-search`/`-page-size`/`-pagination`'s own `view.js`
+call `shared/cards.js`'s `fetchCardsPage()` (plain `fetch()`, not
+`@wordpress/api-fetch` -- no `view.js` in this plugin imports any
+`@wordpress/*` package, and `wp-api-fetch`'s root-url/nonce middleware is
+only ever auto-localized in wp-admin contexts, not guaranteed on a plain
+front-end page) against `Data_Cards_REST_Controller`'s route, and
+`renderCardsPage()` swaps the response's `html` straight into the grid
+(a single `<ul class="gateway-data-cards-grid">`, matching
+`core/post-template`'s own `<ul %wrapper%>%items%</ul>` structure exactly
+-- not a wrapping `<div>` around it -- so the grid-layout classes
+`supports.layout` generates land on the element that actually needs to
+become a CSS grid). A plain `CustomEvent('gatewaycards:update')`,
+dispatched on the grid by whichever widget just fetched, is how
+Pagination/Results re-render themselves off *anyone's* fetch -- the fetch
+equivalent of DataTables' own `'draw'` event, since there's no DataTables
+API instance here to `.on('draw', ...)`.
+
+The one real security question this raises: a public endpoint (this one
+has to be -- it's the front-end pagination mechanism for already
+-published content anyone can already see, so gating it on a capability
+the way `Columns_REST_Controller` gates its own editor-only route would
+403 every logged-out visitor) that could be made to render arbitrary,
+client-supplied block markup would let any visitor make the server
+execute any registered block type's render callback with attacker-chosen
+attributes. So the REST route never accepts a template directly: every
+real page render sets a short-lived transient
+(`set_transient('gwdc_tpl_' . $template_id, serialize_blocks($template), HOUR_IN_SECONDS)`,
+`$template_id` a hash of the template's own content), and the client is
+only ever handed that opaque ID (`data-template-id` on the grid). The
+route can only ever re-render a template the *server itself* already
+rendered once, for the same post type, within the last hour -- never
+anything a client invents. If a tab sits open longer than that (or the
+object cache backing transients drops it early), the route responds `410
+Gone` and `shared/cards.js`'s `handleCardsFetchError()` reloads the page
+-- the only real recovery once the reference is gone, and a rare one in
+practice (an hour is refreshed by every ordinary page view).
+
+Trade-off worth naming: since a real `WP_Query` runs (and the transient
+is written) on every single full-page render of a `gateway/data-cards`
+block, not just the first time, a very high-traffic page carrying one
+could mean a steady stream of small transient writes alongside the query
+itself. Standard object caching (Redis/Memcached, common on any real
+production install) makes this cheap; a site relying on the DB-backed
+transients API by default should be aware this is a real write per page
+view, not a cache hit after the first one.
+
+### Why separate blocks, not shared ones
+
+`gateway/data-cards-search`/`-page-size`/`-pagination`/`-results` are new
+blocks, not the *existing* `gateway/datatable-search`/`gateway/datatable-page-size`/
+`gateway/pagination`/`gateway/datatable-results` retargeted to also
+understand a fetch-based grid. Those existing blocks' whole shape --
+`waitForDataTable()`, `dataTable.page()`/`.search()`/`.page.len()` calls,
+`hideNativeDataTableWidget()` -- is DataTables-instance-specific from the
+ground up; branching each one's `view.js` between "a DataTables instance"
+and "a fetch-driven grid" would tangle two genuinely different data
+-source models into one file for no benefit, and risk regressing the
+well-established table family while doing it. What *did* get shared,
+because it cost nothing and avoided real duplication -- pure functions
+with no DataTables dependency to begin with:
+
+- `getPageWindow()` -- `pagination/src/attach-pagination.js` →
+  `shared/pagination-window.js`.
+- `pluralizeEntries()`/`buildInfoText()` -- `datatable-results/src/attach-results.js`
+  → `shared/results-text.js`.
+- `buildLengthMenu()`/`DEFAULT_LENGTH_MENU` -- `shared/datatable.js` →
+  `shared/length-menu.js` (this one had to move regardless of Data Cards:
+  `shared/datatable.js` imports `datatables.net-dt` as a side effect, and
+  nothing outside `gateway/datatable`'s own `view.js`/`edit.js` may ever
+  import that file -- see "Only one bundle may ever import
+  `datatables.net-dt`" above).
+- `useRequiredInnerBlocks()` -- `gateway/datatable/src/hooks/` →
+  `shared/hooks/` (generic over `(clientId, required, buildBlock)` from
+  day one; its own docblock already said as much).
+- `PostTypeControl`/`LimitControl`/`PageSizeControl` -- `gateway/datatable/src/controls/`
+  → `shared/controls/` (same story -- see "Extending" above).
+
+All five moves are behavior-unchanged relocations -- every existing
+caller was updated to import from the new location, nothing about how
+any of them work changed.

@@ -1,9 +1,11 @@
 /**
- * Post Type select control for the datatable block's Inspector panel.
+ * Post Type select control, shared by every block's Inspector panel that
+ * needs a "which post type" setting.
  *
- * Pulled out into its own component (rather than inlined in edit.js) so it
- * can be reused as-is by future child blocks/settings panels that also need
- * a "which post type" control.
+ * Originally lived under blocks/datatable/src/controls/ as the first (and
+ * only) consumer; its own docblock already anticipated this move ("so it
+ * can be reused as-is by future child blocks/settings panels") -- moved
+ * here, unchanged, once gateway/data-cards needed the same control.
  */
 
 import { SelectControl, Spinner } from '@wordpress/components';

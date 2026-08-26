@@ -1,11 +1,15 @@
 /**
- * "Page Size" number field for the datatable block's Inspector panel.
+ * "Page Size" number field, shared by every block's Inspector panel that
+ * needs a "how many items per page" setting.
  *
- * Maps directly to DataTables' `pageLength` option (via a data attribute
- * read in shared/datatable.js), controlling how many rows are shown per
- * page. Accepts only positive integers; unlike Limit, 0 isn't meaningful
- * here (DataTables needs a page length of at least 1), so invalid/zero
- * input falls back to the default.
+ * For gateway/datatable, this maps to DataTables' `pageLength` option (via
+ * a data attribute read in shared/datatable.js); for gateway/data-cards, it
+ * maps to `Data_Cards_Renderer`'s own `posts_per_page`/length-menu logic
+ * (PHP-side) the same way. Accepts only positive integers; unlike Limit, 0
+ * isn't meaningful here (a page needs at least 1 item), so invalid/zero
+ * input falls back to the default. Originally lived under
+ * blocks/datatable/src/controls/ as the first consumer; moved here,
+ * unchanged, alongside PostTypeControl/LimitControl.
  */
 
 import { useEffect, useState } from '@wordpress/element';

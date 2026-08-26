@@ -1,0 +1,19 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-cards-header",
+	"title": "Data Cards Header",
+	"category": "widgets",
+	"icon": "align-top",
+	"description": "Holds a Data Cards block's Page Size and Search controls, always rendered above its grid.",
+	"keywords": [ "header", "page size", "search", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/data-cards" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"render": "file:./render.php"
+}

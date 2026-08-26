@@ -1,0 +1,19 @@
+/**
+ * Styles for the gateway/data-cards-footer block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Direct
+ * copy of gateway/datatable-footer's own style.scss, renamed -- see that
+ * file's docblock for the `space-between`/`nowrap`/min-height reasoning,
+ * which applies identically here.
+ */
+
+.gateway-data-cards-footer {
+	display: flex;
+	flex-wrap: nowrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1em;
+	min-height: 2em;
+	margin-top: 1em;
+}

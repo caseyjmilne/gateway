@@ -1,0 +1,19 @@
+/**
+ * Styles for the gateway/data-cards-header block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Direct
+ * copy of gateway/datatable-header's own style.scss, renamed -- see that
+ * file's docblock for the `space-between`/min-height reasoning, which
+ * applies identically here.
+ */
+
+.gateway-data-cards-header {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1em;
+	min-height: 2em;
+	margin-bottom: 1em;
+}

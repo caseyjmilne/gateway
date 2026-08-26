@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-cards-page-size",
+	"title": "Data Cards Page Size",
+	"category": "widgets",
+	"icon": "list-view",
+	"description": "The \"Show N entries per page\" control for a Data Cards block's grid.",
+	"keywords": [ "page size", "length", "entries", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/data-cards-header" ],
+	"usesContext": [ "gateway/data-cards/pageSize" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}
