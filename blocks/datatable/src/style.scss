@@ -13,6 +13,31 @@
 	}
 }
 
+// Sort icons always on the right, for every column, regardless of type.
+//
+// `datatables.net-dt`'s own default stylesheet reverses a header's flex
+// layout (title and sort icon swap sides) for any column it classifies as
+// `dt-type-numeric`/`dt-type-date` -- e.g. "ID", or Featured Image (its
+// `data-order` attachment ID, needed for a real sort key since the cell
+// itself holds an `<img>` rather than text, is exactly what makes
+// DataTables infer that type -- see Column_Registry::get_thumbnail_column()
+// above). That's a deliberate DataTables convention (pairing the icon's
+// side with numeric cells' own right-aligned text), not a bug -- but
+// reported as "sorting icons appear on the left [for some columns] while
+// on other columns they appear on the right... we want the sorting icons
+// to always be on the right", i.e. one consistent side regardless of a
+// column's type. `!important` because this overrides a third-party
+// library's own default rule, the same reasoning the `width: 100%` rule
+// above already uses -- not fighting this plugin's own CSS, just
+// guaranteeing precedence over datatables.net-dt's stylesheet regardless
+// of load order. Deliberately scoped to `div.dt-column-header` only, not
+// the `th`/`td` themselves -- numeric/date cells' own right-aligned text
+// (a separate rule, `text-align: right`) is untouched, since nothing
+// about this report was about cell content, only the header icon.
+table.gateway-datatable thead th div.dt-column-header {
+	flex-direction: row !important;
+}
+
 // Featured Image cells (Column_Registry::get_thumbnail_html()): WordPress'
 // registered 'thumbnail' size defaults to 150x150, sized for a normal
 // content column, not a compact grid row -- caps both dimensions here

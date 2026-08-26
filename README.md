@@ -375,7 +375,14 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   so each `<td>` also carries a `data-order` attribute (the attachment
   ID) -- DataTables reads that over a cell's own content when present, so
   the column sorts by a real, stable value instead of every row
-  comparing equal. Excluded from the Facets panel entirely
+  comparing equal. That numeric `data-order` value has a side effect,
+  though: it's also what DataTables infers a column's *type* from, so
+  Featured Image got classified `dt-type-numeric` -- the same class a
+  genuinely numeric column like "ID" gets -- and that class carries its
+  own header layout in `datatables.net-dt`'s default CSS, moving the sort
+  icon to the *left* of the title (see "Sort icons always on the right"
+  below for the fix, which applies to every column, not just this one).
+  Excluded from the Facets panel entirely
   (`facets-panel.js`): filtering by which rows happen to have a
   particular image has no coherent meaning, and `Facet_Query::
   apply_facets()` has no branch for it anyway (neither meta, taxonomy,
@@ -439,6 +446,32 @@ falling back to the default `ID`/`post_title` selection if that empties it.
   cached column list immediately -- a transient created under older logic
   has no other way to know it's now stale, since deploying new code doesn't
   by itself trigger `save_post` or wait out the TTL.
+
+### Sort icons always on the right
+
+`datatables.net-dt`'s own default stylesheet reverses a header's flex
+layout -- title and sort icon swap sides -- for any column it classifies
+as `dt-type-numeric`/`dt-type-date` (e.g. "ID"), pairing the icon's side
+with that type's own right-aligned cell text. Surfaced by Featured Image
+(above): its `data-order` attachment ID, needed for a real sort key since
+the cell holds an `<img>` rather than text, is exactly what makes
+DataTables infer that same numeric type for it too, even though nothing
+about how it *displays* is remotely numeric. Reported as "sorting icons
+appear on the left [for some columns] while on other columns they appear
+on the right... we want the sorting icons to always be on the right" --
+one consistent side, regardless of a column's type, not a fix scoped to
+Featured Image specifically.
+
+`blocks/datatable/src/style.scss` forces it directly:
+`table.gateway-datatable thead th div.dt-column-header { flex-direction:
+row !important; }`. `!important` because this overrides a third-party
+library's own default rule -- the same reasoning the `width: 100%` rule
+above already
+uses -- not fighting this plugin's own CSS, just guaranteeing precedence
+over `datatables.net-dt`'s stylesheet regardless of load order. Scoped to
+`div.dt-column-header` specifically, not the `th`/`td` themselves: a
+numeric/date column's own right-aligned cell *text* (a separate rule) is
+untouched, since the report was about the header icon only.
 
 **Validation, and how columns reach DataTables:** `render.php` never trusts
 the `columns` attribute blindly -- every requested `{ key, sortable }` is
