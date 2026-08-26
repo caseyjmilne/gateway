@@ -7,7 +7,8 @@ powered by [DataTables](https://datatables.net/).
 ## Requirements
 
 - WordPress 6.3+
-- PHP 7.4+
+- PHP 8.2+ (raised from 7.4 by the vendored `illuminate/database` package --
+  see "Laravel Models (Illuminate/Eloquent)" below)
 - Node.js 18+ (build tooling only -- not required at runtime)
 
 ## Getting started
@@ -1992,3 +1993,118 @@ And since `gateway/data-cards/render.php` now also resolves, validates,
 and applies its own `facets` attribute to the *initial* query (the one
 real change to that file for this feature), a configured default value
 takes effect on first paint, exactly like the table.
+
+## Laravel Models (Illuminate/Eloquent)
+
+Gateway's blocks currently read data exclusively from WordPress Custom Post
+Types via `WP_Query` (`Column_Registry`, `Facet_Query`, `Data_Cards_Renderer`,
+etc.). This section is the first step toward an alternative: feeding blocks
+from **Laravel models** backed by their own database tables, defined and
+migrated the same way a Laravel application would, without requiring one.
+Nothing yet *consumes* this -- no model classes, no migrations, and no block
+wiring exist -- this step only vendors the runtime and loads it.
+
+### What's vendored, and why
+
+The package is Laravel's own **`illuminate/database` v11** (Eloquent ORM +
+the Schema/migration Blueprint builder in one package) -- not, despite the
+name that motivated this work, a Symfony database package. The mix-up is
+understandable: `illuminate/database` does pull in several genuine Symfony
+components as transitive dependencies (`symfony/translation`,
+`symfony/clock`, `symfony/translation-contracts`,
+`symfony/polyfill-mbstring`), alongside Carbon (date handling), Doctrine's
+inflector, and a handful of small `illuminate/*` and `psr/*` support
+packages. 20 packages in total resolve from that one top-level requirement;
+the full list is in `composer.lock`.
+
+Both halves of the request work standalone, outside a full Laravel
+application, via Laravel's own "Capsule" pattern:
+
+```php
+use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Schema\Blueprint;
+
+$capsule = new Capsule();
+$capsule->addConnection( [
+	'driver'   => 'mysql', // or 'sqlite', etc.
+	'host'     => DB_HOST,
+	'database' => DB_NAME,
+	'username' => DB_USER,
+	'password' => DB_PASSWORD,
+	'prefix'   => '',
+] );
+$capsule->setAsGlobal();
+$capsule->bootEloquent();
+
+// Migration-style schema definition:
+$capsule->schema()->create( 'widgets', function ( Blueprint $table ) {
+	$table->id();
+	$table->string( 'name' );
+	$table->timestamps();
+} );
+
+// A real Eloquent model:
+class Widget extends \Illuminate\Database\Eloquent\Model {
+	protected $table = 'widgets';
+}
+```
+
+This was verified end to end with an in-memory SQLite smoke test exercising
+schema creation, `Model::create()`/`get()`/`count()`, and Carbon-cast
+timestamp attributes -- all before wiring anything into the plugin itself.
+
+### Why it's committed to the repo instead of installed via Composer
+
+Gateway is distributed as a WordPress plugin: whoever installs it activates
+a folder, they don't run a build step. Requiring `composer install` on
+activation isn't an option, so the fully-resolved `vendor/` directory is
+committed to this repository exactly as `composer install` produced it --
+`composer.json` and `composer.lock` exist for reproducibility and future
+updates, not because an end user (or even a site administrator) ever runs
+Composer themselves.
+
+Producing that tree here required two manual cleanup passes that a normal
+`composer install` gets for free, because this sandbox's proxy couldn't
+reach GitHub's zipball downloads and Composer transparently fell back to
+`git clone` from source for every package:
+
+- Removed each package's embedded `.git` directory (history, not runtime
+  code -- left in place it would bloat the repo and risk being mistaken for
+  a submodule).
+- Applied each package's own `.gitattributes` `export-ignore` rules by
+  hand (normally applied automatically when GitHub generates a dist
+  zipball, not when cloning from source) -- stripping `tests/`, `.github/`
+  CI config, and lint/doc tooling that a production install would never
+  ship. `vendor/` dropped from 86MB/4067 files to 14MB/1935 files as a
+  result, with no runtime code touched.
+
+See `vendor/README.md` for the same explanation from inside that directory,
+plus update instructions for the next time a package version needs bumping.
+
+### Namespaces are unprefixed -- a deliberate, accepted trade-off
+
+These packages ship under their real `Illuminate\*`, `Symfony\*`, `Carbon\*`,
+etc. namespaces -- not rewritten behind a Gateway-specific prefix (the way a
+tool like php-scoper would). This is a known risk in the WordPress plugin
+ecosystem: if another active plugin on the same site bundles a different,
+incompatible version of any of these same packages (Carbon and Symfony
+components are commonly bundled elsewhere), PHP will raise a fatal
+"class ... already declared" error rather than either version silently
+losing. That risk was weighed and knowingly accepted in favor of simplicity
+and working directly with upstream Laravel documentation/examples without a
+translation layer; it can be revisited later if a real collision surfaces.
+
+### Loading
+
+`gateway.php` requires `vendor/autoload.php` (guarded with `file_exists()`)
+immediately after the plugin's own constants are defined, before any of
+Gateway's own `includes/` classes are required -- so every vendored class is
+available from `plugins_loaded` onward, the same lifecycle point Gateway's
+own classes boot from. Gateway's own classes are unaffected: they still use
+plain `require_once` (see Architecture above), not PSR-4 autoloading --
+`vendor/autoload.php` covers only the new vendored packages.
+
+Bundling `illuminate/database` v11 raised the plugin's own minimum PHP
+version from 7.4 to 8.2 (Laravel 11's own requirement) -- reflected in both
+this README's Requirements section and the `Requires PHP` line in
+`gateway.php`'s own plugin header.
