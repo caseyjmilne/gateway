@@ -65,7 +65,7 @@ blocks/
         facets-panel.js         Renders the two below for the selected facets
         available-columns-list.js  Click-to-toggle field selection (shared by columns + facets)
         column-config-table.js  Drag-to-reorder + click-to-toggle-sortable table
-        facet-config-table.js   Drag-to-reorder + compare/value table
+        facet-config-table.js   Drag-to-reorder table; "Default" button opens a modal with compare/value
         facet-compare-options.js  Facet comparison operator list (=, !=, >, ...)
       hooks/
         use-reconcile-field-list.js   Drops selections no longer valid for the current post type
@@ -483,12 +483,25 @@ its grid. The UI mirrors Columns deliberately:
   so there's no "keep at least one" guard here.
 - **`controls/facet-config-table.js`** is the selected-facets equivalent of
   `column-config-table.js`: same drag-and-drop reorder (native HTML5 DnD)
-  and remove ("×") button, but each row carries a **Compare** `<select>`
+  and remove ("×") button, but instead of a Sortable toggle, each row
+  carries one **Default** button, `isPressed` when the facet already has a
+  value set. Clicking it opens a `<Modal>` with the **Compare** `<select>`
   (Equals, Not Equals, Greater/Less Than (or Equal), Contains, Does Not
-  Contain -- `controls/facet-compare-options.js`) and a **Value** `<input>`
-  instead of a Sortable toggle. Per the current spec, Value is a plain text
-  field; loading a field's actual distinct values into a picker instead is
-  a natural later step this structure doesn't block.
+  Contain -- `controls/facet-compare-options.js`) and **Value** `<input>`
+  for that one facet, each given real room rather than squeezed into a
+  table cell. Per the current spec, Value is a plain text field; loading a
+  field's actual distinct values into a picker instead is a natural later
+  step this structure doesn't block.
+  - **Compare and Value used to be their own inline columns** -- reasonable
+    for two short controls, but wide enough Compare labels ("Not Equals",
+    "Greater Than or Equal") plus a Value input, alongside the Field
+    column and the handle/remove columns either side, forced the whole
+    table into horizontal scrolling in the Inspector sidebar's own
+    (comparatively narrow) width. Moving both into a per-row modal
+    -- opened on demand, not permanently competing for space -- fixes the
+    width without losing anything: the row itself now stays exactly as
+    narrow as "Field" + one button, regardless of how long a Compare label
+    or Value gets.
 - **`facets` attribute**: an ordered array of `{ key, compare, value }`,
   default `[]`.
 
@@ -527,9 +540,10 @@ three very different code paths it goes through):
   `compare` only ever distinguishes `IN` (the default, and anything other
   than `!=`) from `NOT IN` -- the rest of the general compare vocabulary
   (`>`, `LIKE`, ...) has no coherent meaning for taxonomy terms.
-  `controls/facet-config-table.js` restricts the Facets panel's own Compare
-  dropdown down to just Equals/Not Equals for a taxonomy facet, so a site
-  owner never sees options that would be silently coerced anyway.
+  `controls/facet-config-table.js` restricts the Compare dropdown in that
+  facet's own Default modal down to just Equals/Not Equals for a taxonomy
+  facet, so a site owner never sees options that would be silently coerced
+  anyway.
 - **Core facets** (filtering by a `WP_Post` field like `post_title` or
   `post_date`) have no built-in `WP_Query` mechanism, so they're applied
   via a `posts_where` filter -- scoped to *only* queries that explicitly

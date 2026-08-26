@@ -158,14 +158,14 @@
 	}
 }
 
-// Facet config table: same base as .gateway-columns-config, plus sizing
-// for the per-row Compare <select> and Value <input>.
-.gateway-facets-config {
-	.components-select-control__input {
-		min-width: 6.5em;
-	}
-
-	.components-text-control__input {
-		min-width: 5em;
+// The Default modal (facet-config-table.js): Compare + Value get their own
+// room here instead of competing for width inside the table row -- that
+// per-row min-width sizing (removed) is exactly what used to force the
+// Facets panel's table into horizontal scrolling in the Inspector
+// sidebar's own limited width.
+.gateway-facet-default-modal {
+	.components-select-control,
+	.components-text-control {
+		margin-bottom: 1em;
 	}
 }
