@@ -1,5 +1,6 @@
-import { memo, useMemo, useState } from '@wordpress/element';
+import { memo, useEffect, useMemo, useState } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';
+import apiFetch from '@wordpress/api-fetch';
 import { __ } from '@wordpress/i18n';
 import {
 	BlockContextProvider,
@@ -102,11 +103,14 @@ const MemoizedDataCardsBodyPreview = memo( DataCardsBodyPreview );
 export default function Edit( {
 	clientId,
 	context: {
+		'gateway/data-cards/sourceType': sourceType = 'postType',
 		'gateway/data-cards/postType': postType = 'post',
+		'gateway/data-cards/collection': collection = '',
 		'gateway/data-cards/pageSize': pageSize = 12,
 	},
 } ) {
 	const [ activeBlockContextId, setActiveBlockContextId ] = useState();
+	const isCollection = 'collection' === sourceType;
 
 	const { posts, blocks } = useSelect(
 		( select ) => {
@@ -117,29 +121,91 @@ export default function Edit( {
 				// A page-1-sized preview, same convention as core/post
 				// -template's own editor preview -- real pagination is a
 				// front-end-only (REST-fetch-driven) concern, see
-				// Data_Cards_REST_Controller.
-				posts: getEntityRecords( 'postType', postType, {
-					per_page: pageSize,
-					offset: 0,
-				} ),
+				// Data_Cards_REST_Controller. Skipped entirely for a
+				// Collection source -- core-data has no notion of a
+				// Gateway model, that's fetched separately below.
+				posts: isCollection
+					? null
+					: getEntityRecords( 'postType', postType, {
+							per_page: pageSize,
+							offset: 0,
+					  } ),
 				blocks: getBlocks( clientId ),
 			};
 		},
-		[ postType, pageSize, clientId ]
+		[ isCollection, postType, pageSize, clientId ]
 	);
 
-	const blockContexts = useMemo(
-		() =>
-			posts?.map( ( post ) => ( {
-				postType: post.type,
-				postId: post.id,
-			} ) ),
-		[ posts ]
-	);
+	// The Collection counterpart of `posts` above -- fetched directly via
+	// the same REST route the admin app's own Records screen uses
+	// (Records_REST_Controller; gated on manage_options, same as
+	// Columns_REST_Controller's own collection route, so this is only
+	// ever attempted for someone who could already configure a Collection
+	// -sourced block in the first place). Purely a preview aid: the front
+	// end's real per-record rendering goes through Data_Cards_Renderer::
+	// render_items_for_collection() instead, which never calls this route.
+	const [ records, setRecords ] = useState( null );
+
+	useEffect( () => {
+		if ( ! isCollection ) {
+			setRecords( null );
+			return;
+		}
+
+		if ( ! collection ) {
+			setRecords( [] );
+			return;
+		}
+
+		let isCurrent = true;
+		setRecords( null );
+
+		apiFetch( {
+			path: `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }`,
+		} )
+			.then( ( response ) => {
+				if ( isCurrent ) {
+					setRecords( response.records || [] );
+				}
+			} )
+			.catch( () => {
+				if ( isCurrent ) {
+					setRecords( [] );
+				}
+			} );
+
+		return () => {
+			isCurrent = false;
+		};
+	}, [ isCollection, collection, pageSize ] );
+
+	// Each item's own id (for the click-to-activate/preview-caching
+	// mechanism below) plus the actual block context to provide -- 'record'
+	// (an unnamespaced context key, matching how core's own 'postId'/
+	// 'postType' aren't namespaced either) for a Collection, so
+	// gateway/card-field-text and any future field-display block can read
+	// `context.record` directly, exactly mirroring the real front-end
+	// render_block_context injection in Data_Cards_Renderer::
+	// render_items_for_collection().
+	const blockContexts = useMemo( () => {
+		if ( isCollection ) {
+			return ( records || [] ).map( ( record ) => ( {
+				id: `record-${ record.id }`,
+				context: { record },
+			} ) );
+		}
+
+		return ( posts || [] ).map( ( post ) => ( {
+			id: `post-${ post.id }`,
+			context: { postType: post.type, postId: post.id },
+		} ) );
+	}, [ isCollection, records, posts ] );
 
 	const blockProps = useBlockProps( { className: 'gateway-data-cards-grid' } );
 
-	if ( ! posts ) {
+	const items = isCollection ? records : posts;
+
+	if ( ! items ) {
 		return (
 			<ul { ...blockProps }>
 				<li>
@@ -149,7 +215,7 @@ export default function Edit( {
 		);
 	}
 
-	if ( ! posts.length ) {
+	if ( ! items.length ) {
 		return (
 			<ul { ...blockProps }>
 				<li>{ __( 'No results found.', 'gateway' ) }</li>
@@ -165,19 +231,17 @@ export default function Edit( {
 	// and same wording, as core/post-template's own edit.js.
 	return (
 		<ul { ...blockProps }>
-			{ blockContexts.map( ( blockContext ) => (
-				<BlockContextProvider key={ blockContext.postId } value={ blockContext }>
-					{ blockContext.postId ===
-					( activeBlockContextId || blockContexts[ 0 ]?.postId ) ? (
+			{ blockContexts.map( ( { id, context: itemContext } ) => (
+				<BlockContextProvider key={ id } value={ itemContext }>
+					{ id === ( activeBlockContextId || blockContexts[ 0 ]?.id ) ? (
 						<DataCardsBodyInnerBlocks />
 					) : null }
 					<MemoizedDataCardsBodyPreview
 						blocks={ blocks }
-						blockContextId={ blockContext.postId }
+						blockContextId={ id }
 						setActiveBlockContextId={ setActiveBlockContextId }
 						isHidden={
-							blockContext.postId ===
-							( activeBlockContextId || blockContexts[ 0 ]?.postId )
+							id === ( activeBlockContextId || blockContexts[ 0 ]?.id )
 						}
 					/>
 				</BlockContextProvider>

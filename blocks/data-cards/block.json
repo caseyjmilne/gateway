@@ -5,14 +5,22 @@
 	"title": "Data Cards",
 	"category": "widgets",
 	"icon": "grid-view",
-	"description": "A paginated, searchable grid of posts for any registered post type, laid out as a repeated, user-designed card template.",
+	"description": "A paginated, searchable grid of posts for any registered post type -- or of a Gateway Collection's records -- laid out as a repeated, user-designed card template.",
 	"keywords": [ "cards", "grid", "posts", "list", "query" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
 	"attributes": {
+		"sourceType": {
+			"type": "string",
+			"default": "postType"
+		},
 		"postType": {
 			"type": "string",
 			"default": "post"
+		},
+		"collection": {
+			"type": "string",
+			"default": ""
 		},
 		"limit": {
 			"type": "number",
@@ -31,7 +39,9 @@
 		}
 	},
 	"providesContext": {
+		"gateway/data-cards/sourceType": "sourceType",
 		"gateway/data-cards/postType": "postType",
+		"gateway/data-cards/collection": "collection",
 		"gateway/data-cards/limit": "limit",
 		"gateway/data-cards/pageSize": "pageSize",
 		"gateway/data-cards/facets": "facets"

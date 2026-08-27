@@ -19,6 +19,15 @@
  * server itself already rendered once, for the same post type, within the
  * last hour -- never anything a client invents.
  *
+ * gateway/v1/data-cards-collection/<class> is the Collection counterpart
+ * of the route above -- genuinely separate rather than one route with a
+ * source-type param, for the same reason Columns_REST_Controller keeps
+ * /columns/<post_type> and /columns-for-collection/<class> apart:
+ * sanitize_key() (needed for a post type slug) lowercases everything,
+ * which would corrupt a model's real, case-sensitive class name. It never
+ * accepts search/facets -- see Data_Cards_Renderer::get_collection_page()'s
+ * own docblock for why Collections don't support either yet.
+ *
  * @package Gateway
  */
 
@@ -39,6 +48,7 @@ class Data_Cards_REST_Controller {
 
 	/**
 	 * GET /gateway/v1/data-cards/<post_type>
+	 * GET /gateway/v1/data-cards-collection/<class>
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -94,6 +104,48 @@ class Data_Cards_REST_Controller {
 						// validates every field of the result explicitly
 						// (Facet_Query::validate_facets()), which is the
 						// real trust boundary here, not this callback.
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/data-cards-collection/(?P<collection>[A-Za-z0-9_]+)',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'get_collection_items' ),
+				// Public, same rationale as the post-type route above --
+				// this only ever re-renders a template the server already
+				// vouched for (see class docblock), for records this same
+				// page already rendered once with no permission check
+				// either.
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					// Deliberately not sanitize_key() -- see class docblock.
+					'collection'  => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'template_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_key',
+					),
+					'page'        => array(
+						'type'              => 'integer',
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+					),
+					'page_size'   => array(
+						'type'              => 'integer',
+						'default'           => 12,
+						'sanitize_callback' => 'absint',
+					),
+					'limit'       => array(
+						'type'              => 'integer',
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
 					),
 				),
 			)
@@ -161,5 +213,42 @@ class Data_Cards_REST_Controller {
 		$pager_meta = Data_Cards_Renderer::build_pager_meta( $query, $page, $page_size, $limit );
 
 		return rest_ensure_response( array_merge( array( 'html' => $html ), $pager_meta ) );
+	}
+
+	/**
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function get_collection_items( \WP_REST_Request $request ) {
+		$collection = (string) $request->get_param( 'collection' );
+
+		if ( ! Model_Registry::has( $collection ) || ! class_exists( $collection ) ) {
+			return new \WP_Error(
+				'gateway_invalid_collection',
+				__( 'Invalid Collection.', 'gateway' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$template_id = sanitize_key( $request->get_param( 'template_id' ) );
+		$template    = get_transient( 'gwdc_tpl_' . $template_id );
+
+		if ( false === $template || ! is_string( $template ) ) {
+			return new \WP_Error(
+				'gateway_template_expired',
+				__( 'This grid needs to be reloaded.', 'gateway' ),
+				array( 'status' => 410 )
+			);
+		}
+
+		$template_blocks = parse_blocks( $template );
+		$page            = absint( $request->get_param( 'page' ) );
+		$page_size       = max( 1, absint( $request->get_param( 'page_size' ) ) );
+		$limit           = absint( $request->get_param( 'limit' ) );
+
+		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit );
+		$html        = Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
+
+		return rest_ensure_response( array_merge( array( 'html' => $html ), $page_result['pager_meta'] ) );
 	}
 }

@@ -51,7 +51,9 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 ?>
 <ul
 	<?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-	data-post-type="<?php echo esc_attr( $state['post_type'] ); ?>"
+	data-source-type="<?php echo esc_attr( $state['source_type'] ?? 'postType' ); ?>"
+	data-post-type="<?php echo esc_attr( $state['post_type'] ?? '' ); ?>"
+	data-collection="<?php echo esc_attr( $state['collection'] ?? '' ); ?>"
 	data-page-size="<?php echo esc_attr( $state['page_size'] ); ?>"
 	data-limit="<?php echo esc_attr( $state['limit'] ); ?>"
 	data-template-id="<?php echo esc_attr( $state['template_id'] ); ?>"

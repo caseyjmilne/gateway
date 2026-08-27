@@ -11,7 +11,9 @@
 	"textdomain": "gateway",
 	"parent": [ "gateway/data-cards" ],
 	"usesContext": [
+		"gateway/data-cards/sourceType",
 		"gateway/data-cards/postType",
+		"gateway/data-cards/collection",
 		"gateway/data-cards/limit",
 		"gateway/data-cards/pageSize"
 	],

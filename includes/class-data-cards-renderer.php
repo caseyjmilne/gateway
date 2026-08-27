@@ -138,6 +138,145 @@ class Data_Cards_Renderer {
 	}
 
 	/**
+	 * Build the record page + pager metadata for one page of a Collection
+	 * -sourced Data Cards grid -- the Eloquent counterpart to
+	 * get_query_args()/build_pager_meta() above, combined into one call
+	 * since (unlike WP_Query, which computes found_posts as a side effect
+	 * of running the query once) an Eloquent Builder needs a genuinely
+	 * separate ->count() before the paginated ->get(), so both are done
+	 * together here rather than asking every caller to sequence them
+	 * correctly themselves.
+	 *
+	 * No search/facet support yet -- see Column_Registry::
+	 * get_columns_for_collection()'s own docblock (every one of its columns
+	 * has isFilterable => false, since Facet_Query is built entirely
+	 * around WP_Query semantics); an Eloquent equivalent is separate,
+	 * undone work, matching gateway/datatable-body's own documented
+	 * Collection limitation.
+	 *
+	 * @param string $collection Model class name.
+	 * @param int    $page       Zero-based page index.
+	 * @param int    $page_size  Items per page.
+	 * @param int    $limit      Block's configured Limit (0 = no cap).
+	 * @return array { records: \Illuminate\Support\Collection, pager_meta: array }
+	 */
+	public static function get_collection_page( $collection, $page, $page_size, $limit ) {
+		$query = $collection::query()->orderBy( 'id', 'desc' );
+
+		/**
+		 * Filters the Eloquent query builder used to populate a Data Cards
+		 * grid when its data source is a Collection. Same purpose as
+		 * `gateway_data_cards_query_args` has for the postType branch.
+		 *
+		 * @param \Illuminate\Database\Eloquent\Builder $query      Query builder.
+		 * @param string                                 $collection Model class name.
+		 */
+		$query = apply_filters( 'gateway_data_cards_collection_query', $query, $collection );
+
+		$found         = (int) $query->count();
+		$page_size     = max( 1, (int) $page_size );
+		$records_total = $limit > 0 ? min( (int) $limit, $found ) : $found;
+		$pages         = (int) ceil( $records_total / $page_size );
+
+		if ( 0 === $records_total ) {
+			return array(
+				'records'    => collect(),
+				'pager_meta' => array(
+					'page'           => 0,
+					'pages'          => 0,
+					'start'          => 0,
+					'end'            => 0,
+					'recordsDisplay' => 0,
+					'recordsTotal'   => 0,
+				),
+			);
+		}
+
+		$page  = max( 0, min( (int) $page, $pages - 1 ) );
+		$start = $page * $page_size;
+		$end   = min( $records_total, $start + $page_size );
+
+		// How many of this page's up-to-$page_size rows the block's Limit
+		// setting still allows -- same "how much of this page is still
+		// under the cap" arithmetic render_items() already does for posts,
+		// applied here to a plain ->skip()/->take() instead of WP_Query's
+		// own posts_per_page/paged.
+		$take = $end - $start;
+
+		$records = $take > 0
+			? ( clone $query )->skip( $start )->take( $take )->get()
+			: collect();
+
+		return array(
+			'records'    => $records,
+			'pager_meta' => array(
+				'page'           => $page,
+				'pages'          => $pages,
+				'start'          => $start,
+				'end'            => $end,
+				'recordsDisplay' => $records_total,
+				'recordsTotal'   => $records_total,
+			),
+		);
+	}
+
+	/**
+	 * Render one `<li>` per matched record, running the given card template
+	 * against each record's own block context -- the Collection counterpart
+	 * to render_items() below, for a Data Cards grid whose data source is a
+	 * Gateway model instead of a post type.
+	 *
+	 * There's no WordPress Loop/global $post equivalent to restore here
+	 * (Eloquent records aren't posts) -- the whole per-item mechanism is
+	 * just the render_block_context injection, unlike render_items()'s own
+	 * extra the_post()/wp_reset_postdata() bookkeeping.
+	 *
+	 * The actual Eloquent model instance is injected into context under
+	 * the plain (unnamespaced) key 'record' -- matching how core's own
+	 * 'postId'/'postType' context keys aren't namespaced either -- so any
+	 * descendant block (gateway/card-field-text, or a future field-display
+	 * block) can declare `"usesContext": ["record"]` and read
+	 * `$block->context['record']` directly. Passing the instance itself,
+	 * not just its id, means every field-display block within the same
+	 * card shares the one record already fetched here rather than each
+	 * re-querying it independently.
+	 *
+	 * @param \Illuminate\Support\Collection $records         Records for the current page (get_collection_page()'s own 'records').
+	 * @param array                          $template_blocks Parsed block list (the card's contents).
+	 * @return string Concatenated `<li>` markup, '' if nothing to render.
+	 */
+	public static function render_items_for_collection( $records, array $template_blocks ) {
+		if ( empty( $template_blocks ) || 0 === count( $records ) ) {
+			return '';
+		}
+
+		$wrapper_block = array(
+			'blockName'    => 'core/null',
+			'attrs'        => array(),
+			'innerBlocks'  => $template_blocks,
+			'innerHTML'    => '',
+			'innerContent' => array_fill( 0, count( $template_blocks ), null ),
+		);
+
+		$content = '';
+
+		foreach ( $records as $record ) {
+			$filter_block_context = static function ( $context ) use ( $record ) {
+				$context['record'] = $record;
+				return $context;
+			};
+
+			add_filter( 'render_block_context', $filter_block_context, 1 );
+			$item_content = ( new \WP_Block( $wrapper_block ) )->render( array( 'dynamic' => false ) );
+			remove_filter( 'render_block_context', $filter_block_context, 1 );
+
+			$content .= '<li class="gateway-data-cards-grid__item">' . $item_content . '</li>';
+		}
+
+		return $content;
+	}
+
+	/**
 	 * Render one `<li>` per matched post, running the given card template
 	 * against each post's own block context.
 	 *

@@ -1,0 +1,32 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/card-field-text",
+	"title": "Field: Text",
+	"category": "widgets",
+	"icon": "editor-textcolor",
+	"description": "Displays one field's value from the current Data Cards record as plain text. Only meaningful inside a Collection-sourced Data Cards card template.",
+	"keywords": [ "field", "text", "model", "collection", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/data-cards-body" ],
+	"usesContext": [
+		"gateway/data-cards/sourceType",
+		"gateway/data-cards/collection",
+		"record"
+	],
+	"attributes": {
+		"fieldKey": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"supports": {
+		"html": false,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "file:./build/index.js",
+	"render": "file:./render.php"
+}

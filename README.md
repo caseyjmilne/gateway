@@ -2069,6 +2069,122 @@ and applies its own `facets` attribute to the *initial* query (the one
 real change to that file for this feature), a configured default value
 takes effect on first paint, exactly like the table.
 
+## Data Cards: a Collection data source + field-display blocks (`gateway/card-field-text`)
+
+`gateway/data-cards` gains the same **Source: Post Type vs Collection**
+choice `gateway/datatable` already has (see that section above for the
+shared pieces -- `SourceTypeControl`/`CollectionControl`,
+`useAvailableColumns()`'s `{ sourceType, collection }` argument,
+`Column_Registry::get_columns_for_collection()`), plus one thing the table
+never needed: a way to display a *value* at all, since a card's contents
+are arbitrary user-authored InnerBlocks (Post Title, Post Excerpt, ...) --
+core blocks that only know how to read a WordPress post, not a Gateway
+model's own fields. `gateway/card-field-text` is the first of what's meant
+to grow into a small family of field-display blocks (Text today; Number,
+Image, Date, etc. are natural, not-yet-built next additions along the same
+pattern).
+
+### The Source setting, on the parent block
+
+New `sourceType`/`collection` attributes on `gateway/data-cards` itself
+(default `'postType'`/`''`), both `providesContext`'d down the same way
+`postType`/`limit`/`pageSize`/`facets` already are. Because
+`get_columns_for_collection()` marks every one of its columns
+`isFilterable: false` (no Eloquent equivalent to `Facet_Query` exists
+yet -- same documented limitation as the table), switching Source to
+Collection naturally empties the block's own Facets panel with no extra
+check needed there.
+
+### Rendering a Collection's cards
+
+`gateway/data-cards/render.php` branches on `sourceType` the same way
+`gateway/datatable-body/render.php` already does, into a second, fully
+independent path:
+
+- **`Data_Cards_Renderer::get_collection_page( $collection, $page,
+  $page_size, $limit )`** -- the Eloquent counterpart to
+  `get_query_args()`/`build_pager_meta()` combined into one call (an
+  Eloquent `Builder` needs a genuinely separate `->count()` before the
+  paginated `->get()`, unlike `WP_Query`'s `found_posts`). Same
+  zero-based `page`/boundary-clamping semantics as the post path, filterable
+  via a new `gateway_data_cards_collection_query` hook mirroring
+  `gateway_datatable_collection_query`. No search/facet support yet, for
+  the same reason the table's own Collection path has none.
+- **`Data_Cards_Renderer::render_items_for_collection( $records,
+  $template_blocks )`** -- the Collection counterpart to `render_items()`:
+  same `core/null`-wrapper-block trick, but instead of injecting
+  `postId`/`postType` into block context per iteration, it injects the
+  *actual Eloquent model instance* under the plain, unnamespaced key
+  `record` (matching how core's own `postId`/`postType` aren't namespaced
+  either). Passing the instance itself -- not just its id -- means every
+  field-display block within the same card shares the one record already
+  fetched here, rather than each one re-querying it independently.
+- A blank/invalid Collection selection renders one informational `<li>`
+  ("Choose a Collection...") in place of the card template, the same
+  degrade-gracefully approach `gateway/datatable-body` uses.
+- The template transient (`Data_Cards_REST_Controller`'s own
+  security boundary -- see that class's docblock) is salted with the
+  collection's class name instead of a post type slug, so a Post-sourced
+  and Collection-sourced Data Cards block with byte-identical card
+  templates never collide on the same key.
+
+**`Data_Cards_REST_Controller`** gains a second, genuinely separate route
+-- `GET /gateway/v1/data-cards-collection/<class>` -- for the same
+`sanitize_key()`-would-corrupt-a-class-name reason
+`columns-for-collection` is its own route rather than a shared one with a
+type param. It accepts `template_id`/`page`/`page_size`/`limit` only (no
+`search`/`facets`), and its callback is a thin wrapper around
+`get_collection_page()` + `render_items_for_collection()`. Public, same
+rationale as the post-type route: front-end pagination for data this same
+page already rendered once with no permission check either.
+
+### Editor preview: real records, not just posts
+
+`gateway/data-cards-body/src/edit.js`'s existing per-post preview
+mechanism (a `BlockContextProvider` per queried post, one active/editable
+at a time, the rest hidden `useBlockPreview()` clones -- ported from
+`core/post-template`'s own edit.js) gains a Collection branch: instead of
+`getEntityRecords( 'postType', ... )` (core-data has no notion of a
+Gateway model), it fetches `GET /gateway/v1/models/<class>/records`
+directly via `apiFetch` -- the same route the admin app's own Records
+screen already uses (gated on `manage_options`, so this is only ever
+attempted for someone who could already configure a Collection-sourced
+block in the first place). Each fetched record becomes a
+`BlockContextProvider` supplying `{ record }` under that same
+unnamespaced `record` key, so `gateway/card-field-text` sees an actual
+value in the editor too, not just on the front end.
+
+### `gateway/card-field-text`
+
+A dynamic, leaf block, insertable only inside `gateway/data-cards-body`
+(`block.json`'s `parent`). `usesContext` lists
+`gateway/data-cards/sourceType`, `gateway/data-cards/collection` (the
+true, `providesContext`-based context chain from the parent
+`gateway/data-cards`), and the plain `record` key described above. Its
+one attribute, `fieldKey`, is chosen from a `SelectControl` fed by
+`useAvailableColumns( '', { sourceType: 'collection', collection } )` --
+the exact same hook, and the exact same REST route
+(`columns-for-collection`), the table and the top-level Facets panel
+already use. This is what makes the field list "an accurate list of only
+the available fields for that model type": it's re-fetched automatically
+whenever the parent's Collection changes, never a hardcoded or stale
+guess, and a field that's since been removed from the model surfaces as a
+"no longer exists" warning in the Inspector rather than silently
+rendering nothing.
+
+`render.php` re-validates `fieldKey` against
+`Column_Registry::get_columns_for_collection( $collection )` the same
+defensive way every other block in this plugin re-validates a
+configured key against its own current availability -- a stale field
+name must never surface whatever attribute happens to share its name on
+the Eloquent record instead (`id`, timestamps, anything else Eloquent
+exposes that isn't a real, user-defined field). The value itself is read
+straight off the record injected via context (`$record->{$field_key}`)
+and printed with `esc_html()`, no other formatting -- later field-display
+blocks (Number, Date, Image, ...) are expected to follow this same shape
+(one block per "how to render this field's value") with their own
+type-appropriate output instead.
+
 ## Laravel Models (Illuminate/Eloquent)
 
 Gateway's blocks currently read data exclusively from WordPress Custom Post

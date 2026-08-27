@@ -3,7 +3,9 @@ import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { createBlock } from '@wordpress/blocks';
 
+import SourceTypeControl from '../../shared/controls/source-type-control';
 import PostTypeControl from '../../shared/controls/post-type-control';
+import CollectionControl from '../../shared/controls/collection-control';
 import LimitControl from '../../shared/controls/limit-control';
 import PageSizeControl from '../../shared/controls/page-size-control';
 import FacetsPanel from '../../shared/controls/facets-panel';
@@ -59,7 +61,7 @@ function buildRequiredBlock( name ) {
 }
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
-	const { postType, facets } = attributes;
+	const { sourceType, postType, collection, facets } = attributes;
 	// `className: 'gateway-data-cards-block'` -- matching render.php's own
 	// `get_block_wrapper_attributes()` call -- so this element is findable
 	// by that class in the editor too, not just the front end: shared/
@@ -96,16 +98,20 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		templateLock: false,
 	} );
 
-	// Fetched once per post type, purely to know which fields are
+	// Fetched once per post type/Collection, purely to know which fields are
 	// isFilterable -- gateway/data-cards has no "displayed columns" step
 	// (no columns concept at all), so unlike gateway/datatable's own
 	// Facets panel, this is the *only* narrowing this block's own picker
-	// needs.
+	// needs. Every Collection column comes back with isFilterable => false
+	// (see Column_Registry::get_columns_for_collection()'s own docblock --
+	// no Facet_Query equivalent exists yet for Eloquent), so switching to
+	// Collection naturally empties the Facets panel below rather than
+	// needing its own separate check here.
 	const {
 		availableColumns,
 		isLoading: isLoadingColumns,
 		error: columnsError,
-	} = useAvailableColumns( postType );
+	} = useAvailableColumns( postType, { sourceType, collection } );
 
 	const selectableFacetColumns = availableColumns.filter(
 		( column ) => column.isFilterable
@@ -123,10 +129,21 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		<>
 			<InspectorControls>
 				<PanelBody title={ __( 'Data Cards Settings', 'gateway' ) }>
-					<PostTypeControl
-						value={ postType }
-						onChange={ ( value ) => setAttributes( { postType: value } ) }
+					<SourceTypeControl
+						value={ sourceType }
+						onChange={ ( value ) => setAttributes( { sourceType: value } ) }
 					/>
+					{ 'collection' === sourceType ? (
+						<CollectionControl
+							value={ collection }
+							onChange={ ( value ) => setAttributes( { collection: value } ) }
+						/>
+					) : (
+						<PostTypeControl
+							value={ postType }
+							onChange={ ( value ) => setAttributes( { postType: value } ) }
+						/>
+					) }
 					<LimitControl
 						value={ attributes.limit }
 						onChange={ ( value ) => setAttributes( { limit: value } ) }
