@@ -1138,21 +1138,22 @@ In the Inspector: pick which of the parent's configured facets this
 control represents (`controls/facet-key-control.js`, populated from the
 `gateway/datatable/facets` context), then a UI Type
 (`controls/ui-type-control.js`: Input, Select, or Checkboxes), and -- for
-Input only -- a **Compare** (`controls/compare-control.js`, restricted here
-to `STRING_ONLY_COMPARE_OPTIONS`): Contains (`LIKE`) or Equals (`=`) --
-the same two real operators `Facet_Query` itself uses, just a narrower
-menu than that shared control offers by default (see "Full
-comparison-operator support" under the Data Cards Facets section for why
-`gateway/card-facet`'s own equivalent offers the full vocabulary and this
-one doesn't). This is deliberately separate from, and unrelated to, the
-*preset* `compare` set on the Data Table block's Facets panel (`=`, `!=`,
-`>`, ...): that one is baked into the initial server-side query; this one
-governs how the *live*, client-side filter matches as a visitor types.
-It's deliberately just two options here -- DataTables' `column().search()`
-has no native numeric/date comparison operators, only substring/regex
-matching, so Contains/Equals is what that mechanism can actually back up.
-Not shown for Select/Checkboxes, since exact match is the only behavior
-that makes sense against a fixed list of discrete values there.
+Input only -- a **Compare** (`controls/compare-control.js`): the full
+`FACET_COMPARE_OPTIONS` vocabulary (Equals, Not Equals, Greater Than,
+Greater Than or Equal, Less Than, Less Than or Equal, Contains, Does Not
+Contain) -- the same list, and the same real operator values, the
+top-level Facets panel's own Default-value modal already offers, so a
+Number/Range field's *live* facet can do a real "Estimated Hours > 2" too
+(see "Real comparison operators for the live filter, not just Contains/
+Equals" under Front-end hookup below for how `view.js` actually backs
+each one up). This is deliberately separate from, and unrelated to, the
+*preset* `compare` set on the Data Table block's Facets panel: that one
+is baked into the initial server-side query; this one governs how the
+*live*, client-side filter matches as a visitor types -- but as of this,
+both draw from the identical vocabulary, for consistency between the two
+places a comparison operator can be chosen. Not shown for Select/
+Checkboxes, since exact match is the only behavior that makes sense
+against a fixed list of discrete values there.
 
 A facet block only has something to hook into once its chosen field is
 *also* one of the datatable's currently displayed columns (its DataTables
@@ -1242,19 +1243,26 @@ genuinely has none yet, rather than inventing placeholder text.
 2. Locates the target column via `shared/dom.js`'s `getColumnIndexByKey()`,
    matching this facet's `data-facet-key` against each `<th>`'s
    `data-column-key` (written by the datatable's `render.php`).
-3. Wires interaction to `column.search(...).draw()`, reading the block's
-   own `data-compare` for the Input control -- always one of the real
+3. Wires interaction, reading the block's own `data-compare` for the Input
+   control -- always one of `Facet_Query::ALLOWED_COMPARE`'s own real
    operator values (`render.php` normalizes it, including a stored legacy
    `'contains'`/`'equals'` value from before this vocabulary was unified
-   plugin-wide, forward to `'LIKE'`/`'='`):
-   - **Input, `LIKE`** (Contains, default): plain substring search
-     (`regex: false`), debounced 300ms.
-   - **Input, `=`** (Equals), and **Select**/**Checkboxes** (always exact,
-     regardless of `data-compare` -- that attribute only governs Input): an
-     anchored regex built by `exactMatchPattern()` for an exact match rather
-     than DataTables' default substring behavior -- picking one option
-     shouldn't also match every other value that happens to contain it as a
-     substring. Values are regex-escaped first.
+   plugin-wide, forward to `'LIKE'`/`'='`). Two genuinely different
+   mechanisms back these, split by what DataTables' own API can actually
+   express:
+   - **`'LIKE'`** (Contains, default) **and `'='`** (Equals), plus
+     **Select**/**Checkboxes** (always exact, regardless of `data-compare`
+     -- that attribute only ever governs Input): `column.search(...).draw()`,
+     DataTables' own built-in per-column search -- a plain substring
+     (`LIKE`) or, for `'='`/Select/Checkboxes, an anchored regex built by
+     `exactMatchPattern()` for an exact match rather than DataTables'
+     default substring behavior (picking one option shouldn't also match
+     every other value that happens to contain it as a substring). Values
+     are regex-escaped first, debounced 300ms for Input.
+   - **Every other operator** (`>`, `>=`, `<`, `<=`, `!=`, `'NOT LIKE'`):
+     see "Real comparison operators for the live filter" immediately below
+     -- `column().search()` has no way to express these at all, so they
+     go through a different DataTables extensibility point entirely.
 
    `exactMatchPattern()` matches a value as a full, standalone item in a
    **comma-separated list**, not just the whole cell (`(^|, )value(, |$)`,
@@ -1271,6 +1279,67 @@ genuinely has none yet, rather than inventing placeholder text.
    `get_cell_filter_value()` above); `view.js` itself needs no awareness of
    that, since `data-filter` is a plain DataTables convention the library
    honors automatically once the attribute is present in the markup.
+
+### Real comparison operators for the live filter, not just Contains/Equals
+
+`column().search()` -- what the Contains/Equals branch above uses -- is
+DataTables' *per-column text search* API: a plain substring or regex
+match against a cell's own search data, with no numeric-comparison or
+negation concept built in at all. A real "Greater Than"/"Does Not
+Contain"/etc. facet needs a genuinely different DataTables extensibility
+point: `$.fn.dataTable.ext.search` -- a single, global array of plain
+functions, each run against **every row on every `draw()`** (of **every**
+DataTable instance on the page, since the array isn't scoped to one
+table), returning whether to include that row. This is DataTables' own
+documented mechanism for exactly this case (its own "range filtering"
+example uses the identical approach).
+
+- **`registerCustomCompareFilter()`** pushes one such function per facet
+  instance -- once, not re-pushed on every keystroke, since every
+  already-registered function reruns automatically on every `draw()`. The
+  function itself does two things before considering the row at all:
+  bails out (`return true`, impose no filter) if `settings.nTable !==`
+  this facet's own `<table>` (the array being global and shared means a
+  function that didn't scope itself this way would filter *every*
+  DataTable on the page, not just its own), and bails out the same way
+  while the input is empty (a facet with nothing typed into it yet must
+  never hide rows). The input's own `input` listener (debounced 300ms,
+  same as the Contains/Equals branch) only updates a closure variable this
+  function reads and calls `dataTable.draw()` -- the redraw is what
+  actually reruns every registered filter function, this one included,
+  against the (unchanged) row data.
+- **`compareValues( compare, cellValue, inputValue )`** is the actual
+  comparison, run once per row by that function: for `'NOT LIKE'`, a
+  case-insensitive substring check, negated. For the four numeric
+  operators (`>`, `>=`, `<`, `<=`) and `'!='`, both sides are parsed with
+  `parseFloat()` first -- if *both* parse as real numbers, the comparison
+  is numeric (so a Number/Range field's "Estimated Hours > 2" behaves
+  exactly like the same comparison already does server-side, via
+  `Facet_Query::apply_collection_facets()`'s own `where()` call against a
+  real numeric column); otherwise it falls back to a plain string
+  comparison, so choosing "Greater Than" against non-numeric text still
+  does something coherent (lexicographic ordering) instead of silently
+  matching nothing.
+- The row value being compared is `searchData[columnIndex]` -- confirmed
+  directly against DataTables' own source
+  (`node_modules/datatables.net/js/dataTables.js`'s `_fnFilterCustom()`,
+  which calls every registered function as
+  `filters[i]( settings, row._aFilterData, rowIdx, row._aData, j )`) to be
+  the exact same per-column **filter data** `column().search()` and the
+  global search box already match against -- i.e. a cell's `data-filter`
+  attribute when present, its rendered text otherwise. One value, one
+  source of truth, regardless of which of the two mechanisms above ends
+  up reading it.
+
+`view.js` importing plain `'jquery'` directly (for `$.fn.dataTable.ext.search`)
+is the same safe case `shared/wait-for-datatable.js`'s own docblock
+already establishes for this file -- it never touches the
+`'datatables.net-dt'` plugin module itself (confirmed in the rebuilt
+bundle: no `datatables.net` string present at all), only the shared,
+externalized jQuery instance the plugin later attaches its own
+extensions onto elsewhere. `gateway/facet`'s own `CompareControl` usage
+(editor) now offers the full vocabulary too, matching `gateway/card-facet`'s
+-- see "Configuring a facet block" above.
 
 **Only one bundle may ever import `datatables.net-dt`.** An earlier version
 of this had the facet block's `view.js` call the same idempotent
@@ -2333,24 +2402,24 @@ only an unnecessarily restrictive front-end control.
   `options` prop for a caller that genuinely needs to narrow it.
   `gateway/card-facet`'s own usage passes nothing, so it gets all eight
   operators.
-- **`gateway/facet`** (Data Table) is the one caller that *does* pass a
-  narrower list -- the new `STRING_ONLY_COMPARE_OPTIONS` (Contains/Equals
-  only, same two as before). Its own *live* interaction drives DataTables'
-  client-side `column().search()`, a plain substring/regex match with no
-  numeric-comparison concept at all -- unlike `gateway/card-facet`'s
-  REST-driven fetch, which reaches the same `Facet_Query::apply_facets()`
-  the *default* value already does, so it can honor the full vocabulary
-  for real. Building real "Greater Than"/etc. support for the Data
-  Table's own *live* facet would need a genuinely different mechanism (a
-  custom DataTables search plugin doing real numeric comparison against
-  parsed cell values) -- separate, undone work, not a matter of widening
-  a list. Both `compare` attributes now share one vocabulary regardless
-  (`gateway/facet`'s own private "contains"/"equals" strings were renamed
-  to the real `LIKE`/`=` operators, in `block.json`'s default, `render.php`'s
-  validation, and `view.js`'s own comparison, with the old values still
-  recognized and translated forward for an already-published block) --
-  the *menu* differs per block for a real, documented technical reason,
-  but the underlying representation is now the same one everywhere.
+- **`gateway/facet`** (Data Table) initially still passed a narrower
+  `options` list here (Contains/Equals only), since its own *live*
+  interaction drives DataTables' client-side `column().search()` -- a
+  plain substring/regex match with no numeric-comparison concept at all,
+  unlike `gateway/card-facet`'s REST-driven fetch, which reaches the same
+  `Facet_Query::apply_facets()` the *default* value already does. That
+  restriction was later lifted for real (see "Real comparison operators
+  for the live filter, not just Contains/Equals" under the Data Table's
+  own Facets section above, and `blocks/facet/src/view.js`): a genuinely
+  different DataTables extensibility point (`$.fn.dataTable.ext.search`,
+  not `column().search()`) backs the operators that API can't express,
+  so `gateway/facet` now passes no `options` override either and offers
+  the identical full vocabulary `gateway/card-facet` does. Both blocks'
+  own private "contains"/"equals" strings were renamed to the real
+  `LIKE`/`=` operators (`block.json`'s default, `render.php`'s validation,
+  and each block's own front-end comparison), with the old values still
+  recognized and translated forward for an already-published block --
+  one vocabulary, one menu, everywhere now.
 - **`shared/cards.js`'s `collectActiveFacets()`** no longer translates a
   card-facet's `data-compare` through a second, narrower vocabulary --
   `render.php` already normalizes it to one of the real operators before

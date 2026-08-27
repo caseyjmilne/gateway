@@ -14,17 +14,16 @@
  * against a fixed list of values, so this control isn't shown for those
  * (see each block's own edit.js).
  *
- * `options` lets a caller narrow this -- gateway/facet (Data Table) still
- * only offers "Contains"/"Equals": its *live* interaction drives
- * DataTables' client-side `column().search()`, a plain substring/regex
- * match with no numeric-comparison concept at all (unlike gateway/
- * card-facet's REST-driven fetch, which reaches the same PHP
- * Facet_Query::apply_facets() the *default* value already does, so it
- * can honor the full vocabulary for real). Supporting ">"/"<" etc. there
- * live would need a genuinely different mechanism (a custom DataTables
- * search plugin doing real numeric comparison against parsed cell
- * values) -- separate, undone work, not a matter of just widening this
- * list.
+ * `options` remains available for a caller that genuinely needs to
+ * narrow this (the same pattern `UiTypeControl`'s own `allowedTypes`
+ * prop already established) -- both `gateway/facet` (Data Table) and
+ * `gateway/card-facet` (Data Cards) currently pass nothing, so both
+ * offer the full vocabulary. `gateway/facet`'s own *live* interaction
+ * drives DataTables' client-side `column().search()` for `'='`/`'LIKE'`
+ * (the two that API can express directly) and a custom
+ * `$.fn.dataTable.ext.search` filter function for every other operator
+ * (`>`, `>=`, `<`, `<=`, `!=`, `'NOT LIKE'`) -- see that block's own
+ * `view.js` for the real numeric/negation comparison logic driving it.
  *
  * Originally lived under blocks/facet/src/controls/ as gateway/facet's
  * own control; moved here once gateway/card-facet needed the same one.

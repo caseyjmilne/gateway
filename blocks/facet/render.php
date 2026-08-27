@@ -60,22 +60,22 @@ if ( ! in_array( $ui_type, array( 'input', 'select', 'checkboxes' ), true ) ) {
 	$ui_type = 'input';
 }
 
-// This block's own CompareControl usage only ever offers "Contains"/
-// "Equals" (STRING_ONLY_COMPARE_OPTIONS -- see that control's own
-// docblock for why: the live interaction drives DataTables' client-side
-// column().search(), a plain substring/regex match with no numeric
-// -comparison concept), so only 'LIKE'/'=' are ever meaningful here --
-// but still normalized against the shared vocabulary (plus its legacy
-// 'contains'/'equals' values, from before it was unified with
-// Facet_Query::ALLOWED_COMPARE) rather than a bespoke two-value check,
-// so a stray value never breaks the front end. Only meaningful for the
-// "input" UI type -- Select/Checkboxes are always exact matches against
-// a fixed list of values (see ui-type-control.js/view.js).
+// The full Facet_Query::ALLOWED_COMPARE vocabulary is meaningful here --
+// view.js drives 'LIKE'/'=' through DataTables' own column().search(),
+// and every other operator (>, >=, <, <=, !=, NOT LIKE) through a custom
+// $.fn.dataTable.ext.search filter function instead (see that file's own
+// docblock), since column().search() itself has no way to express those.
+// Legacy 'contains'/'equals' values (from before this control's
+// vocabulary was unified with the real operators) are translated forward
+// rather than silently reset, so an already-published facet block keeps
+// its configured behavior. Only meaningful for the "input" UI type --
+// Select/Checkboxes are always exact matches against a fixed list of
+// values (see ui-type-control.js/view.js).
 if ( 'contains' === $compare ) {
 	$compare = 'LIKE';
 } elseif ( 'equals' === $compare ) {
 	$compare = '=';
-} elseif ( '=' !== $compare ) {
+} elseif ( ! in_array( $compare, \Gateway\Facet_Query::ALLOWED_COMPARE, true ) ) {
 	$compare = 'LIKE';
 }
 

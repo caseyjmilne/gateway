@@ -20,8 +20,14 @@
  * via shared/wait-for-datatable.js (safe -- only imports plain jQuery,
  * externalized, a true singleton, never bundled) and shared/dom.js's
  * getColumnIndexByKey() (safe -- no jQuery/DataTables dependency at all).
+ * Importing plain 'jquery' directly here (for `$.fn.dataTable.ext.search`
+ * below) is the same safe case wait-for-datatable.js's own docblock
+ * already establishes -- it never touches the 'datatables.net-dt' plugin
+ * module itself, just the shared jQuery instance the plugin later
+ * attaches its own extensions onto.
  */
 
+import $ from 'jquery';
 import './style.scss';
 import { getColumnIndexByKey } from '../../shared/dom';
 import {
@@ -70,6 +76,104 @@ function debounce( fn, wait ) {
 }
 
 /**
+ * Compare operators `column().search()` itself has no way to express --
+ * that API (used for 'LIKE'/'=' below) is only ever a plain substring or
+ * regex match against a cell's own search data, with no numeric
+ * -comparison or negation concept at all. Each of these instead needs a
+ * custom `$.fn.dataTable.ext.search` filter function -- see
+ * registerCustomCompareFilter() below.
+ */
+const CUSTOM_COMPARE_OPERATORS = [ '>', '>=', '<', '<=', '!=', 'NOT LIKE' ];
+
+/**
+ * Evaluate one of CUSTOM_COMPARE_OPERATORS against a cell's own search
+ * -data value -- the client-side counterpart to Facet_Query::
+ * apply_collection_facets()'s own `where( $key, $compare, $value )` /
+ * apply_facets()'s SQL comparisons, run in the browser instead of the
+ * database since this table's rows are already fully loaded client-side
+ * (see this file's own docblock -- DataTables does all filtering here,
+ * never server-side).
+ *
+ * Numeric comparison when both sides parse as real numbers (`parseFloat`)
+ * -- matching how a real database column comparison behaves for a
+ * Number/Range field -- otherwise a plain string comparison, so a
+ * "Greater Than"/etc. facet on non-numeric text still does *something*
+ * coherent (lexicographic) instead of silently matching nothing.
+ *
+ * @param {string} compare    One of CUSTOM_COMPARE_OPERATORS.
+ * @param {string} cellValue  The cell's own search-data value (DataTables' `data-filter` orthogonal data, when present, or its rendered text).
+ * @param {string} inputValue The value typed into the facet's own input.
+ * @return {boolean} Whether the row should be included.
+ */
+function compareValues( compare, cellValue, inputValue ) {
+	if ( 'NOT LIKE' === compare ) {
+		return ! cellValue.toLowerCase().includes( inputValue.toLowerCase() );
+	}
+
+	const cellNumber = parseFloat( cellValue );
+	const inputNumber = parseFloat( inputValue );
+	const bothNumeric = ! isNaN( cellNumber ) && ! isNaN( inputNumber );
+
+	switch ( compare ) {
+		case '>':
+			return bothNumeric ? cellNumber > inputNumber : cellValue > inputValue;
+		case '>=':
+			return bothNumeric ? cellNumber >= inputNumber : cellValue >= inputValue;
+		case '<':
+			return bothNumeric ? cellNumber < inputNumber : cellValue < inputValue;
+		case '<=':
+			return bothNumeric ? cellNumber <= inputNumber : cellValue <= inputValue;
+		case '!=':
+			return bothNumeric ? cellNumber !== inputNumber : cellValue !== inputValue;
+		default:
+			return true;
+	}
+}
+
+/**
+ * Registers a `$.fn.dataTable.ext.search` filter function scoped to this
+ * one facet -- DataTables' own documented extensibility point for
+ * exactly this case (its own "range filtering" example uses the same
+ * mechanism): a plain function run against every row on every `draw()`,
+ * returning whether to include it. `ext.search` is a single, global,
+ * shared array (every registered function runs for every DataTable
+ * instance on the page), so this must both scope itself to `table`
+ * (`settings.nTable !== table` -- never affect an unrelated table's own
+ * rows) and impose no filter at all while the input is empty (`return
+ * true` -- a facet with nothing typed into it yet must never hide rows).
+ *
+ * Registered ONCE per facet instance (not re-pushed on every keystroke --
+ * every already-registered function reruns automatically on every
+ * `draw()`); the input's own listener only updates the closure variable
+ * this function reads and triggers that redraw.
+ *
+ * @param {HTMLTableElement} table       This facet's sibling `<table>`.
+ * @param {Object}           dataTable   The DataTables API instance.
+ * @param {number}           columnIndex Target column index.
+ * @param {string}           compare     One of CUSTOM_COMPARE_OPERATORS.
+ * @param {HTMLInputElement} input       The facet's own text input.
+ */
+function registerCustomCompareFilter( table, dataTable, columnIndex, compare, input ) {
+	let currentValue = '';
+
+	$.fn.dataTable.ext.search.push( function ( settings, searchData ) {
+		if ( settings.nTable !== table || '' === currentValue ) {
+			return true;
+		}
+
+		return compareValues( compare, String( searchData[ columnIndex ] ?? '' ), currentValue );
+	} );
+
+	input.addEventListener(
+		'input',
+		debounce( () => {
+			currentValue = input.value;
+			dataTable.draw();
+		}, 300 )
+	);
+}
+
+/**
  * @param {HTMLElement} facetEl One .gateway-facet element.
  */
 function initFacet( facetEl ) {
@@ -95,13 +199,14 @@ function initFacet( facetEl ) {
 		}
 
 		const column = dataTable.column( columnIndex );
-		// render.php always normalizes data-compare to one of these two real
-		// operator values ('=' or 'LIKE') before it ever reaches the DOM --
-		// see that file's own docblock for why only these two (of the full
-		// Facet_Query::ALLOWED_COMPARE vocabulary the *default* value's own
-		// Facets panel offers) are meaningful for this block's *live*
-		// interaction.
-		const compare = facetEl.getAttribute( 'data-compare' ) === '=' ? '=' : 'LIKE';
+		// render.php normalizes data-compare to one of Facet_Query::
+		// ALLOWED_COMPARE's own real operator values before it ever
+		// reaches the DOM (including a legacy 'contains'/'equals' value
+		// translated forward), so every one of them is meaningful here now
+		// -- 'LIKE'/'=' still go through column().search() below (the two
+		// that API can express directly); everything else goes through
+		// registerCustomCompareFilter() instead.
+		const compare = facetEl.getAttribute( 'data-compare' ) || 'LIKE';
 
 		const applySearch = ( value, isRegex ) => {
 			column.search( value, isRegex, false ).draw();
@@ -110,23 +215,27 @@ function initFacet( facetEl ) {
 		const input = facetEl.querySelector( '.gateway-facet__input' );
 
 		if ( input ) {
-			input.addEventListener(
-				'input',
-				debounce( () => {
-					const { value } = input;
+			if ( CUSTOM_COMPARE_OPERATORS.includes( compare ) ) {
+				registerCustomCompareFilter( table, dataTable, columnIndex, compare, input );
+			} else {
+				input.addEventListener(
+					'input',
+					debounce( () => {
+						const { value } = input;
 
-					if ( '=' === compare ) {
-						applySearch(
-							value ? exactMatchPattern( [ value ] ) : '',
-							true
-						);
-					} else {
-						// Plain substring search -- "Contains", DataTables'
-						// own default behavior.
-						applySearch( value, false );
-					}
-				}, 300 )
-			);
+						if ( '=' === compare ) {
+							applySearch(
+								value ? exactMatchPattern( [ value ] ) : '',
+								true
+							);
+						} else {
+							// Plain substring search -- "Contains", DataTables'
+							// own default behavior.
+							applySearch( value, false );
+						}
+					}, 300 )
+				);
+			}
 		}
 
 		const select = facetEl.querySelector( '.gateway-facet__select' );

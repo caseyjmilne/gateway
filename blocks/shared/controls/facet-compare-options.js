@@ -21,20 +21,3 @@ export const FACET_COMPARE_OPTIONS = [
 ];
 
 export const DEFAULT_FACET_COMPARE = '=';
-
-/**
- * The two-entry subset of FACET_COMPARE_OPTIONS gateway/facet's own live
- * (front-end) CompareControl usage offers -- see that control's own
- * docblock for why: DataTables' client-side `column().search()` can only
- * do a substring or exact-match search, no real numeric/date comparison,
- * so "Greater Than" etc. would be a choice the Data Table's live
- * interaction can't actually back up. Same underlying `value`s
- * ('LIKE'/'=') as their FACET_COMPARE_OPTIONS entries -- one vocabulary
- * plugin-wide, just a narrower menu here.
- */
-export const STRING_ONLY_COMPARE_OPTIONS = [
-	{ label: __( 'Contains', 'gateway' ), value: 'LIKE' },
-	{ label: __( 'Equals', 'gateway' ), value: '=' },
-];
-
-export const DEFAULT_STRING_ONLY_COMPARE = 'LIKE';

@@ -5,7 +5,6 @@ import { __, sprintf } from '@wordpress/i18n';
 import FacetKeyControl from '../../shared/controls/facet-key-control';
 import UiTypeControl from '../../shared/controls/ui-type-control';
 import CompareControl from '../../shared/controls/compare-control';
-import { STRING_ONLY_COMPARE_OPTIONS } from '../../shared/controls/facet-compare-options';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useFacetOptions } from '../../shared/use-facet-options';
 
@@ -86,13 +85,14 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ 'input' === uiType && (
 						<CompareControl
 							value={ compare }
-							// This block's own *live* interaction drives
-							// DataTables' client-side column().search() -- see
-							// CompareControl's own docblock for why that means
-							// only "Contains"/"Equals" here, unlike gateway/
-							// card-facet's REST-driven equivalent, which can
-							// (and does) offer the full comparison vocabulary.
-							options={ STRING_ONLY_COMPARE_OPTIONS }
+							// Full vocabulary, same as gateway/card-facet's own
+							// usage -- 'LIKE'/'=' drive DataTables'
+							// column().search() directly on the front end
+							// (view.js); every other operator
+							// (>, >=, <, <=, !=, NOT LIKE) drives a custom
+							// $.fn.dataTable.ext.search filter function
+							// instead, since column().search() itself has no
+							// way to express those.
 							onChange={ ( value ) =>
 								setAttributes( { compare: value } )
 							}
