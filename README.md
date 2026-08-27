@@ -1188,9 +1188,46 @@ otherwise discovered) options -- e.g. a taxonomy term outside that cap --
 it's resolved and injected as an extra, selected option instead of silently
 going unrepresented (`get_term_by( 'slug', ... )` for taxonomy; core/meta
 values are their own label already). The block editor's own static preview
-(`src/edit.js`'s `FacetPreviewContent`, which doesn't run through render.php) mirrors
-this too, plus a one-line note naming the preset value, so a site owner sees
-the same thing while editing that a visitor would see live.
+(`src/edit.js`'s `FacetPreviewContent`, which doesn't run through render.php)
+shows a one-line note naming the preset value, so a site owner sees while
+editing that the table is already narrowed, the same thing a visitor
+would see live.
+
+### The editor preview's Select/Checkboxes options are real, not a placeholder
+
+`FacetPreviewContent` used to render exactly one static, hardcoded thing
+for Select ("All", or the preset value) and Checkboxes ("Example value")
+regardless of what the field's real options actually were -- reasonable
+for "just show what kind of control this will be" as its own docblock
+originally put it, but Checkboxes' literal "Example value" text read as
+obviously broken, and neither actually reflected the field's real values
+the way `render.php` always has on the front end.
+
+**`Facet_Options_REST_Controller`** (new) exposes the same discovery
+`render.php` already uses -- `GET /gateway/v1/facet-options/<post_type>?key=<field>`
+and `GET /gateway/v1/facet-options-for-collection/<class>?key=<field>`
+(two routes, not one with a type param, for the usual
+`sanitize_key()`-corrupts-a-class-name reason), thin wrappers around
+`Column_Registry::get_column()`/`get_column_for_collection()` +
+`Facet_Query::get_facet_options()`/`get_facet_options_for_collection()`.
+Same permission gates as `Columns_REST_Controller`'s own two routes
+(per-post-type `edit_posts`, or `manage_options` for a Collection) --
+reused directly (`array( Columns_REST_Controller::class, 'permissions_check' )`)
+rather than duplicated.
+
+**`shared/use-facet-options.js`** (new hook, `useFacetOptions({ sourceType,
+postType, collection, facetKey, uiType })`) fetches from whichever route
+applies, skipping the request entirely when it wouldn't return anything
+useful (`uiType` is "input", no `facetKey` chosen yet, or -- for a
+Collection -- no Collection chosen yet). Both `gateway/facet` and
+`gateway/card-facet`'s own `edit.js` call it and pass the result into
+`FacetPreviewContent`, which now maps over the real `options` list for
+both UI types -- Select gets a real `<option>` per value (still `disabled`,
+matching every other editor preview control in this plugin), Checkboxes
+a real, disabled checkbox per value, the preset's own value pre
+-selected/checked in both. Checkboxes shows an explicit "No values found
+for this field yet" message instead of a fake example when the field
+genuinely has none yet, rather than inventing placeholder text.
 
 ### Front-end hookup (`blocks/facet/src/view.js`)
 

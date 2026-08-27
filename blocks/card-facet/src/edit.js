@@ -1,11 +1,12 @@
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
-import { PanelBody, Notice } from '@wordpress/components';
+import { PanelBody, Notice, Spinner } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
 import FacetKeyControl from '../../shared/controls/facet-key-control';
 import UiTypeControl from '../../shared/controls/ui-type-control';
 import CompareControl from '../../shared/controls/compare-control';
 import { useAvailableColumns } from '../../shared/use-available-columns';
+import { useFacetOptions } from '../../shared/use-facet-options';
 
 /**
  * A trimmed gateway/facet/src/edit.js: the "isn't currently a displayed
@@ -46,6 +47,19 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const isFacetConfigured = Boolean( matchedFacet );
 	const label = labelsByKey[ facetKey ] || facetKey;
 	const defaultValue = matchedFacet ? matchedFacet.value : '';
+
+	// The real Select/Checkboxes options -- same discovered values
+	// render.php's own Facet_Query::get_facet_options()/
+	// get_facet_options_for_collection() call already uses on the front
+	// end -- so this block's editor preview shows the SAME list for both
+	// UI types, not a single static placeholder.
+	const { options: facetOptions, isLoading: isLoadingFacetOptions } = useFacetOptions( {
+		sourceType,
+		postType,
+		collection,
+		facetKey,
+		uiType,
+	} );
 
 	return (
 		<>
@@ -98,6 +112,8 @@ export default function Edit( { attributes, setAttributes, context } ) {
 						uiType={ uiType }
 						label={ label }
 						defaultValue={ defaultValue }
+						options={ facetOptions }
+						isLoadingOptions={ isLoadingFacetOptions }
 					/>
 				) }
 			</div>
@@ -109,9 +125,14 @@ export default function Edit( { attributes, setAttributes, context } ) {
  * A static, non-functional preview of the chosen control's *contents* --
  * the real, interactive version only exists on the front end (view.js),
  * driving a REST refetch of the sibling grid; the editor's job here is
- * just to show what kind of control this will be.
+ * just to show what kind of control this will be. For Select/Checkboxes,
+ * that now includes its actual options -- `options` (from
+ * `useFacetOptions()`, fetched by `Edit()` above) is the SAME discovered
+ * value list render.php's own `Facet_Query::get_facet_options()`/
+ * `get_facet_options_for_collection()` call already builds for the front
+ * end, not a placeholder.
  */
-function FacetPreviewContent( { uiType, label, defaultValue } ) {
+function FacetPreviewContent( { uiType, label, defaultValue, options, isLoadingOptions } ) {
 	return (
 		<>
 			<span className="gateway-card-facet__label">{ label }</span>
@@ -125,17 +146,49 @@ function FacetPreviewContent( { uiType, label, defaultValue } ) {
 				/>
 			) }
 			{ 'select' === uiType && (
-				<select className="gateway-card-facet__select" disabled>
-					<option>{ defaultValue || __( 'All', 'gateway' ) }</option>
-				</select>
+				isLoadingOptions ? (
+					<Spinner />
+				) : (
+					<select
+						className="gateway-card-facet__select"
+						disabled
+						value={ defaultValue || '' }
+						onChange={ () => {} }
+					>
+						<option value="">{ __( 'All', 'gateway' ) }</option>
+						{ options.map( ( option ) => (
+							<option key={ option.value } value={ option.value }>
+								{ option.label }
+							</option>
+						) ) }
+					</select>
+				)
 			) }
 			{ 'checkboxes' === uiType && (
-				<div className="gateway-card-facet__checkboxes">
-					<label className="gateway-card-facet__checkbox-label">
-						<input type="checkbox" disabled checked={ Boolean( defaultValue ) } />
-						{ defaultValue || __( 'Example value', 'gateway' ) }
-					</label>
-				</div>
+				isLoadingOptions ? (
+					<Spinner />
+				) : options.length ? (
+					<div className="gateway-card-facet__checkboxes">
+						{ options.map( ( option ) => (
+							<label
+								key={ option.value }
+								className="gateway-card-facet__checkbox-label"
+							>
+								<input
+									type="checkbox"
+									disabled
+									checked={ option.value === defaultValue }
+									onChange={ () => {} }
+								/>
+								{ option.label }
+							</label>
+						) ) }
+					</div>
+				) : (
+					<p className="gateway-card-facet__default-note">
+						{ __( 'No values found for this field yet.', 'gateway' ) }
+					</p>
+				)
 			) }
 			{ defaultValue && (
 				<p className="gateway-card-facet__default-note">
