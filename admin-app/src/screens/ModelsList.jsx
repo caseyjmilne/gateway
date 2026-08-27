@@ -3,14 +3,19 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 
 /**
- * The Models home screen: a form that turns a single "Title" into a real
- * Eloquent model + migration (see Model_Builder on the PHP side -- the
- * migration runs immediately, so the table exists by the time this form
- * reports success), plus the list of models that already exist, each
- * linking to its own detail route.
+ * The Models home screen: a form that turns "Title" into a real Eloquent
+ * model + migration (see Model_Builder on the PHP side -- the migration
+ * runs immediately, so the table exists by the time this form reports
+ * success), plus the list of models that already exist, each linking to
+ * its own detail route.
+ *
+ * Plural Title is a separate, optional field -- a display label only
+ * (e.g. for a future list heading); it never affects the class or table
+ * name, which always come from Title alone.
  */
 export default function ModelsList() {
 	const [ title, setTitle ] = useState( '' );
+	const [ pluralTitle, setPluralTitle ] = useState( '' );
 	const [ submitting, setSubmitting ] = useState( false );
 	const [ result, setResult ] = useState( null );
 
@@ -44,10 +49,11 @@ export default function ModelsList() {
 		try {
 			const data = await apiFetch( '/models', {
 				method: 'POST',
-				body: JSON.stringify( { title } ),
+				body: JSON.stringify( { title, plural_title: pluralTitle } ),
 			} );
 			setResult( { success: true, ...data } );
 			setTitle( '' );
+			setPluralTitle( '' );
 			loadModels();
 		} catch ( error ) {
 			setResult( { success: false, message: error.message } );
@@ -92,6 +98,31 @@ export default function ModelsList() {
 									Post&rdquo; &rarr; class{ ' ' }
 									<code>BlogPost</code>, table{ ' ' }
 									<code>blog_posts</code>.
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">
+								<label htmlFor="gateway-model-plural-title">
+									Plural Title
+								</label>
+							</th>
+							<td>
+								<input
+									id="gateway-model-plural-title"
+									type="text"
+									className="regular-text"
+									value={ pluralTitle }
+									onChange={ ( event ) =>
+										setPluralTitle( event.target.value )
+									}
+									placeholder="e.g. Blog Posts"
+								/>
+								<p className="description">
+									Optional -- a friendly plural label
+									(e.g. for a future list heading). Doesn
+									&rsquo;t affect the class or table name,
+									which always come from Title alone.
 								</p>
 							</td>
 						</tr>

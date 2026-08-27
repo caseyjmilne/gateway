@@ -2289,36 +2289,52 @@ any naming convention at all), the same reasoning `Registry` itself
 used to share one implementation between `Model_Registry` and
 `Migration_Registry`.
 
+### Plural Title -- a display label, not a naming input
+
+`create()`/`rename()` take an optional second field, **Plural Title**
+(e.g. "Blog Posts" for a "Blog Post" model) -- a plain stored label
+(`gateway_model_plural_titles`, class name => text, in
+`Model_Builder::get_plural_title()`/`set_plural_title()`/
+`forget_plural_title()`) for a future screen to show, e.g. as a list
+heading. It has **no effect on the class or table name** -- those come
+from Title alone (`Str::pluralStudly()`'s auto-pluralization of it). An
+earlier version let Plural Title override the table name instead, which
+turned out to be more confusing than useful in practice: the table would
+change out from under a model whose Title never changed, with no obvious
+reason why from that model's own detail screen.
+
+Because Plural Title carries no naming consequence, editing only it is
+never destructive: `rename()` recognizes a Title-unchanged request and
+just updates the stored label -- no file, migration, or table is
+touched. Renaming to a new class-name-preserving Plural Title's
+opposite -- the *old* class's stored label is forgotten and the *new*
+one's is set from whatever was submitted -- happens automatically
+whenever Title *does* change too, via the same call.
+
 ### Renaming a model
 
 The admin app's model detail screen (below) can edit a model's Title
-after the fact. An earlier version of this also had a separate "Plural
-Title" field, used for the table name instead of auto-pluralizing the
-Title -- removed again: it turned out to be more confusing than useful
-in practice (a table changing out from under a model whose Title never
-changed, with no obvious reason why, from that model's own detail
-screen). Title is the single source of truth for naming, full stop --
-both the class name and the table name (`Str::pluralStudly()`'s
-auto-pluralization of it) are derived from it alone.
+after the fact. Per the request that shaped this -- "deal with the
+consequences: remove old model, remove old migration, make new ones" --
+a rename in this system is not an in-place `ALTER TABLE RENAME`: it's
+the old model retired (its table dropped, both its files deleted, both
+its classes unregistered) and a new one generated in its place, exactly
+like a fresh `create()`. **Any data in the old table is lost** -- an
+accepted trade-off for these early, `id` + timestamps-only models with
+no real schema yet; the React side makes sure this isn't a surprise (see
+below).
 
-Per the request that shaped this -- "deal with the consequences: remove
-old model, remove old migration, make new ones" -- a rename in this
-system is not an in-place `ALTER TABLE RENAME`: it's the old model
-retired (its table dropped, both its files deleted, both its classes
-unregistered) and a new one generated in its place, exactly like a fresh
-`create()`. **Any data in the old table is lost** -- an accepted
-trade-off for these early, `id` + timestamps-only models with no real
-schema yet; the React side makes sure this isn't a surprise (see below).
-
-`Model_Builder::rename( $old_class, $title )`: the new model, migration,
-and table are created first -- exactly via `create()` itself -- and only
-once that has actually succeeded is the old one retired (its migration's
-own `down()` run via a new `Migration_Runner::rollback()`, which also
-removes it from the ran-migrations log, then both old files deleted and
-both old classes unregistered). This ordering is deliberate: if creating
-the new model fails partway through, the old one is simply untouched,
-rather than this leaving *neither* a working old model nor a working new
-one.
+`Model_Builder::rename( $old_class, $title, $plural_title )`: the new
+model, migration, and table are created first -- exactly via `create()`
+itself -- and only once that has actually succeeded is the old one
+retired (its migration's own `down()` run via a new
+`Migration_Runner::rollback()`, which also removes it from the
+ran-migrations log, then both old files deleted and both old classes
+unregistered). This ordering is deliberate: if creating the new model
+fails partway through, the old one is simply untouched, rather than this
+leaving *neither* a working old model nor a working new one. This full
+path only runs when Title actually changes -- see "Plural Title" above
+for the (much simpler, non-destructive) path when it doesn't.
 
 Renaming to the exact same effective class (re-saving unchanged, or an
 edit that sanitizes back to what was already there) is a no-op success
@@ -2383,34 +2399,36 @@ entirely, while still making each model's own URL bookmarkable and the
 back button behave normally.
 
 `ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is the
-Title form described above, plus the list of every model that already
-exists (`GET /gateway/v1/models`) -- each row links to `ModelDetail`
-(`admin-app/src/screens/ModelDetail.jsx`, route `/models/:className`),
-which fetches that one model's detail (`GET /gateway/v1/models/<class>`)
-and shows its table name plus its migration's version and whether it has
-actually run. Both screens' data comes from
-`Model_REST_Controller::describe_model()` -- one shared shape for both
-the list and the detail view, so a status badge in the list ("✅ Ready"
-vs "⚠️ Migration not run") and the fuller status line on the detail page
-are never at risk of disagreeing. That method resolves a model's
-migration by re-deriving its class name from the model's own table via
-`Model_Builder::migration_class_for_table()` -- the same naming
-convention `create()` used to generate it -- rather than storing the
-model-to-migration link anywhere separately.
+Title + Plural Title form described above, plus the list of every model
+that already exists (`GET /gateway/v1/models`) -- each row links to
+`ModelDetail` (`admin-app/src/screens/ModelDetail.jsx`, route
+`/models/:className`), which fetches that one model's detail (`GET
+/gateway/v1/models/<class>`) and shows its table name plus its
+migration's version and whether it has actually run. Both screens' data
+comes from `Model_REST_Controller::describe_model()` -- one shared shape
+for both the list and the detail view, so a status badge in the list
+("✅ Ready" vs "⚠️ Migration not run") and the fuller status line on the
+detail page are never at risk of disagreeing. That method resolves a
+model's migration by re-deriving its class name from the model's own
+table via `Model_Builder::migration_class_for_table()` -- the same
+naming convention `create()` used to generate it -- rather than storing
+the model-to-migration link anywhere separately.
 
-`ModelDetail` also lets Title be edited and saved (`PUT
+`ModelDetail` also lets Title and Plural Title be edited and saved (`PUT
 /gateway/v1/models/<class>`, `Model_REST_Controller::rename_model()` ->
 `Model_Builder::rename()`, see "Renaming a model" above for what actually
-happens on the PHP side). Since the raw Title text isn't stored anywhere
--- `Model_Builder` only ever persists the *derived* class name -- the
-field is pre-filled from that (the class name) rather than some
-remembered original input; re-saving unchanged is always a safe no-op
-(`rename()`'s own same-class check). Because renaming permanently drops
-the old table (see above), saving asks for confirmation **inline on the
-page** -- a warning notice with "Yes, rename it"/"Cancel" buttons,
-appearing in place of the Save button rather than a native
-`window.confirm()` popup -- spelling out that the old table and its data
-are gone for good. A successful save navigates to the new class's own
+happens on the PHP side). Title is pre-filled from the model's own class
+name (the only thing `Model_Builder` persists for it -- there's no raw
+original text stored anywhere); Plural Title from its own stored label,
+blank if none was ever set. Because the two fields have very different
+consequences, the page treats them differently: **only a Title change**
+triggers the destructive-rename warning -- an inline notice with "Yes,
+rename it"/"Cancel" buttons, appearing in place of the Save button
+rather than a native `window.confirm()` popup, spelling out that the old
+table and its data are gone for good. **A Plural-Title-only change saves
+immediately** with no confirmation at all, since (per "Plural Title"
+above) nothing destructive happens -- it's just a label update. A
+successful Title-changing save navigates to the new class's own
 `/models/:className` route (the old one no longer resolves to anything)
 and carries the result -- including any `warnings`, e.g. the old table
 failing to drop -- through React Router's navigation `state` so they can

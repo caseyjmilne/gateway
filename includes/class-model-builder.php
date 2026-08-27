@@ -12,12 +12,14 @@
  * anything.
  *
  * Title is the single source of truth for naming -- both the class name
- * and the table name (auto-pluralized from it) are derived from it alone,
- * deliberately: an earlier version of this let a separate "Plural Title"
- * field override the table name independently of Title, which turned out
- * to be more confusing than useful in practice (a table changing out from
- * under a model whose Title never changed, with no obvious reason why) --
- * removed in favor of one field driving both names together.
+ * and the table name (auto-pluralized from it) are derived from it alone.
+ * A separate "Plural Title" field also exists (e.g. "Tickets" for a
+ * "Ticket" model), but it's a plain display label only -- stored (see
+ * OPTION_PLURAL_TITLES) for a future screen to show, never used to
+ * derive the table name. An earlier version had it override the table
+ * name instead, which was confusing in practice: the table would change
+ * out from under a model whose Title never changed, with no obvious
+ * reason why from that model's own detail screen.
  *
  * Generated files are deliberately unnamespaced, and reference Illuminate
  * classes by fully-qualified name (`\Illuminate\...`) rather than `use`
@@ -47,15 +49,27 @@ class Model_Builder {
 	const OPTION_NEXT_VERSION = 'gateway_next_migration_version';
 
 	/**
-	 * Create a model: derive its class/table name from $title, write the
-	 * model + migration files, load and register both classes, and run
-	 * the migration -- the table exists by the time this returns
-	 * successfully.
-	 *
-	 * @param string $title Free-text title, e.g. "Blog Post".
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int}|\WP_Error
+	 * Option name the stored Plural Title labels are kept under -- a plain
+	 * class name => plural title text map. A model with no entry here
+	 * (never given one, or it was left blank) simply has no Plural Title;
+	 * there's no auto-derived fallback.
 	 */
-	public static function create( $title ) {
+	const OPTION_PLURAL_TITLES = 'gateway_model_plural_titles';
+
+	/**
+	 * Create a model: derive its class/table name from $title alone
+	 * (Plural Title, if given, never affects either -- see this class's
+	 * own docblock), write the model + migration files, load and register
+	 * both classes, and run the migration -- the table exists by the time
+	 * this returns successfully.
+	 *
+	 * @param string $title        Free-text title, e.g. "Blog Post".
+	 * @param string $plural_title Optional free-text plural label, e.g.
+	 *                              "Blog Posts" -- stored for display,
+	 *                              never used for naming.
+	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string}|\WP_Error
+	 */
+	public static function create( $title, $plural_title = '' ) {
 		$title = trim( (string) $title );
 
 		if ( '' === $title ) {
@@ -169,11 +183,14 @@ class Model_Builder {
 			return $run_result;
 		}
 
+		self::set_plural_title( $class_name, $plural_title );
+
 		return array(
 			'class'              => $class_name,
 			'table'              => $table_name,
 			'migration_class'    => $migration_class,
 			'migration_version'  => $version,
+			'plural_title'       => self::get_plural_title( $class_name ),
 		);
 	}
 
@@ -186,16 +203,21 @@ class Model_Builder {
 	 * anything about the new model fails, the old one is untouched rather
 	 * than this leaving neither the old model nor a working new one behind.
 	 *
-	 * Renaming to the same effective class name (e.g. just a whitespace/
-	 * case difference that sanitizes identically) is treated as a no-op
-	 * success -- nothing is dropped or regenerated over a change that
-	 * wouldn't actually change anything.
+	 * Since naming depends only on $title (see this class's own
+	 * docblock), a $plural_title-only change never reaches any of that --
+	 * it's just a stored label update, no table/files/registration
+	 * touched at all. Title unchanged (e.g. just a whitespace/case
+	 * difference that sanitizes identically) is the only case treated
+	 * this way; anything that changes $title goes through the full
+	 * create-then-retire path below even if $plural_title also changed.
 	 *
-	 * @param string $old_class Existing, registered model class name.
-	 * @param string $title     New free-text title.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,warnings?:string[]}|\WP_Error
+	 * @param string $old_class    Existing, registered model class name.
+	 * @param string $title        New free-text title.
+	 * @param string $plural_title New free-text plural label -- see
+	 *                              create()'s own docblock.
+	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,warnings?:string[]}|\WP_Error
 	 */
-	public static function rename( $old_class, $title ) {
+	public static function rename( $old_class, $title, $plural_title = '' ) {
 		if ( ! Model_Registry::has( $old_class ) || ! class_exists( $old_class ) ) {
 			return new \WP_Error(
 				'gateway_model_not_found',
@@ -214,10 +236,13 @@ class Model_Builder {
 			);
 		}
 
-		// No real change (e.g. re-saving the same title, or one that only
-		// differs by whitespace/case) -- report the model as-is rather
-		// than dropping and regenerating a table for nothing.
+		// Title unchanged -- naming is untouched either way, so this is
+		// never destructive: just update the stored Plural Title label
+		// (blank clears it) and report the model as-is. No files,
+		// migration, or table are touched.
 		if ( $new_class_name === $old_class ) {
+			self::set_plural_title( $old_class, $plural_title );
+
 			$old_instance         = new $old_class();
 			$old_table            = $old_instance->getTable();
 			$old_migration_class  = self::migration_class_for_table( $old_table );
@@ -227,6 +252,7 @@ class Model_Builder {
 				'table'             => $old_table,
 				'migration_class'   => $old_migration_class,
 				'migration_version' => self::registered_migration_version( $old_migration_class ),
+				'plural_title'      => self::get_plural_title( $old_class ),
 			);
 		}
 
@@ -256,7 +282,7 @@ class Model_Builder {
 		// Create the new model/migration/table first -- see this method's
 		// own docblock for why the old one is only touched after this
 		// succeeds.
-		$created = self::create( $title );
+		$created = self::create( $title, $plural_title );
 
 		if ( is_wp_error( $created ) ) {
 			return $created;
@@ -285,6 +311,7 @@ class Model_Builder {
 
 		Model_Registry::unregister( $old_class );
 		Migration_Registry::unregister( $old_migration_class );
+		self::forget_plural_title( $old_class );
 
 		$old_model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $old_class . '.php';
 
@@ -309,6 +336,45 @@ class Model_Builder {
 		}
 
 		return $created;
+	}
+
+	/**
+	 * @param string $class_name Model class name.
+	 * @return string The stored Plural Title label, or '' if none is set.
+	 */
+	public static function get_plural_title( $class_name ) {
+		$titles = get_option( self::OPTION_PLURAL_TITLES, array() );
+
+		return isset( $titles[ $class_name ] ) ? $titles[ $class_name ] : '';
+	}
+
+	/**
+	 * @param string $class_name   Model class name.
+	 * @param string $plural_title Label text; blank clears any existing one.
+	 */
+	private static function set_plural_title( $class_name, $plural_title ) {
+		$plural_title = sanitize_text_field( trim( (string) $plural_title ) );
+
+		if ( '' === $plural_title ) {
+			self::forget_plural_title( $class_name );
+			return;
+		}
+
+		$titles                = get_option( self::OPTION_PLURAL_TITLES, array() );
+		$titles[ $class_name ] = $plural_title;
+		update_option( self::OPTION_PLURAL_TITLES, $titles );
+	}
+
+	/**
+	 * @param string $class_name Model class name.
+	 */
+	private static function forget_plural_title( $class_name ) {
+		$titles = get_option( self::OPTION_PLURAL_TITLES, array() );
+
+		if ( isset( $titles[ $class_name ] ) ) {
+			unset( $titles[ $class_name ] );
+			update_option( self::OPTION_PLURAL_TITLES, $titles );
+		}
 	}
 
 	/**

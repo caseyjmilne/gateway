@@ -67,14 +67,18 @@ class Model_REST_Controller {
 
 	/**
 	 * Shared 'args' schema for the two routes that accept a title --
-	 * create_model() and rename_model() take the exact same field.
+	 * create_model() and rename_model() take the exact same fields.
 	 *
 	 * @return array
 	 */
 	private static function title_args() {
 		return array(
-			'title' => array(
+			'title'        => array(
 				'required' => true,
+				'type'     => 'string',
+			),
+			'plural_title' => array(
+				'required' => false,
 				'type'     => 'string',
 			),
 		);
@@ -139,7 +143,10 @@ class Model_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public static function create_model( \WP_REST_Request $request ) {
-		$result = Model_Builder::create( $request->get_param( 'title' ) );
+		$result = Model_Builder::create(
+			$request->get_param( 'title' ),
+			(string) $request->get_param( 'plural_title' )
+		);
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -155,7 +162,8 @@ class Model_REST_Controller {
 	public static function rename_model( \WP_REST_Request $request ) {
 		$result = Model_Builder::rename(
 			$request->get_param( 'class' ),
-			$request->get_param( 'title' )
+			$request->get_param( 'title' ),
+			(string) $request->get_param( 'plural_title' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -167,15 +175,16 @@ class Model_REST_Controller {
 
 	/**
 	 * Shape a registered model class into what both the list and detail
-	 * screens need -- its table, and its migration's version/run status
-	 * (looked up via the same naming convention Model_Builder itself used
-	 * to generate it, since that link isn't stored anywhere separately).
+	 * screens need -- its table, its stored Plural Title label (if any),
+	 * and its migration's version/run status (looked up via the same
+	 * naming convention Model_Builder itself used to generate it, since
+	 * that link isn't stored anywhere separately).
 	 *
 	 * @param string $class Registered model class name.
-	 * @return array{class:string,table:string,migration:?array}|null Null
-	 *              if $class is no longer a real, loaded class (shouldn't
-	 *              normally happen, but registration and the filesystem
-	 *              could in principle drift apart).
+	 * @return array{class:string,table:string,plural_title:string,migration:?array}|null
+	 *              Null if $class is no longer a real, loaded class
+	 *              (shouldn't normally happen, but registration and the
+	 *              filesystem could in principle drift apart).
 	 */
 	private static function describe_model( $class ) {
 		if ( ! class_exists( $class ) ) {
@@ -199,9 +208,10 @@ class Model_REST_Controller {
 		}
 
 		return array(
-			'class'     => $class,
-			'table'     => $table,
-			'migration' => $migration,
+			'class'        => $class,
+			'table'        => $table,
+			'plural_title' => Model_Builder::get_plural_title( $class ),
+			'migration'    => $migration,
 		);
 	}
 }

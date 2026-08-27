@@ -5,17 +5,21 @@ import { apiFetch } from '../api.js';
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
- * run) and lets its Title be changed.
+ * run) and lets its Title and Plural Title be changed.
  *
- * There's no separately-stored "original title" anywhere on the PHP side
- * (Model_Builder only ever persists the *derived* class name, not the raw
- * text that produced it) -- so the editable field here is pre-filled from
- * the model's own class name. Re-saving without changing it is therefore
- * always a safe no-op (see Model_Builder::rename()'s own same-name check).
+ * Title alone drives naming (the class and table names) -- see
+ * Model_Builder's own docblock. Plural Title is just a stored display
+ * label with no effect on either, so editing it alone is a plain,
+ * non-destructive save: no confirmation, no table touched. Editing Title
+ * is different -- it always creates a new model/table and drops the old
+ * one (Model_Builder::rename()), so saving a Title change asks for
+ * confirmation inline on this page first (never a native window.confirm()
+ * popup).
  *
- * Saving asks for confirmation inline on this page (not a native
- * window.confirm() popup) before actually submitting, since a rename here
- * permanently drops the old table.
+ * Neither field's raw original text is stored anywhere on the PHP side
+ * beyond what actually matters: Title is pre-filled from the model's own
+ * class name (the only thing Model_Builder persists for it), Plural
+ * Title from its own stored label (blank if none was ever set).
  */
 export default function ModelDetail() {
 	const { className } = useParams();
@@ -28,6 +32,7 @@ export default function ModelDetail() {
 	const [ loadError, setLoadError ] = useState( '' );
 
 	const [ title, setTitle ] = useState( '' );
+	const [ pluralTitle, setPluralTitle ] = useState( '' );
 	const [ confirming, setConfirming ] = useState( false );
 	const [ saving, setSaving ] = useState( false );
 	const [ saveResult, setSaveResult ] = useState( null );
@@ -48,6 +53,7 @@ export default function ModelDetail() {
 				}
 				setModel( data );
 				setTitle( data.class );
+				setPluralTitle( data.plural_title || '' );
 			} )
 			.catch( ( error ) => {
 				if ( ! cancelled ) {
@@ -65,11 +71,45 @@ export default function ModelDetail() {
 		};
 	}, [ className ] );
 
-	const unchanged = model && title.trim() === model.class;
+	const titleChanged = model && title.trim() !== model.class;
+	const pluralTitleChanged =
+		model && pluralTitle.trim() !== ( model.plural_title || '' );
+	const unchanged = model && ! titleChanged && ! pluralTitleChanged;
 
-	const handleTitleChange = ( event ) => {
-		setTitle( event.target.value );
+	const handleFieldChange = ( setter ) => ( event ) => {
+		setter( event.target.value );
 		setConfirming( false );
+	};
+
+	const performSave = async () => {
+		setConfirming( false );
+		setSaving( true );
+		setSaveResult( null );
+
+		try {
+			const data = await apiFetch(
+				`/models/${ encodeURIComponent( className ) }`,
+				{
+					method: 'PUT',
+					body: JSON.stringify( {
+						title,
+						plural_title: pluralTitle,
+					} ),
+				}
+			);
+			// The class name (and therefore this page's own URL) may have
+			// changed -- navigate to wherever the model actually lives now
+			// rather than staying on a route that no longer resolves. A
+			// Plural-Title-only save lands back on this same route.
+			navigate( `/models/${ data.class }`, {
+				replace: true,
+				state: { renamed: true, warnings: data.warnings || [] },
+			} );
+		} catch ( error ) {
+			setSaveResult( { success: false, message: error.message } );
+		} finally {
+			setSaving( false );
+		}
 	};
 
 	const handleSubmit = ( event ) => {
@@ -80,33 +120,15 @@ export default function ModelDetail() {
 		}
 
 		setSaveResult( null );
-		setConfirming( true );
-	};
 
-	const handleConfirm = async () => {
-		setConfirming( false );
-		setSaving( true );
-		setSaveResult( null );
-
-		try {
-			const data = await apiFetch(
-				`/models/${ encodeURIComponent( className ) }`,
-				{
-					method: 'PUT',
-					body: JSON.stringify( { title } ),
-				}
-			);
-			// The class name (and therefore this page's own URL) may have
-			// changed -- navigate to wherever the model actually lives now
-			// rather than staying on a route that no longer resolves.
-			navigate( `/models/${ data.class }`, {
-				replace: true,
-				state: { renamed: true, warnings: data.warnings || [] },
-			} );
-		} catch ( error ) {
-			setSaveResult( { success: false, message: error.message } );
-		} finally {
-			setSaving( false );
+		if ( titleChanged ) {
+			// Recreates the model/table and drops the old one -- confirm
+			// first, inline on the page.
+			setConfirming( true );
+		} else {
+			// Plural Title only -- a plain label update, nothing
+			// destructive, no confirmation needed.
+			performSave();
 		}
 	};
 
@@ -126,7 +148,7 @@ export default function ModelDetail() {
 
 			{ renameNotice && (
 				<div className="notice notice-success">
-					<p>Renamed successfully.</p>
+					<p>Saved.</p>
 					{ renameNotice.warnings.map( ( warning, index ) => (
 						<p key={ index }>⚠️ { warning }</p>
 					) ) }
@@ -154,13 +176,39 @@ export default function ModelDetail() {
 											type="text"
 											className="regular-text"
 											value={ title }
-											onChange={ handleTitleChange }
+											onChange={ handleFieldChange(
+												setTitle
+											) }
 										/>
 										<p className="description">
 											Changing this creates a new model
 											and table under the new name, and
 											permanently deletes the current
 											one (including its data).
+										</p>
+									</td>
+								</tr>
+								<tr>
+									<th scope="row">
+										<label htmlFor="gateway-model-edit-plural-title">
+											Plural Title
+										</label>
+									</th>
+									<td>
+										<input
+											id="gateway-model-edit-plural-title"
+											type="text"
+											className="regular-text"
+											value={ pluralTitle }
+											onChange={ handleFieldChange(
+												setPluralTitle
+											) }
+										/>
+										<p className="description">
+											Optional display label -- doesn
+											&rsquo;t affect the table, so
+											changing just this saves right
+											away.
 										</p>
 									</td>
 								</tr>
@@ -207,7 +255,7 @@ export default function ModelDetail() {
 									<button
 										type="button"
 										className="button button-primary"
-										onClick={ handleConfirm }
+										onClick={ performSave }
 										disabled={ saving }
 									>
 										{ saving
@@ -233,7 +281,7 @@ export default function ModelDetail() {
 										saving || ! title.trim() || unchanged
 									}
 								>
-									Save
+									{ saving ? 'Saving…' : 'Save' }
 								</button>
 							</p>
 						) }
