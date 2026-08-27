@@ -1138,16 +1138,21 @@ In the Inspector: pick which of the parent's configured facets this
 control represents (`controls/facet-key-control.js`, populated from the
 `gateway/datatable/facets` context), then a UI Type
 (`controls/ui-type-control.js`: Input, Select, or Checkboxes), and -- for
-Input only -- a **Compare** (`controls/compare-control.js`): Contains or
-Equals. This is deliberately separate from, and unrelated to, the *preset*
-`compare` set on the Data Table block's Facets panel (`=`, `!=`, `>`, ...):
-that one is baked into the initial server-side query; this one governs how
-the *live*, client-side filter matches as a visitor types. It's also
-deliberately just two options -- DataTables' `column().search()` has no
-native numeric/date comparison operators, only substring/regex matching, so
-Contains/Equals is what that mechanism can actually back up. Not shown for
-Select/Checkboxes, since exact match is the only behavior that makes sense
-against a fixed list of discrete values there.
+Input only -- a **Compare** (`controls/compare-control.js`, restricted here
+to `STRING_ONLY_COMPARE_OPTIONS`): Contains (`LIKE`) or Equals (`=`) --
+the same two real operators `Facet_Query` itself uses, just a narrower
+menu than that shared control offers by default (see "Full
+comparison-operator support" under the Data Cards Facets section for why
+`gateway/card-facet`'s own equivalent offers the full vocabulary and this
+one doesn't). This is deliberately separate from, and unrelated to, the
+*preset* `compare` set on the Data Table block's Facets panel (`=`, `!=`,
+`>`, ...): that one is baked into the initial server-side query; this one
+governs how the *live*, client-side filter matches as a visitor types.
+It's deliberately just two options here -- DataTables' `column().search()`
+has no native numeric/date comparison operators, only substring/regex
+matching, so Contains/Equals is what that mechanism can actually back up.
+Not shown for Select/Checkboxes, since exact match is the only behavior
+that makes sense against a fixed list of discrete values there.
 
 A facet block only has something to hook into once its chosen field is
 *also* one of the datatable's currently displayed columns (its DataTables
@@ -1201,10 +1206,13 @@ the same thing while editing that a visitor would see live.
    matching this facet's `data-facet-key` against each `<th>`'s
    `data-column-key` (written by the datatable's `render.php`).
 3. Wires interaction to `column.search(...).draw()`, reading the block's
-   own `data-compare` for the Input control:
-   - **Input, Contains** (default): plain substring search (`regex: false`),
-     debounced 300ms.
-   - **Input, Equals**, and **Select**/**Checkboxes** (always exact,
+   own `data-compare` for the Input control -- always one of the real
+   operator values (`render.php` normalizes it, including a stored legacy
+   `'contains'`/`'equals'` value from before this vocabulary was unified
+   plugin-wide, forward to `'LIKE'`/`'='`):
+   - **Input, `LIKE`** (Contains, default): plain substring search
+     (`regex: false`), debounced 300ms.
+   - **Input, `=`** (Equals), and **Select**/**Checkboxes** (always exact,
      regardless of `data-compare` -- that attribute only governs Input): an
      anchored regex built by `exactMatchPattern()` for an exact match rather
      than DataTables' default substring behavior -- picking one option
@@ -2052,20 +2060,23 @@ position.
 
 `gateway/card-facet` itself is `gateway/facet/render.php` and `edit.js`
 minus the "is it a displayed column" half of every check (no counterpart
-exists for cards) -- `FacetKeyControl` (help text genericized),
+exists for cards) -- `FacetKeyControl` (help text genericized) and
 `UiTypeControl` (gains an optional `allowedTypes` prop, trimmed here to
-the selected field's own `facetType`), and `CompareControl` are all
-reused as-is from their new `shared/controls/` home. Its own front end
-(`view.js`) doesn't build a request payload itself: `shared/cards.js`'s
+the selected field's own `facetType`) are reused as-is from their new
+`shared/controls/` home. `CompareControl` is reused too, but with the
+one deliberate difference described below: unlike `gateway/facet`,
+`gateway/card-facet` doesn't pass it a narrower `options` list, so it
+offers the full comparison vocabulary. Its own front end (`view.js`)
+doesn't build a request payload itself: `shared/cards.js`'s
 `fetchCardsPage()` already gathers every currently-active card-facet
-under the same grid on *every* fetch (`collectActiveFacets()` --
-searches `.gateway-card-facet` elements, reads each one's current
-value(s) by its `data-ui-type`, resolves "contains"/"equals" to the real
-`LIKE`/`=` `Facet_Query` operators), so a Pagination click or Page Size
-change never silently drops an active filter, and `gateway/card-facet`'s
-own `view.js` just needs to trigger a fetch (debounced 300ms for the
-`input` UI type, matching `gateway/facet`'s own and
-`gateway/data-cards-search`'s reasoning).
+under the same grid on *every* fetch (`collectActiveFacets()` -- searches
+`.gateway-card-facet` elements, reads each one's current value(s) by its
+`data-ui-type`, forwarding its `data-compare` straight through as the
+real operator -- see "Full comparison-operator support" below), so a
+Pagination click or Page Size change never silently drops an active
+filter, and `gateway/card-facet`'s own `view.js` just needs to trigger a
+fetch (debounced 300ms for the `input` UI type, matching `gateway/facet`'s
+own and `gateway/data-cards-search`'s reasoning).
 
 Because each card-facet's own DOM value already reflects its default
 (pre-filled server-side by `render.php`, the exact same "Facets panel
@@ -2218,6 +2229,57 @@ parent" check, the actual `<input>`/`<select>`/checkboxes markup,
 since `shared/cards.js`'s `collectActiveFacets()` and the REST fetch it
 drives were already source-agnostic (they just read whatever's currently
 in the DOM).
+
+### Full comparison-operator support (`gateway/card-facet`'s live Compare)
+
+Marking Collection fields filterable surfaced a real gap: `gateway/card-facet`'s
+own **Compare** control (for the "Input" UI type) only ever offered
+"Contains"/"Equals" -- fine for text, but no way to build something like
+"Estimated Hours > 2" on a Number field, even though the backend
+(`Facet_Query::apply_collection_facets()`/`apply_facets()`) already fully
+supports `=`, `!=`, `>`, `>=`, `<`, `<=`, `LIKE`, `NOT LIKE` -- the exact
+same `FACET_COMPARE_OPTIONS` vocabulary the top-level Facets panel's own
+Default-value modal already offers. There was never a backend reason for
+the *live* control to offer a narrower menu than the *default* one --
+only an unnecessarily restrictive front-end control.
+
+- **`CompareControl`** (`shared/controls/compare-control.js`) now
+  defaults to the full `FACET_COMPARE_OPTIONS` list, with an optional
+  `options` prop for a caller that genuinely needs to narrow it.
+  `gateway/card-facet`'s own usage passes nothing, so it gets all eight
+  operators.
+- **`gateway/facet`** (Data Table) is the one caller that *does* pass a
+  narrower list -- the new `STRING_ONLY_COMPARE_OPTIONS` (Contains/Equals
+  only, same two as before). Its own *live* interaction drives DataTables'
+  client-side `column().search()`, a plain substring/regex match with no
+  numeric-comparison concept at all -- unlike `gateway/card-facet`'s
+  REST-driven fetch, which reaches the same `Facet_Query::apply_facets()`
+  the *default* value already does, so it can honor the full vocabulary
+  for real. Building real "Greater Than"/etc. support for the Data
+  Table's own *live* facet would need a genuinely different mechanism (a
+  custom DataTables search plugin doing real numeric comparison against
+  parsed cell values) -- separate, undone work, not a matter of widening
+  a list. Both `compare` attributes now share one vocabulary regardless
+  (`gateway/facet`'s own private "contains"/"equals" strings were renamed
+  to the real `LIKE`/`=` operators, in `block.json`'s default, `render.php`'s
+  validation, and `view.js`'s own comparison, with the old values still
+  recognized and translated forward for an already-published block) --
+  the *menu* differs per block for a real, documented technical reason,
+  but the underlying representation is now the same one everywhere.
+- **`shared/cards.js`'s `collectActiveFacets()`** no longer translates a
+  card-facet's `data-compare` through a second, narrower vocabulary --
+  `render.php` already normalizes it to one of the real operators before
+  it ever reaches the DOM, so it's forwarded as-is. The server still
+  re-validates it (`Facet_Query::sanitize_compare()`) regardless of what
+  a facet element's own markup claims.
+- **`Facet_Query::apply_facets()`'s meta branch** gains a `'type'` key on
+  its `meta_query` clause: `NUMERIC` when the compare operator is one of
+  `>`/`>=`/`<`/`<=`, `CHAR` otherwise. Without this, WP's own
+  `WP_Meta_Query` compares as `CHAR` by default, so "Greater Than" against
+  a numeric-looking meta value would sort lexicographically ("10" <
+  "9") instead of numerically -- choosing one of those four operators for
+  a facet is itself a declaration that the value should be compared as a
+  number.
 
 ### Editor preview: real records, not just posts
 

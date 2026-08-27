@@ -5,6 +5,7 @@ import { __, sprintf } from '@wordpress/i18n';
 import FacetKeyControl from '../../shared/controls/facet-key-control';
 import UiTypeControl from '../../shared/controls/ui-type-control';
 import CompareControl from '../../shared/controls/compare-control';
+import { STRING_ONLY_COMPARE_OPTIONS } from '../../shared/controls/facet-compare-options';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 
 export default function Edit( { attributes, setAttributes, context } ) {
@@ -72,6 +73,13 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ 'input' === uiType && (
 						<CompareControl
 							value={ compare }
+							// This block's own *live* interaction drives
+							// DataTables' client-side column().search() -- see
+							// CompareControl's own docblock for why that means
+							// only "Contains"/"Equals" here, unlike gateway/
+							// card-facet's REST-driven equivalent, which can
+							// (and does) offer the full comparison vocabulary.
+							options={ STRING_ONLY_COMPARE_OPTIONS }
 							onChange={ ( value ) =>
 								setAttributes( { compare: value } )
 							}

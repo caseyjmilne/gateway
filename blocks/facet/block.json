@@ -28,7 +28,7 @@
 		},
 		"compare": {
 			"type": "string",
-			"default": "contains"
+			"default": "LIKE"
 		}
 	},
 	"supports": {

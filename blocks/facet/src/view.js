@@ -95,10 +95,13 @@ function initFacet( facetEl ) {
 		}
 
 		const column = dataTable.column( columnIndex );
-		const compare =
-			facetEl.getAttribute( 'data-compare' ) === 'equals'
-				? 'equals'
-				: 'contains';
+		// render.php always normalizes data-compare to one of these two real
+		// operator values ('=' or 'LIKE') before it ever reaches the DOM --
+		// see that file's own docblock for why only these two (of the full
+		// Facet_Query::ALLOWED_COMPARE vocabulary the *default* value's own
+		// Facets panel offers) are meaningful for this block's *live*
+		// interaction.
+		const compare = facetEl.getAttribute( 'data-compare' ) === '=' ? '=' : 'LIKE';
 
 		const applySearch = ( value, isRegex ) => {
 			column.search( value, isRegex, false ).draw();
@@ -112,7 +115,7 @@ function initFacet( facetEl ) {
 				debounce( () => {
 					const { value } = input;
 
-					if ( 'equals' === compare ) {
+					if ( '=' === compare ) {
 						applySearch(
 							value ? exactMatchPattern( [ value ] ) : '',
 							true

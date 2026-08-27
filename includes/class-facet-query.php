@@ -102,6 +102,15 @@ class Facet_Query {
 					// checked box, regardless of the facet's own compare --
 					// same reasoning as the taxonomy branch below.
 					'compare' => $is_multi ? 'IN' : $compare,
+					// WP_Meta_Query defaults to comparing as CHAR -- fine for
+					// '='/'LIKE'/etc., but '>'/'>='/'<'/'<=' against a plain
+					// string comparison sorts "10" before "9" (lexicographic,
+					// not numeric). A meta value being compared with one of
+					// those operators is being treated as a number by the
+					// person configuring the facet in the first place, so
+					// NUMERIC is the correct comparison type whenever one of
+					// them is in play.
+					'type'    => in_array( $compare, array( '>', '>=', '<', '<=' ), true ) ? 'NUMERIC' : 'CHAR',
 				);
 			} elseif ( 'taxonomy' === $facet['type'] ) {
 				// Term membership is inherently binary -- ">"/"LIKE"/etc.

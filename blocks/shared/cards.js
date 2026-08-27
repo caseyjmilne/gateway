@@ -38,14 +38,18 @@ export function findCardsGridElement( el ) {
  * filter state -- defaults and live edits alike -- with no separate
  * merge step.
  *
- * `compare` is resolved here, not trusted from the block's own
- * `data-compare` attribute directly: that attribute only ever means
- * something for the "input" UI type (`gateway/card-facet/render.php`'s
- * own docblock -- Select/Checkboxes are always exact matches), and its
- * two values ("contains"/"equals") are this block's own front-end
- * vocabulary, not the SQL-level operators `Facet_Query::apply_facets()`
- * actually expects ('LIKE'/'=') -- translated here, once, rather than
- * asking the server to understand a second vocabulary.
+ * `compare` only ever means something for the "input" UI type
+ * (`gateway/card-facet/render.php`'s own docblock -- Select/Checkboxes
+ * are always exact matches): its `data-compare` attribute is already one
+ * of the real operators `Facet_Query::apply_collection_facets()`/
+ * `apply_facets()` expect ('=', '!=', '>', '>=', '<', '<=', 'LIKE',
+ * 'NOT LIKE' -- render.php normalizes it to one of these before it ever
+ * reaches the DOM), so it's forwarded as-is rather than translated
+ * through a second, narrower vocabulary -- this is what lets a
+ * Number/Range field's card-facet do a real "Estimated Hours > 2", not
+ * just contains/equals. The server still re-validates it (`Facet_Query::
+ * sanitize_compare()`) regardless of what a facet element's own markup
+ * claims.
  *
  * @param {HTMLElement} gridEl The grid's wrapper element.
  * @return {Array<{key: string, compare: string, value: (string|string[])}>}
@@ -92,11 +96,12 @@ export function collectActiveFacets( gridEl ) {
 		}
 
 		// Select/Checkboxes are always exact matches; only "input" has a
-		// real contains-vs-equals choice (see this function's own docblock).
+		// real, configurable compare operator (see this function's own
+		// docblock).
 		let compare = '=';
 
 		if ( 'input' === uiType ) {
-			compare = 'equals' === facetEl.getAttribute( 'data-compare' ) ? '=' : 'LIKE';
+			compare = facetEl.getAttribute( 'data-compare' ) || '=';
 		}
 
 		facets.push( { key, compare, value } );

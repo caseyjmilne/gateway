@@ -54,17 +54,27 @@ $parent_facets = isset( $block->context['gateway/data-cards/facets'] ) && is_arr
 
 $facet_key = isset( $attributes['facetKey'] ) && is_string( $attributes['facetKey'] ) ? $attributes['facetKey'] : '';
 $ui_type   = isset( $attributes['uiType'] ) ? $attributes['uiType'] : 'input';
-$compare   = isset( $attributes['compare'] ) ? $attributes['compare'] : 'contains';
+$compare   = isset( $attributes['compare'] ) && is_string( $attributes['compare'] ) ? $attributes['compare'] : 'LIKE';
 
 if ( ! in_array( $ui_type, array( 'input', 'select', 'checkboxes' ), true ) ) {
 	$ui_type = 'input';
 }
 
-// Only meaningful for the "input" UI type -- Select/Checkboxes are always
-// exact matches against a fixed list of values (see ui-type-control.js /
-// view.js), so an invalid value here is harmless either way.
-if ( 'equals' !== $compare ) {
-	$compare = 'contains';
+// Legacy values from before this control's vocabulary was unified with
+// the real operators Facet_Query::apply_collection_facets()/apply_facets()
+// expect (and the top-level Facets panel's own Default-value modal
+// already used) -- translated forward rather than silently reset to the
+// default, so an already-published card-facet block keeps its configured
+// behavior. Only meaningful for the "input" UI type -- Select/Checkboxes
+// are always exact matches against a fixed list of values (see
+// ui-type-control.js/view.js), so an invalid value here is harmless
+// either way.
+if ( 'contains' === $compare ) {
+	$compare = 'LIKE';
+} elseif ( 'equals' === $compare ) {
+	$compare = '=';
+} elseif ( ! in_array( $compare, \Gateway\Facet_Query::ALLOWED_COMPARE, true ) ) {
+	$compare = 'LIKE';
 }
 
 $has_source = 'collection' === $source_type ? '' !== $collection : '' !== $post_type;

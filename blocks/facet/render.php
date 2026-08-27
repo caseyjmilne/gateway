@@ -54,17 +54,29 @@ $parent_columns = isset( $block->context['gateway/datatable/columns'] ) && is_ar
 
 $facet_key = isset( $attributes['facetKey'] ) && is_string( $attributes['facetKey'] ) ? $attributes['facetKey'] : '';
 $ui_type   = isset( $attributes['uiType'] ) ? $attributes['uiType'] : 'input';
-$compare   = isset( $attributes['compare'] ) ? $attributes['compare'] : 'contains';
+$compare   = isset( $attributes['compare'] ) && is_string( $attributes['compare'] ) ? $attributes['compare'] : 'LIKE';
 
 if ( ! in_array( $ui_type, array( 'input', 'select', 'checkboxes' ), true ) ) {
 	$ui_type = 'input';
 }
 
-// Only meaningful for the "input" UI type -- Select/Checkboxes are always
-// exact matches against a fixed list of values (see ui-type-control.js /
-// view.js), so an invalid value here is harmless either way.
-if ( 'equals' !== $compare ) {
-	$compare = 'contains';
+// This block's own CompareControl usage only ever offers "Contains"/
+// "Equals" (STRING_ONLY_COMPARE_OPTIONS -- see that control's own
+// docblock for why: the live interaction drives DataTables' client-side
+// column().search(), a plain substring/regex match with no numeric
+// -comparison concept), so only 'LIKE'/'=' are ever meaningful here --
+// but still normalized against the shared vocabulary (plus its legacy
+// 'contains'/'equals' values, from before it was unified with
+// Facet_Query::ALLOWED_COMPARE) rather than a bespoke two-value check,
+// so a stray value never breaks the front end. Only meaningful for the
+// "input" UI type -- Select/Checkboxes are always exact matches against
+// a fixed list of values (see ui-type-control.js/view.js).
+if ( 'contains' === $compare ) {
+	$compare = 'LIKE';
+} elseif ( 'equals' === $compare ) {
+	$compare = '=';
+} elseif ( '=' !== $compare ) {
+	$compare = 'LIKE';
 }
 
 $has_source = 'collection' === $source_type ? '' !== $collection : '' !== $post_type;
