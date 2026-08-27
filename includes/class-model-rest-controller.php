@@ -67,18 +67,14 @@ class Model_REST_Controller {
 
 	/**
 	 * Shared 'args' schema for the two routes that accept a title --
-	 * create_model() and rename_model() take the exact same two fields.
+	 * create_model() and rename_model() take the exact same field.
 	 *
 	 * @return array
 	 */
 	private static function title_args() {
 		return array(
-			'title'        => array(
+			'title' => array(
 				'required' => true,
-				'type'     => 'string',
-			),
-			'plural_title' => array(
-				'required' => false,
 				'type'     => 'string',
 			),
 		);
@@ -143,10 +139,7 @@ class Model_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public static function create_model( \WP_REST_Request $request ) {
-		$result = Model_Builder::create(
-			$request->get_param( 'title' ),
-			(string) $request->get_param( 'plural_title' )
-		);
+		$result = Model_Builder::create( $request->get_param( 'title' ) );
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -162,8 +155,7 @@ class Model_REST_Controller {
 	public static function rename_model( \WP_REST_Request $request ) {
 		$result = Model_Builder::rename(
 			$request->get_param( 'class' ),
-			$request->get_param( 'title' ),
-			(string) $request->get_param( 'plural_title' )
+			$request->get_param( 'title' )
 		);
 
 		if ( is_wp_error( $result ) ) {

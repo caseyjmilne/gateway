@@ -11,6 +11,14 @@
  * one on its own, because a model with no table yet isn't usable for
  * anything.
  *
+ * Title is the single source of truth for naming -- both the class name
+ * and the table name (auto-pluralized from it) are derived from it alone,
+ * deliberately: an earlier version of this let a separate "Plural Title"
+ * field override the table name independently of Title, which turned out
+ * to be more confusing than useful in practice (a table changing out from
+ * under a model whose Title never changed, with no obvious reason why) --
+ * removed in favor of one field driving both names together.
+ *
  * Generated files are deliberately unnamespaced, and reference Illuminate
  * classes by fully-qualified name (`\Illuminate\...`) rather than `use`
  * imports -- avoids any chance of a title like "Model" or "Migration"
@@ -39,25 +47,15 @@ class Model_Builder {
 	const OPTION_NEXT_VERSION = 'gateway_next_migration_version';
 
 	/**
-	 * Create a model: derive its class/table name from $title (and,
-	 * optionally, $plural_title), write the model + migration files, load
-	 * and register both classes, and run the migration -- the table
-	 * exists by the time this returns successfully.
+	 * Create a model: derive its class/table name from $title, write the
+	 * model + migration files, load and register both classes, and run
+	 * the migration -- the table exists by the time this returns
+	 * successfully.
 	 *
-	 * @param string $title        Free-text title, e.g. "Blog Post".
-	 * @param string $plural_title Optional free-text plural, e.g.
-	 *                              "Tickets" for a "Ticket" title -- used
-	 *                              for the table name instead of
-	 *                              auto-pluralizing $title. Blank falls
-	 *                              back to auto-pluralizing (Str::
-	 *                              pluralStudly()), which gets irregular
-	 *                              plurals right most of the time but not
-	 *                              always (and can't guess a domain-specific
-	 *                              preference at all) -- this is the escape
-	 *                              hatch for when it doesn't.
+	 * @param string $title Free-text title, e.g. "Blog Post".
 	 * @return array{class:string,table:string,migration_class:string,migration_version:int}|\WP_Error
 	 */
-	public static function create( $title, $plural_title = '' ) {
+	public static function create( $title ) {
 		$title = trim( (string) $title );
 
 		if ( '' === $title ) {
@@ -78,22 +76,7 @@ class Model_Builder {
 			);
 		}
 
-		$plural_title = trim( (string) $plural_title );
-
-		if ( '' !== $plural_title ) {
-			$table_name = self::table_name_from_words( $plural_title );
-
-			if ( '' === $table_name ) {
-				return new \WP_Error(
-					'gateway_model_invalid_plural_title',
-					__( 'Plural Title must contain at least one letter.', 'gateway' ),
-					array( 'status' => 400 )
-				);
-			}
-		} else {
-			$table_name = self::table_name_for_class( $class_name );
-		}
-
+		$table_name      = self::table_name_for_class( $class_name );
 		$migration_class = self::migration_class_for_table( $table_name );
 
 		if ( class_exists( $class_name, false ) ) {
@@ -109,16 +92,16 @@ class Model_Builder {
 		}
 
 		if ( class_exists( $migration_class, false ) ) {
-			// Reachable even with a class name that's otherwise free: the
-			// table name (auto-pluralized, or from Plural Title) is what
-			// the migration class is actually keyed on, and two different
-			// titles can land on the same one -- e.g. "Ticket" and
-			// "Support Ticket" both explicitly given the plural "Tickets".
+			// Reachable even with a class name that's otherwise free: two
+			// different titles can still auto-pluralize to the same table
+			// (e.g. an irregular plural coinciding with another word) --
+			// rare, but worth its own message rather than a generic
+			// "already exists" that would point at the wrong field.
 			return new \WP_Error(
 				'gateway_model_table_exists',
 				sprintf(
 					/* translators: %s: table name */
-					__( 'A model already uses the table "%s" -- try a different Plural Title.', 'gateway' ),
+					__( 'A model already uses the table "%s".', 'gateway' ),
 					$table_name
 				),
 				array( 'status' => 409 )
@@ -195,11 +178,11 @@ class Model_Builder {
 	}
 
 	/**
-	 * Rename a model: derive the new class/table from $title/$plural_title
-	 * exactly like create() does, generate the new model/migration/table,
-	 * and only once that has actually succeeded, retire the old one --
-	 * drop its table (via its own migration's down()), delete its files,
-	 * and unregister both its classes. That ordering is deliberate: if
+	 * Rename a model: derive the new class/table from $title exactly like
+	 * create() does, generate the new model/migration/table, and only
+	 * once that has actually succeeded, retire the old one -- drop its
+	 * table (via its own migration's down()), delete its files, and
+	 * unregister both its classes. That ordering is deliberate: if
 	 * anything about the new model fails, the old one is untouched rather
 	 * than this leaving neither the old model nor a working new one behind.
 	 *
@@ -208,13 +191,11 @@ class Model_Builder {
 	 * success -- nothing is dropped or regenerated over a change that
 	 * wouldn't actually change anything.
 	 *
-	 * @param string $old_class    Existing, registered model class name.
-	 * @param string $title        New free-text title.
-	 * @param string $plural_title Optional new free-text plural -- see
-	 *                              create()'s own docblock.
+	 * @param string $old_class Existing, registered model class name.
+	 * @param string $title     New free-text title.
 	 * @return array{class:string,table:string,migration_class:string,migration_version:int,warnings?:string[]}|\WP_Error
 	 */
-	public static function rename( $old_class, $title, $plural_title = '' ) {
+	public static function rename( $old_class, $title ) {
 		if ( ! Model_Registry::has( $old_class ) || ! class_exists( $old_class ) ) {
 			return new \WP_Error(
 				'gateway_model_not_found',
@@ -233,31 +214,13 @@ class Model_Builder {
 			);
 		}
 
-		$old_instance = new $old_class();
-		$old_table    = $old_instance->getTable();
-		$plural_title = trim( (string) $plural_title );
-
-		if ( '' !== $plural_title ) {
-			$new_table_name = self::table_name_from_words( $plural_title );
-
-			if ( '' === $new_table_name ) {
-				return new \WP_Error(
-					'gateway_model_invalid_plural_title',
-					__( 'Plural Title must contain at least one letter.', 'gateway' ),
-					array( 'status' => 400 )
-				);
-			}
-		} else {
-			$new_table_name = self::table_name_for_class( $new_class_name );
-		}
-
-		// No real change -- the class *and* table this resolves to are
-		// exactly what's already there (whether because nothing was
-		// edited, or an edit sanitizes/auto-derives back to the same
-		// thing) -- report the model as-is rather than dropping and
-		// regenerating a table for nothing.
-		if ( $new_class_name === $old_class && $new_table_name === $old_table ) {
-			$old_migration_class = self::migration_class_for_table( $old_table );
+		// No real change (e.g. re-saving the same title, or one that only
+		// differs by whitespace/case) -- report the model as-is rather
+		// than dropping and regenerating a table for nothing.
+		if ( $new_class_name === $old_class ) {
+			$old_instance         = new $old_class();
+			$old_table            = $old_instance->getTable();
+			$old_migration_class  = self::migration_class_for_table( $old_table );
 
 			return array(
 				'class'             => $old_class,
@@ -267,7 +230,7 @@ class Model_Builder {
 			);
 		}
 
-		if ( $new_class_name !== $old_class && class_exists( $new_class_name, false ) ) {
+		if ( class_exists( $new_class_name, false ) ) {
 			return new \WP_Error(
 				'gateway_model_exists',
 				sprintf(
@@ -279,19 +242,6 @@ class Model_Builder {
 			);
 		}
 
-		// The Title is unchanged and only the Plural Title (table) is
-		// different -- create()'s own "does this class already exist"
-		// guard would wrongly reject reusing $old_class's own name (it's
-		// still loaded, from before this call), since create() has no way
-		// to know that's the point. retable() handles this narrower case
-		// directly: a new migration/table for $new_table_name, the model
-		// file rewritten to point at it, and the old table/migration
-		// retired the same way as a full rename below -- without ever
-		// generating a second, differently-named model file.
-		if ( $new_class_name === $old_class ) {
-			return self::retable( $old_class, $old_table, $new_table_name );
-		}
-
 		if ( ! Database_Connection::is_healthy() ) {
 			return new \WP_Error(
 				'gateway_database_unavailable',
@@ -300,10 +250,13 @@ class Model_Builder {
 			);
 		}
 
+		$old_instance = new $old_class();
+		$old_table    = $old_instance->getTable();
+
 		// Create the new model/migration/table first -- see this method's
 		// own docblock for why the old one is only touched after this
 		// succeeds.
-		$created = self::create( $title, $plural_title );
+		$created = self::create( $title );
 
 		if ( is_wp_error( $created ) ) {
 			return $created;
@@ -359,142 +312,6 @@ class Model_Builder {
 	}
 
 	/**
-	 * Handles the narrower case inside rename() where the Title (and so
-	 * the class name) is unchanged and only the Plural Title (table) is
-	 * different. create() can't be reused here -- its own "does this
-	 * class already exist" guard would reject reusing $class's own name,
-	 * since it has no way to know that's the point -- so this writes just
-	 * a new migration for $new_table_name, runs it, rewrites the existing
-	 * model file to point at the new table, and only then retires the old
-	 * table/migration (same ordering rationale as rename() itself: the
-	 * new table has to actually work before the old one is touched).
-	 *
-	 * @param string $class          Existing model class name (unchanged).
-	 * @param string $old_table      Its current table name.
-	 * @param string $new_table_name Its new table name.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,warnings?:string[]}|\WP_Error
-	 */
-	private static function retable( $class, $old_table, $new_table_name ) {
-		$new_migration_class = self::migration_class_for_table( $new_table_name );
-
-		if ( class_exists( $new_migration_class, false ) ) {
-			return new \WP_Error(
-				'gateway_model_table_exists',
-				sprintf(
-					/* translators: %s: table name */
-					__( 'A model already uses the table "%s" -- try a different Plural Title.', 'gateway' ),
-					$new_table_name
-				),
-				array( 'status' => 409 )
-			);
-		}
-
-		if ( ! Database_Connection::is_healthy() ) {
-			return new \WP_Error(
-				'gateway_database_unavailable',
-				__( 'The database connection isn\'t currently working -- check the Database Connection screen before renaming a model.', 'gateway' ),
-				array( 'status' => 503 )
-			);
-		}
-
-		self::ensure_directories();
-
-		$version            = self::next_migration_version();
-		$model_path         = trailingslashit( GATEWAY_MODELS_DIR ) . $class . '.php';
-		$new_migration_path = trailingslashit( GATEWAY_MIGRATIONS_DIR ) . self::migration_filename( $version, $new_table_name );
-
-		if ( file_exists( $new_migration_path ) ) {
-			return new \WP_Error(
-				'gateway_model_table_exists',
-				sprintf(
-					/* translators: %s: table name */
-					__( 'A model already uses the table "%s" -- try a different Plural Title.', 'gateway' ),
-					$new_table_name
-				),
-				array( 'status' => 409 )
-			);
-		}
-
-		if ( false === file_put_contents( $new_migration_path, self::migration_template( $new_migration_class, $new_table_name, $version ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-			return new \WP_Error(
-				'gateway_model_write_failed',
-				__( 'Could not write the migration file -- check that wp-content/gateway is writable.', 'gateway' ),
-				array( 'status' => 500 )
-			);
-		}
-
-		require_once $new_migration_path;
-		Migration_Registry::register( $new_migration_class );
-
-		$run_result = Migration_Runner::run( $new_migration_class );
-
-		if ( is_wp_error( $run_result ) ) {
-			Migration_Registry::unregister( $new_migration_class );
-
-			if ( file_exists( $new_migration_path ) ) {
-				wp_delete_file( $new_migration_path );
-			}
-
-			return $run_result;
-		}
-
-		// The new table exists and works -- point the model file at it.
-		// The already-loaded $class object in this request keeps
-		// reporting the old table if asked again (PHP can't redeclare a
-		// class mid-request), but the next request's Directory_Loader
-		// picks up this rewritten file fresh, same as any other file
-		// change here.
-		if ( false === file_put_contents( $model_path, self::model_template( $class, $new_table_name ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-			return new \WP_Error(
-				'gateway_model_write_failed',
-				__( 'The new table was created, but the model file could not be updated -- check that wp-content/gateway is writable, then try again.', 'gateway' ),
-				array( 'status' => 500 )
-			);
-		}
-
-		$warnings             = array();
-		$old_migration_class  = self::migration_class_for_table( $old_table );
-
-		if ( class_exists( $old_migration_class ) ) {
-			$rollback_result = Migration_Runner::rollback( $old_migration_class );
-
-			if ( is_wp_error( $rollback_result ) ) {
-				$warnings[] = sprintf(
-					/* translators: 1: old table name, 2: error message */
-					__( 'Could not drop the old table "%1$s": %2$s', 'gateway' ),
-					$old_table,
-					$rollback_result->get_error_message()
-				);
-			}
-
-			Migration_Registry::unregister( $old_migration_class );
-
-			$old_version = self::registered_migration_version( $old_migration_class );
-
-			if ( null !== $old_version ) {
-				$old_migration_path = trailingslashit( GATEWAY_MIGRATIONS_DIR ) . self::migration_filename( $old_version, $old_table );
-
-				if ( file_exists( $old_migration_path ) ) {
-					wp_delete_file( $old_migration_path );
-				}
-			}
-		}
-
-		$result = array(
-			'class'              => $class,
-			'table'              => $new_table_name,
-			'migration_class'    => $new_migration_class,
-			'migration_version'  => $version,
-		);
-
-		if ( $warnings ) {
-			$result['warnings'] = $warnings;
-		}
-
-		return $result;
-	}
-
-	/**
 	 * @param string $migration_class Migration class name.
 	 * @return int|null The migration's own $version, or null if the class
 	 *                   isn't loaded or declares none.
@@ -543,30 +360,14 @@ class Model_Builder {
 	 *                punctuation).
 	 */
 	private static function class_name_from_title( $title ) {
-		return \Illuminate\Support\Str::studly( self::sanitize_words( $title ) );
-	}
+		// Strip anything that isn't a letter, digit, space, hyphen, or
+		// underscore before studly-casing -- Str::studly() only treats
+		// those last three as word separators, so stray punctuation would
+		// otherwise survive straight into the class name (e.g. "Foo!"
+		// would studly-case to "Foo!", not a valid PHP identifier).
+		$clean = preg_replace( '/[^A-Za-z0-9 _-]+/', '', $title );
 
-	/**
-	 * @param string $words Free-text plural, e.g. "Tickets".
-	 * @return string snake_case table name, e.g. "tickets", or '' if
-	 *                nothing alphanumeric survives sanitizing.
-	 */
-	private static function table_name_from_words( $words ) {
-		return \Illuminate\Support\Str::snake( \Illuminate\Support\Str::studly( self::sanitize_words( $words ) ) );
-	}
-
-	/**
-	 * Strip anything that isn't a letter, digit, space, hyphen, or
-	 * underscore before studly/snake-casing -- Str::studly() only treats
-	 * those last three as word separators, so stray punctuation would
-	 * otherwise survive straight into a class or table name (e.g. "Foo!"
-	 * would studly-case to "Foo!", not a valid PHP identifier).
-	 *
-	 * @param string $raw Free-text input.
-	 * @return string
-	 */
-	private static function sanitize_words( $raw ) {
-		return preg_replace( '/[^A-Za-z0-9 _-]+/', '', (string) $raw );
+		return \Illuminate\Support\Str::studly( $clean );
 	}
 
 	/**

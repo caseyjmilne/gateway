@@ -5,15 +5,17 @@ import { apiFetch } from '../api.js';
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
- * run) and lets its Title/Plural Title be changed.
+ * run) and lets its Title be changed.
  *
  * There's no separately-stored "original title" anywhere on the PHP side
- * (Model_Builder only ever persists the *derived* class/table names, not
- * the raw text that produced them) -- so the editable fields here are
- * pre-filled from those derived names (the class name as Title, the table
- * name as Plural Title) rather than from some remembered original input.
- * Re-saving without changing anything is therefore always a safe no-op
- * (see Model_Builder::rename()'s own same-name check).
+ * (Model_Builder only ever persists the *derived* class name, not the raw
+ * text that produced it) -- so the editable field here is pre-filled from
+ * the model's own class name. Re-saving without changing it is therefore
+ * always a safe no-op (see Model_Builder::rename()'s own same-name check).
+ *
+ * Saving asks for confirmation inline on this page (not a native
+ * window.confirm() popup) before actually submitting, since a rename here
+ * permanently drops the old table.
  */
 export default function ModelDetail() {
 	const { className } = useParams();
@@ -26,7 +28,7 @@ export default function ModelDetail() {
 	const [ loadError, setLoadError ] = useState( '' );
 
 	const [ title, setTitle ] = useState( '' );
-	const [ pluralTitle, setPluralTitle ] = useState( '' );
+	const [ confirming, setConfirming ] = useState( false );
 	const [ saving, setSaving ] = useState( false );
 	const [ saveResult, setSaveResult ] = useState( null );
 
@@ -37,6 +39,7 @@ export default function ModelDetail() {
 		setLoadError( '' );
 		setModel( null );
 		setSaveResult( null );
+		setConfirming( false );
 
 		apiFetch( `/models/${ encodeURIComponent( className ) }` )
 			.then( ( data ) => {
@@ -45,7 +48,6 @@ export default function ModelDetail() {
 				}
 				setModel( data );
 				setTitle( data.class );
-				setPluralTitle( data.table );
 			} )
 			.catch( ( error ) => {
 				if ( ! cancelled ) {
@@ -63,26 +65,26 @@ export default function ModelDetail() {
 		};
 	}, [ className ] );
 
-	const unchanged =
-		model && title.trim() === model.class && pluralTitle.trim() === model.table;
+	const unchanged = model && title.trim() === model.class;
 
-	const handleSave = async ( event ) => {
+	const handleTitleChange = ( event ) => {
+		setTitle( event.target.value );
+		setConfirming( false );
+	};
+
+	const handleSubmit = ( event ) => {
 		event.preventDefault();
 
 		if ( unchanged ) {
 			return;
 		}
 
-		const confirmed = window.confirm(
-			'Saving this creates a new database table under the new name and ' +
-				'permanently deletes the current one, including any data in it. ' +
-				"This can't be undone. Continue?"
-		);
+		setSaveResult( null );
+		setConfirming( true );
+	};
 
-		if ( ! confirmed ) {
-			return;
-		}
-
+	const handleConfirm = async () => {
+		setConfirming( false );
 		setSaving( true );
 		setSaveResult( null );
 
@@ -91,10 +93,7 @@ export default function ModelDetail() {
 				`/models/${ encodeURIComponent( className ) }`,
 				{
 					method: 'PUT',
-					body: JSON.stringify( {
-						title,
-						plural_title: pluralTitle,
-					} ),
+					body: JSON.stringify( { title } ),
 				}
 			);
 			// The class name (and therefore this page's own URL) may have
@@ -140,7 +139,7 @@ export default function ModelDetail() {
 						<code>{ model.class }</code>
 					</h2>
 
-					<form onSubmit={ handleSave }>
+					<form onSubmit={ handleSubmit }>
 						<table className="form-table" role="presentation">
 							<tbody>
 								<tr>
@@ -155,34 +154,11 @@ export default function ModelDetail() {
 											type="text"
 											className="regular-text"
 											value={ title }
-											onChange={ ( event ) =>
-												setTitle( event.target.value )
-											}
-										/>
-									</td>
-								</tr>
-								<tr>
-									<th scope="row">
-										<label htmlFor="gateway-model-edit-plural-title">
-											Plural Title
-										</label>
-									</th>
-									<td>
-										<input
-											id="gateway-model-edit-plural-title"
-											type="text"
-											className="regular-text"
-											value={ pluralTitle }
-											onChange={ ( event ) =>
-												setPluralTitle(
-													event.target.value
-												)
-											}
+											onChange={ handleTitleChange }
 										/>
 										<p className="description">
-											Changing either field above
-											creates a new model and table
-											under the new name, and
+											Changing this creates a new model
+											and table under the new name, and
 											permanently deletes the current
 											one (including its data).
 										</p>
@@ -219,20 +195,48 @@ export default function ModelDetail() {
 							</tbody>
 						</table>
 
-						<p>
-							<button
-								type="submit"
-								className="button button-primary"
-								disabled={
-									saving ||
-									! title.trim() ||
-									! pluralTitle.trim() ||
-									unchanged
-								}
-							>
-								{ saving ? 'Saving…' : 'Save' }
-							</button>
-						</p>
+						{ confirming ? (
+							<div className="notice notice-warning gateway-inline-confirm">
+								<p>
+									This creates a new database table under
+									the new name and permanently deletes the
+									current one, including any data in it.
+									This can&rsquo;t be undone.
+								</p>
+								<p>
+									<button
+										type="button"
+										className="button button-primary"
+										onClick={ handleConfirm }
+										disabled={ saving }
+									>
+										{ saving
+											? 'Saving…'
+											: 'Yes, rename it' }
+									</button>{ ' ' }
+									<button
+										type="button"
+										className="button"
+										onClick={ () => setConfirming( false ) }
+										disabled={ saving }
+									>
+										Cancel
+									</button>
+								</p>
+							</div>
+						) : (
+							<p>
+								<button
+									type="submit"
+									className="button button-primary"
+									disabled={
+										saving || ! title.trim() || unchanged
+									}
+								>
+									Save
+								</button>
+							</p>
+						) }
 					</form>
 
 					{ saveResult && ! saveResult.success && (

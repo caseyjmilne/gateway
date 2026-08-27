@@ -11,7 +11,6 @@ import { apiFetch } from '../api.js';
  */
 export default function ModelsList() {
 	const [ title, setTitle ] = useState( '' );
-	const [ pluralTitle, setPluralTitle ] = useState( '' );
 	const [ submitting, setSubmitting ] = useState( false );
 	const [ result, setResult ] = useState( null );
 
@@ -45,11 +44,10 @@ export default function ModelsList() {
 		try {
 			const data = await apiFetch( '/models', {
 				method: 'POST',
-				body: JSON.stringify( { title, plural_title: pluralTitle } ),
+				body: JSON.stringify( { title } ),
 			} );
 			setResult( { success: true, ...data } );
 			setTitle( '' );
-			setPluralTitle( '' );
 			loadModels();
 		} catch ( error ) {
 			setResult( { success: false, message: error.message } );
@@ -89,36 +87,11 @@ export default function ModelsList() {
 									placeholder="e.g. Blog Post"
 								/>
 								<p className="description">
-									Becomes the model&rsquo;s class name --
-									e.g. &ldquo;Blog Post&rdquo; &rarr; class{ ' ' }
-									<code>BlogPost</code>.
-								</p>
-							</td>
-						</tr>
-						<tr>
-							<th scope="row">
-								<label htmlFor="gateway-model-plural-title">
-									Plural Title
-								</label>
-							</th>
-							<td>
-								<input
-									id="gateway-model-plural-title"
-									type="text"
-									className="regular-text"
-									value={ pluralTitle }
-									onChange={ ( event ) =>
-										setPluralTitle( event.target.value )
-									}
-									placeholder="e.g. Tickets"
-								/>
-								<p className="description">
-									Becomes the database table name -- e.g.
-									&ldquo;Tickets&rdquo; &rarr; table{ ' ' }
-									<code>tickets</code>. Leave blank to
-									pluralize the Title automatically
-									(usually right, but not always -- this is
-									the override for when it isn&rsquo;t).
+									Becomes the model&rsquo;s class name and
+									database table -- e.g. &ldquo;Blog
+									Post&rdquo; &rarr; class{ ' ' }
+									<code>BlogPost</code>, table{ ' ' }
+									<code>blog_posts</code>.
 								</p>
 							</td>
 						</tr>
