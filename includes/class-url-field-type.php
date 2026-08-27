@@ -1,7 +1,10 @@
 <?php
 /**
- * The "Text" field type -- a single-line string, rendered as a plain
- * text input.
+ * The "URL" field type -- a single-line string stored exactly like
+ * Text_Field_Type's own value (Schema Blueprint's `string()`), rendered
+ * as `<input type="url">` so the browser offers its own basic format
+ * hinting/keyboard on mobile. Same "no validation in cast()" trade-off
+ * as Email_Field_Type -- see that class's own docblock.
  *
  * @package Gateway
  */
@@ -10,20 +13,20 @@ namespace Gateway;
 
 defined( 'ABSPATH' ) || exit;
 
-class Text_Field_Type implements Field_Type {
+class URL_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function key() {
-		return 'text';
+		return 'url';
 	}
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function label() {
-		return __( 'Text', 'gateway' );
+		return __( 'URL', 'gateway' );
 	}
 
 	/**
@@ -37,7 +40,7 @@ class Text_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function input_type() {
-		return 'text';
+		return 'url';
 	}
 
 	/**

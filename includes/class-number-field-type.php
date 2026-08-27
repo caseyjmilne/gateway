@@ -56,4 +56,11 @@ class Number_Field_Type implements Field_Type {
 		// it wrong for the other case.
 		return is_numeric( $value ) ? $value + 0 : null;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_sensitive() {
+		return false;
+	}
 }

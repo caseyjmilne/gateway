@@ -84,6 +84,11 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-text-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-number-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-text-area-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-range-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-email-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-url-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
@@ -112,11 +117,16 @@ function gateway_boot() {
 	\Gateway\Model_Field_REST_Controller::init();
 	\Gateway\Records_REST_Controller::init();
 
-	// The two built-in field types -- registered the same way as any
-	// other Registry subclass, then a plain action so a future type can
-	// hook in alongside them the same way models/migrations already can.
+	// The built-in field types -- registered the same way as any other
+	// Registry subclass, then a plain action so a future type can hook in
+	// alongside them the same way models/migrations already can.
 	\Gateway\Field_Type_Registry::register( \Gateway\Text_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Number_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Text_Area_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Range_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Email_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\URL_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Password_Field_Type::class );
 	do_action( 'gateway_register_field_types' );
 
 	// Pick up every model/migration class living in wp-content/gateway --

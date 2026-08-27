@@ -2349,10 +2349,41 @@ not worth discarding an otherwise-successful rename over.
 
 A model's detail screen (below) also has a Field Editor: Add Field, a
 list of existing fields, and the ability to edit or remove one -- the
-same shape as ACF's own field editor, deliberately. Two currently
-supported types, **Text** and **Number** -- each one's own `Field_Type`
-class (see "Field_Type_Registry" below) says which Schema Blueprint
-column method actually creates it (`string`/`double` respectively).
+same shape as ACF's own field editor, deliberately. Seven built-in
+types -- **Text**, **Number**, **Text Area**, **Range**, **Email**,
+**URL**, **Password** -- each one's own `Field_Type` class (see
+"Field_Type_Registry" below) says which Schema Blueprint column method
+actually creates it. Text/Email/URL/Password all store identically
+(`string`, i.e. VARCHAR -- they only differ in `<input>` rendering and,
+for Password, `is_sensitive()`); Text Area gets its own uncapped `text()`
+column, since a VARCHAR would truncate or reject multi-paragraph
+content; Range stores like Number (`double()`) -- a slider's value is
+still just a number underneath.
+
+**Text Area renders as a `<textarea>`, not an `<input>`.** `input_type()`
+returning `"textarea"` isn't a real HTML `<input type>` value at all --
+`RecordForm` special-cases exactly that string to render a `<textarea>`
+element instead. **Range** renders as `input[type=range]` with a small
+live `<output>` alongside it (a bare slider with no visible number is
+barely usable); it uses the browser's own default min/max/step (0-100,
+step 1) -- there's no per-field way to configure those yet, since that
+would need a field-level settings concept beyond `{name, label, type}`
+this class alone can't add on its own.
+
+**Password values are masked in the Records list view, not hashed in
+storage.** `Password_Field_Type` stores plain text, same as Text -- it's
+a generic field for an arbitrary attribute a record itself needs to
+remember (e.g. a credential for an external service), not WordPress's
+own user authentication, which already has its own separate hashed
+storage. What actually sets it apart is `is_sensitive()`, a new
+`Field_Type` method (`false` for every other built-in type) that
+`RecordsCrud`'s own table reads (via `Field_Type_Registry::describe_all()`,
+which now also exposes `is_sensitive`) to show `••••••••` in place of the
+real value wherever it'd otherwise render a raw table cell -- the
+record's own REST response still carries the real value (there's no
+reason to hide it from an admin already allowed to edit it), only this
+one *display* is masked, the same way a plain `input[type=password]` masks
+typing without hiding the value from the person typing it.
 
 **Every field is a real column, not just metadata.** Adding one
 generates and immediately runs an ADD COLUMN migration; editing one's

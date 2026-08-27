@@ -70,12 +70,13 @@ class Field_Type_Registry extends Registry {
 	}
 
 	/**
-	 * Every registered type's key/label/input_type -- what the admin
-	 * app's Field Editor and record CRUD forms need to build a type
-	 * dropdown and know which kind of <input> to render, without
+	 * Every registered type's key/label/input_type/is_sensitive -- what
+	 * the admin app's Field Editor and record CRUD forms need to build a
+	 * type dropdown, know which kind of <input> (or <textarea>) to
+	 * render, and know whether to mask a value in a list view, without
 	 * duplicating that knowledge in JavaScript.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string}>
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -86,9 +87,10 @@ class Field_Type_Registry extends Registry {
 			}
 
 			$described[] = array(
-				'key'        => $class::key(),
-				'label'      => $class::label(),
-				'input_type' => $class::input_type(),
+				'key'          => $class::key(),
+				'label'        => $class::label(),
+				'input_type'   => $class::input_type(),
+				'is_sensitive' => $class::is_sensitive(),
 			);
 		}
 

@@ -53,4 +53,17 @@ interface Field_Type {
 	 * @return mixed Value cast to what this type actually stores.
 	 */
 	public static function cast( $value );
+
+	/**
+	 * Whether this type's own values should be masked wherever they're
+	 * displayed in a list rather than an individual record's own edit
+	 * form (RecordsCrud's table -- see Password_Field_Type, the only
+	 * built-in type this is true for). Doesn't change how the value is
+	 * stored or cast, or gate the value from the REST response itself --
+	 * this is purely a display hint the admin app reads via
+	 * Field_Type_Registry::describe_all(), same as input_type().
+	 *
+	 * @return bool
+	 */
+	public static function is_sensitive();
 }

@@ -9,6 +9,13 @@ import { useState } from 'react';
  * that type, defaulting to a plain text input if a type somehow isn't
  * found (a field referencing a type that's since been unregistered,
  * rather than the form breaking outright).
+ *
+ * One `input_type` value, "textarea", isn't a real HTML `<input>` type
+ * at all (there's no `<input type="textarea">`) -- it's Text_Area_Field_Type's
+ * own signal to render a `<textarea>` element instead, handled as a
+ * special case below. "range" is a real `<input>` type, but a bare
+ * slider with no visible number is barely usable, so it gets its own
+ * small live readout alongside it.
  */
 export default function RecordForm( {
 	fields,
@@ -47,21 +54,48 @@ export default function RecordForm( {
 
 	return (
 		<form onSubmit={ handleSubmit } className="gateway-record-form">
-			{ fields.map( ( field ) => (
-				<p key={ field.name }>
-					<label htmlFor={ `gateway-record-field-${ field.name }` }>
-						{ field.label || field.name }
-					</label>
-					<br />
-					<input
-						id={ `gateway-record-field-${ field.name }` }
-						type={ inputTypeFor( field.type ) }
-						className="regular-text"
-						value={ values[ field.name ] }
-						onChange={ handleChange( field.name ) }
-					/>
-				</p>
-			) ) }
+			{ fields.map( ( field ) => {
+				const inputType = inputTypeFor( field.type );
+				const inputId = `gateway-record-field-${ field.name }`;
+
+				return (
+					<p key={ field.name }>
+						<label htmlFor={ inputId }>
+							{ field.label || field.name }
+						</label>
+						<br />
+						{ 'textarea' === inputType && (
+							<textarea
+								id={ inputId }
+								className="regular-text"
+								rows={ 4 }
+								value={ values[ field.name ] }
+								onChange={ handleChange( field.name ) }
+							/>
+						) }
+						{ 'range' === inputType && (
+							<>
+								<input
+									id={ inputId }
+									type="range"
+									value={ values[ field.name ] || 0 }
+									onChange={ handleChange( field.name ) }
+								/>{ ' ' }
+								<output>{ values[ field.name ] || 0 }</output>
+							</>
+						) }
+						{ 'textarea' !== inputType && 'range' !== inputType && (
+							<input
+								id={ inputId }
+								type={ inputType }
+								className="regular-text"
+								value={ values[ field.name ] }
+								onChange={ handleChange( field.name ) }
+							/>
+						) }
+					</p>
+				);
+			} ) }
 			<p>
 				<button
 					type="submit"

@@ -13,6 +13,13 @@ const PER_PAGE = 20;
  * every form input is driven entirely by the model's own fields
  * (Gateway\Model_Fields, fetched as part of the model detail response) --
  * there's no separate "which columns to show" configuration here at all.
+ *
+ * A field whose type is_sensitive() (Password_Field_Type, currently the
+ * only one) has its value masked in this table -- the record's own
+ * response still carries the real value (there's no reason to hide it
+ * from an admin who's allowed to edit it at all), only its *display*
+ * here is masked, the same way a plain <input type="password"> masks
+ * typing without hiding the value from the person typing it.
  */
 export default function RecordsCrud() {
 	const { className } = useParams();
@@ -142,6 +149,15 @@ export default function RecordsCrud() {
 
 	const fields = model ? model.fields : [];
 	const totalPages = Math.max( 1, Math.ceil( total / PER_PAGE ) );
+
+	const isSensitive = ( type ) =>
+		fieldTypes.find( ( fieldType ) => fieldType.key === type )
+			?.is_sensitive ?? false;
+
+	const displayValue = ( field, record ) => {
+		const value = record[ field.name ] ?? '';
+		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
+	};
 
 	return (
 		<div className="gateway-records-crud">
@@ -280,9 +296,10 @@ export default function RecordsCrud() {
 													<td>{ record.id }</td>
 													{ fields.map( ( field ) => (
 														<td key={ field.name }>
-															{ record[
-																field.name
-															] ?? '' }
+															{ displayValue(
+																field,
+																record
+															) }
 														</td>
 													) ) }
 													<td>
