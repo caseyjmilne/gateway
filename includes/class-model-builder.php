@@ -155,7 +155,7 @@ class Model_Builder {
 			);
 		}
 
-		$written_model     = false === file_put_contents( $model_path, self::model_template( $class_name, $table_name ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		$written_model     = false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, array() ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 		$written_migration = $written_model ? true : false === file_put_contents( $migration_path, self::migration_template( $migration_class, $table_name, $version ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 
 		if ( $written_model || $written_migration ) {
@@ -313,8 +313,8 @@ class Model_Builder {
 		Migration_Registry::unregister( $old_migration_class );
 		self::forget_plural_title( $old_class );
 		// The old table (and every field's own column on it) is already
-		// gone by this point -- the old field *definitions* aren't
-		// carried over to the new model either, so a renamed model
+		// gone by this point -- the old field *rows* in gateway_fields
+		// aren't carried over to the new model either, so a renamed model
 		// starts fresh on fields, the same "old data is lost" trade-off
 		// already accepted for the table itself. A future version could
 		// replay each field onto the new table instead; not done here to
@@ -518,15 +518,19 @@ class Model_Builder {
 	}
 
 	/**
-	 * (Re)writes a model's own PHP file using the current template --
-	 * called by Model_Fields after every successful add()/update()/
-	 * remove(), so a model created before some later addition to
-	 * model_template() (getFields()/getFillable(), when those were
-	 * introduced, is the motivating example -- a model created earlier
-	 * had neither, so Eloquent fell back to its own empty default
-	 * $fillable and rejected every field as unfillable) "heals" itself
-	 * the next time any field on it actually changes, rather than staying
-	 * stuck on whatever template existed when it was first created.
+	 * (Re)writes a model's own PHP file using the current template, baking
+	 * in $fields as a literal array -- called by Model_Fields after every
+	 * successful add()/update()/remove(), so getFields() always contains
+	 * the model's actual, current field list printed directly into the
+	 * file (see model_template()/fields_literal()) rather than a live
+	 * reference back into Model_Fields. This also "heals" a model created
+	 * before some later addition to model_template() (getFields()/
+	 * getFillable(), when those were introduced, is the motivating
+	 * example -- a model created earlier had neither, so Eloquent fell
+	 * back to its own empty default $fillable and rejected every field as
+	 * unfillable) the next time any field on it actually changes, rather
+	 * than staying stuck on whatever template existed when it was first
+	 * created.
 	 *
 	 * Overwrites the file unconditionally, same trade-off retable()
 	 * already accepts for its own model-file rewrite: a hand-edited model
@@ -534,12 +538,15 @@ class Model_Builder {
 	 *
 	 * @param string $class_name Model class name.
 	 * @param string $table_name Table name.
+	 * @param array  $fields     The model's current flat field array --
+	 *                            printed into the file as a literal, not
+	 *                            referenced.
 	 * @return true|\WP_Error
 	 */
-	public static function rewrite_model_file( $class_name, $table_name ) {
+	public static function rewrite_model_file( $class_name, $table_name, array $fields ) {
 		$model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $class_name . '.php';
 
-		if ( false === file_put_contents( $model_path, self::model_template( $class_name, $table_name ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, $fields ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			return new \WP_Error(
 				'gateway_model_write_failed',
 				__( 'Could not update the model file -- check that wp-content/gateway is writable.', 'gateway' ),
@@ -553,16 +560,22 @@ class Model_Builder {
 	/**
 	 * @param string $class_name Model class name.
 	 * @param string $table_name Table name.
+	 * @param array  $fields     The model's current flat field array (see
+	 *                            Model_Fields) -- printed into the file as
+	 *                            a literal PHP array, via fields_literal().
 	 * @return string PHP source for the model file.
 	 */
-	private static function model_template( $class_name, $table_name ) {
+	private static function model_template( $class_name, $table_name, array $fields = array() ) {
+		$fields_literal = self::fields_literal( $fields );
+
 		return <<<PHP
 <?php
 /**
  * Gateway-generated Eloquent model -- created via the admin app's Models
  * screen. Safe to hand-edit (e.g. add relationships, casts, accessors);
- * only re-generated if this model is deleted and re-created with the same
- * title.
+ * regenerated (getFields()/getFillable() included) every time a field is
+ * added, edited, or removed via the admin app's Field Editor -- see
+ * Gateway\\Model_Fields.
  */
 
 class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
@@ -575,21 +588,24 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	/**
 	 * Field definitions managed via the admin app's Field Editor -- see
 	 * Gateway\\Model_Fields, which also generates and runs the migration
-	 * for each field's own real column. A flat array of field arrays
-	 * (never separated into parallel {names: [...], types: [...]} arrays)
-	 * -- two fields simply sit as neighbors in the same array.
+	 * for each field's own real column. Printed here as a literal array
+	 * (not a reference back into Model_Fields) every time a field is
+	 * added, edited, or removed, so this is always the actual, current,
+	 * inspectable list. A flat array of field arrays (never separated
+	 * into parallel {names: [...], types: [...]} arrays) -- two fields
+	 * simply sit as neighbors in the same array.
 	 *
 	 * @return array<int,array{name:string,type:string}>
 	 */
 	public static function getFields() {
-		return \\Gateway\\Model_Fields::all( static::class );
+		return {$fields_literal};
 	}
 
 	/**
 	 * Overrides Eloquent's own getFillable() (rather than declaring
 	 * \$fillable directly) so mass-assignment always reflects whatever
-	 * fields currently exist, without ever needing to regenerate this
-	 * file just because a field was added, edited, or removed.
+	 * fields currently exist, without ever needing a separate edit of
+	 * its own just because a field was added, edited, or removed.
 	 *
 	 * @return string[]
 	 */
@@ -599,6 +615,32 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 }
 
 PHP;
+	}
+
+	/**
+	 * Renders a flat field array as PHP source -- e.g.
+	 * "array(\n\t\t\tarray( 'name' => 'title', 'type' => 'text' ),\n\t\t)"
+	 * -- for printing directly into getFields()'s own return statement in
+	 * model_template(). Each name/type goes through var_export() so a
+	 * value containing a quote or backslash still produces valid,
+	 * safely-escaped PHP source.
+	 *
+	 * @param array $fields Flat array of {name, type} field arrays.
+	 * @return string PHP source for the array literal (no trailing
+	 *                 semicolon -- the caller's own "return ...;" adds it).
+	 */
+	private static function fields_literal( array $fields ) {
+		if ( empty( $fields ) ) {
+			return 'array()';
+		}
+
+		$lines = array();
+
+		foreach ( $fields as $field ) {
+			$lines[] = "\t\t\tarray( 'name' => " . var_export( $field['name'], true ) . ", 'type' => " . var_export( $field['type'], true ) . ' ),';
+		}
+
+		return "array(\n" . implode( "\n", $lines ) . "\n\t\t)";
 	}
 
 	/**

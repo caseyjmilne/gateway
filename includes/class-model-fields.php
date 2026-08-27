@@ -1,11 +1,29 @@
 <?php
 /**
  * Field definitions for generated models -- what the admin app's Field
- * Editor (on a model's detail screen) manages. A model's own generated
- * getFields() method (see Model_Builder::model_template()) just calls
- * all( static::class ) here every time it's invoked -- editing a field's
- * *metadata* never needs to touch or regenerate the model's own PHP file
- * the way a Title/table rename does.
+ * Editor (on a model's detail screen) manages. The `gateway_fields`
+ * table (model, name, type -- see ensure_table()) is the one source of
+ * truth: every add()/update()/remove() call writes there first, and
+ * all() always reads straight back from it, never from anything cached
+ * in memory or in a model's own compiled code. A model's own generated
+ * getFields() method (see Model_Builder::model_template()/
+ * fields_literal()) is a *materialized copy* of that same data, baked in
+ * as a literal array purely so Eloquent's getFillable() has something to
+ * read at runtime without this class needing to be loaded at all -- it's
+ * regenerated from the table after every change, but the table, not the
+ * file, is what's actually authoritative.
+ *
+ * This ordering -- DB row first, file second -- is deliberate: if
+ * rewriting the model file ever fails (e.g. a permissions problem),
+ * add()/update() still return successfully with a 'warnings' entry
+ * rather than losing the change, because the field's own row is already
+ * safely recorded. The very next add()/update()/remove() call on that
+ * model reads the table fresh and rewrites the file again with the
+ * complete, correct field list -- so a stale file self-heals the next
+ * time anything about that model's fields changes, the same way it
+ * already does for a model whose file predates getFields()/getFillable()
+ * existing at all. resync() below exposes that same repair as its own
+ * explicit operation, for when nothing else is about to change.
  *
  * Metadata is only half the story, though: every field here is meant to
  * be a real, usable Eloquent attribute, which means a real database
@@ -16,12 +34,12 @@
  * since a fillable name Eloquent doesn't know a matching column for
  * would fail on every save.
  *
- * A model's fields are stored as one flat array of field arrays --
- * deliberately never split into parallel arrays keyed by property (no
- * {names: [...], types: [...]} shape): two fields simply sit as
- * neighbors in the same array, each one a plain {name, type}. This is
- * also exactly the shape a model's own getFillable() override needs:
- * array_column( getFields(), 'name' ).
+ * A model's fields are stored (and returned by all()) as one flat array
+ * of field arrays -- deliberately never split into parallel arrays keyed
+ * by property (no {names: [...], types: [...]} shape): two fields simply
+ * sit as neighbors in the same array, each one a plain {name, type}.
+ * This is also exactly the shape a model's own getFillable() override
+ * needs: array_column( getFields(), 'name' ).
  *
  * @package Gateway
  */
@@ -33,10 +51,11 @@ defined( 'ABSPATH' ) || exit;
 class Model_Fields {
 
 	/**
-	 * Option name the field definitions are stored under: class name =>
-	 * flat array of {name, type} field arrays.
+	 * Table name (unprefixed -- Capsule's own connection config already
+	 * applies $wpdb->prefix, same as every generated model's table, so
+	 * this really is e.g. "wp_gateway_fields").
 	 */
-	const OPTION = 'gateway_model_fields';
+	const TABLE = 'gateway_fields';
 
 	/**
 	 * Column names every generated model's own initial migration already
@@ -47,15 +66,71 @@ class Model_Fields {
 	const RESERVED_NAMES = array( 'id', 'created_at', 'updated_at' );
 
 	/**
+	 * Creates the gateway_fields table if it doesn't already exist --
+	 * normally done once by gateway_activate() on plugin activation (see
+	 * gateway.php), but also called defensively here before every read/
+	 * write in this class, the same "also do it lazily, don't just trust
+	 * activation ran" trade-off Model_Builder::ensure_directories() (its
+	 * filesystem counterpart) already accepts -- covers a site upgrading
+	 * from a version of this plugin that predates this table, where
+	 * WordPress never re-fires the activation hook on its own.
+	 */
+	public static function ensure_table() {
+		if ( \Illuminate\Database\Capsule\Manager::schema()->hasTable( self::TABLE ) ) {
+			return;
+		}
+
+		\Illuminate\Database\Capsule\Manager::schema()->create(
+			self::TABLE,
+			function ( \Illuminate\Database\Schema\Blueprint $table ) {
+				$table->id();
+				$table->string( 'model' ); // Model class name, e.g. "Ticket".
+				$table->string( 'name' );  // Sanitized field name -- the real column name too.
+				$table->string( 'type' );  // One of Field_Type_Registry::keys().
+				$table->timestamps();
+
+				// Belt-and-suspenders alongside validate()'s own uniqueness
+				// check below -- a duplicate (model, name) pair can never
+				// land in the table even if two requests somehow raced past
+				// that check at the same time.
+				$table->unique( array( 'model', 'name' ) );
+			}
+		);
+	}
+
+	/**
+	 * @return \Illuminate\Database\Query\Builder Query builder for the
+	 *              gateway_fields table.
+	 */
+	private static function table() {
+		self::ensure_table();
+
+		return \Illuminate\Database\Capsule\Manager::table( self::TABLE );
+	}
+
+	/**
+	 * Reads a model's fields straight from the gateway_fields table --
+	 * the one source of truth (see this class's own docblock). Ordered
+	 * by id (insertion order), matching the flat-array shape a model's
+	 * own generated getFields() prints fields in.
+	 *
 	 * @param string $class_name Model class name.
 	 * @return array<int,array{name:string,type:string}>
 	 */
 	public static function all( $class_name ) {
-		$fields = get_option( self::OPTION, array() );
-
-		return isset( $fields[ $class_name ] ) && is_array( $fields[ $class_name ] )
-			? $fields[ $class_name ]
-			: array();
+		return self::table()
+			->where( 'model', $class_name )
+			->orderBy( 'id' )
+			->get( array( 'name', 'type' ) )
+			->map(
+				function ( $row ) {
+					return array(
+						'name' => $row->name,
+						'type' => $row->type,
+					);
+				}
+			)
+			->all();
 	}
 
 	/**
@@ -132,16 +207,24 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		$model_fields   = self::all( $class_name );
-		$model_fields[] = $field;
-		self::save( $class_name, $model_fields );
+		self::table()->insert(
+			array(
+				'model'      => $class_name,
+				'name'       => $field['name'],
+				'type'       => $field['type'],
+				'created_at' => current_time( 'mysql' ),
+				'updated_at' => current_time( 'mysql' ),
+			)
+		);
 
-		// Rewrites the model file via the current template -- "heals" a
-		// model created before some earlier addition to it (getFields()/
-		// getFillable() themselves, the motivating case: a model created
-		// before those existed would otherwise keep rejecting every field
-		// as unfillable forever, no matter how many are added).
-		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table );
+		// The table row above is already the recorded field -- rewriting
+		// the model file with the now-current, DB-sourced field list is a
+		// materialized copy for Eloquent's own benefit, not the save
+		// itself. A failure here is reported but non-fatal: the field is
+		// safely recorded either way, and the next add()/update()/
+		// remove() (or an explicit resync()) will rewrite the file again
+		// with the complete, correct list.
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
 
 		if ( is_wp_error( $rewrite_result ) ) {
 			$field['warnings'] = array( $rewrite_result->get_error_message() );
@@ -230,10 +313,18 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		$model_fields[ $index ] = $new_field;
-		self::save( $class_name, $model_fields );
+		self::table()
+			->where( 'model', $class_name )
+			->where( 'name', $old_field['name'] )
+			->update(
+				array(
+					'name'       => $new_field['name'],
+					'type'       => $new_field['type'],
+					'updated_at' => current_time( 'mysql' ),
+				)
+			);
 
-		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table );
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
 
 		if ( is_wp_error( $rewrite_result ) ) {
 			$new_field['warnings'] = array( $rewrite_result->get_error_message() );
@@ -283,27 +374,53 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		array_splice( $model_fields, $index, 1 );
-		self::save( $class_name, $model_fields );
+		self::table()
+			->where( 'model', $class_name )
+			->where( 'name', $field['name'] )
+			->delete();
 
 		// Not surfaced as a warning here (unlike add()/update()) -- removing
 		// a field succeeded regardless, and there's no freshly-added field
 		// whose immediate usability depends on this the way there is there.
-		Model_Builder::rewrite_model_file( $class_name, $table );
+		Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
 
 		return true;
 	}
 
 	/**
+	 * Deletes every field row recorded for a model -- called by
+	 * Model_Builder::rename() when retiring the old class, since a
+	 * renamed model starts fresh on fields (see that method's own
+	 * docblock for why field definitions aren't carried over). Without
+	 * this, a class name freed up by a rename (or reused by a later,
+	 * unrelated model created with the same title) would inherit
+	 * whatever field rows the old model happened to leave behind.
+	 *
 	 * @param string $class_name Model class name.
 	 */
 	public static function forget( $class_name ) {
-		$all_fields = get_option( self::OPTION, array() );
+		self::table()->where( 'model', $class_name )->delete();
+	}
 
-		if ( isset( $all_fields[ $class_name ] ) ) {
-			unset( $all_fields[ $class_name ] );
-			update_option( self::OPTION, $all_fields );
+	/**
+	 * Rewrites a model's own .php file from its current, DB-sourced field
+	 * list -- the explicit form of the same repair add()/update()/
+	 * remove() already perform as a side effect of themselves. Useful on
+	 * its own when the table and file are suspected to have drifted (e.g.
+	 * after a rewrite_model_file() failure was reported as a warning) but
+	 * nothing about the model's fields is otherwise changing.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return true|\WP_Error
+	 */
+	public static function resync( $class_name ) {
+		$model = self::require_model( $class_name );
+
+		if ( is_wp_error( $model ) ) {
+			return $model;
 		}
+
+		return Model_Builder::rewrite_model_file( $class_name, $model->getTable(), self::all( $class_name ) );
 	}
 
 	/**
@@ -429,16 +546,6 @@ PHP;
 		}
 
 		return null;
-	}
-
-	/**
-	 * @param string $class_name   Model class name.
-	 * @param array  $model_fields Updated flat field array.
-	 */
-	private static function save( $class_name, array $model_fields ) {
-		$all_fields                = get_option( self::OPTION, array() );
-		$all_fields[ $class_name ] = $model_fields;
-		update_option( self::OPTION, $all_fields );
 	}
 
 	/**

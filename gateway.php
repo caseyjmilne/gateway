@@ -47,10 +47,21 @@ if ( file_exists( GATEWAY_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
  * them defensively at save time as a fallback, but doing it here too means
  * a site can see (and, if it wants, pre-populate) the directories
  * immediately after activating, not only after first use.
+ *
+ * Also creates the gateway_fields table (see Model_Fields) the same way --
+ * boot_capsule() just registers the connection config (cheap, no query of
+ * its own), so this is safe to call here even though gateway_boot() itself
+ * doesn't run until plugins_loaded. Model_Fields::ensure_table() is also
+ * called defensively from within that class itself, covering a site
+ * upgrading from a version of this plugin that predates this table,
+ * where WordPress never re-fires this activation hook on its own.
  */
 function gateway_activate() {
 	wp_mkdir_p( GATEWAY_MODELS_DIR );
 	wp_mkdir_p( GATEWAY_MIGRATIONS_DIR );
+
+	\Gateway\Database_Connection::boot_capsule();
+	\Gateway\Model_Fields::ensure_table();
 }
 register_activation_hook( __FILE__, 'gateway_activate' );
 

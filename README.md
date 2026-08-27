@@ -2368,24 +2368,37 @@ directly (verified empirically against a real SQLite connection --
 add/rename/change-type/drop all worked with no `doctrine/dbal` involved),
 unlike older Laravel versions that needed it for column modification.
 
-**Storage: one flat array per model, deliberately not split into parallel
-arrays.** `gateway_model_fields` (class name => array of `{name, type}`)
--- two fields simply sit as neighbors in the same array, never a
-`{names: [...], types: [...]}` shape. A generated model's own
-`getFields()` (baked into `model_template()` -- see below) just calls
-`Model_Fields::all( static::class )` every time it's invoked, so editing
-a field's *metadata* never needs to touch or regenerate the model's PHP
-file the way a Title change does -- only the *migration* side of an edit
-writes a new file (one per change, never the model file itself).
+**Storage: a real `gateway_fields` table, not an option.** Every field
+is a row (`model`, `name`, `type`, unique on `model`+`name`) in its own
+table -- created by `Model_Fields::ensure_table()`, called once on plugin
+activation and defensively before every read/write in that class too
+(covers a site upgrading from a version of this plugin that predates the
+table, since WordPress never re-fires the activation hook on its own).
+This table, not anything cached in memory or baked into a model's own
+code, is the one source of truth: `Model_Fields::all( $class_name )`
+always queries it fresh, ordered by `id` (insertion order) into the same
+flat array of `{name, type}` field arrays a model's own `getFillable()`
+needs -- deliberately never split into parallel `{names: [...], types:
+[...]}` arrays; two fields simply sit as neighbors in the same array.
 
-**`getFillable()`, overridden -- not a `$fillable` property.** Per the
-request that shaped this: rather than declaring `protected $fillable =
-[...]` (which would need rewriting every time a field changes),
-generated models override Eloquent's own `getFillable()` method instead:
+**`getFillable()`, overridden -- not a `$fillable` property, and not a
+live reference either.** Per the request that shaped this: rather than
+declaring `protected $fillable = [...]` (which would need rewriting
+every time a field changes), generated models override Eloquent's own
+`getFillable()` method instead. The first version of `getFields()` this
+override called through to simply read `Model_Fields::all( static::class )`
+live -- but that means opening a model's own file shows a reference to
+another class, not its actual fields. So `getFields()` instead gets its
+fields **printed directly into the file as a literal array**, generated
+fresh from the `gateway_fields` table every time `add()`/`update()`/
+`remove()` changes something:
 
 ```php
 public static function getFields() {
-	return \Gateway\Model_Fields::all( static::class );
+	return array(
+		array( 'name' => 'subject', 'type' => 'text' ),
+		array( 'name' => 'priority', 'type' => 'number' ),
+	);
 }
 
 public function getFillable() {
@@ -2393,34 +2406,37 @@ public function getFillable() {
 }
 ```
 
-Both are written into the model file at `create()` time, and don't need
-to change again for *that* model's own fields going forward --
-`getFillable()` always reflects whatever `getFields()` currently
-returns, and `getFields()` always reflects whatever's currently stored,
-live.
-
-**A real bug here, fixed**: that guarantee only ever covered models
-*created after* these two methods were added to `model_template()` --
-any model created earlier had neither, so it kept Eloquent's own default
-`$fillable = []`/`$guarded = ['*']`, and mass-assigning literally any
-attribute at all failed with `MassAssignmentException: Add [x] to
-fillable property...`, no matter how many fields the Field Editor added
-to it. Reproduced directly first (a hand-written model file in the old,
-override-less shape, loaded via `Directory_Loader`, then a field added
-to it) before fixing: `add()`/`update()`/`remove()` now each call a new
-`Model_Builder::rewrite_model_file()` right after saving field metadata,
-rewriting the model's `.php` file via the *current* template
-unconditionally -- the same "just regenerate it" trade-off `retable()`
+`Model_Builder::rewrite_model_file( $class_name, $table_name, $fields )`
+does the printing (`fields_literal()`, via `var_export()` per name/type
+so a value containing a quote or backslash still produces valid PHP);
+`Model_Fields::add()`/`update()`/`remove()` each call it with the
+table's now-current field list right after writing that same list to
+`gateway_fields`. The DB write happens *first*, deliberately: if the
+file rewrite ever fails (a permissions problem, say), the field itself
+is never lost -- `add()`/`update()` return successfully with a
+`warnings` entry rather than an error, and the very next add/update/
+remove on that model (or an explicit `Model_Fields::resync( $class_name )`
+call, which does nothing but that same rewrite) reads the table fresh
+and repairs the file. This also "heals" a model whose file predates
+`getFields()`/`getFillable()` existing in `model_template()` at all
+(their original motivating bug: an older model kept Eloquent's own
+default `$fillable = []`/`$guarded = ['*']`, so mass-assigning literally
+any attribute failed with `MassAssignmentException: Add [x] to fillable
+property...`, no matter how many fields the Field Editor added to it) --
+the next field change on it rewrites the file via the current template
+unconditionally, the same "just regenerate it" trade-off `retable()`
 already accepts for its own model-file rewrite (a hand-edited model file
-is only safe from this while nothing about its fields changes). This
-"heals" a pre-existing model the next time any field on it changes,
-without needing to know in advance which models predate which template
-version. One real PHP limitation applies here too: the already-loaded
-class in the *same* request that triggered the rewrite can't pick up its
-own freshly-rewritten file (PHP can't redeclare a class mid-request) --
-verified end to end across two separate process invocations, matching
-how a real "add a field, then later add a record" sequence actually
-happens as two separate requests.
+is only safe from this while nothing about its fields changes).
+
+One real PHP limitation applies to all of this: the already-loaded class
+in the *same* request that triggered a rewrite can't pick up its own
+freshly-rewritten file (PHP can't redeclare a class mid-request) --
+`Model_Fields::all()` itself is unaffected (it always queries the table,
+never the model class), but `getFields()`/`getFillable()` on an
+already-loaded instance won't see a field added later in that same
+request. Verified end to end across two separate process invocations,
+matching how a real "add a field, then later add a record" sequence
+actually happens as two separate requests.
 
 **Field names are real column names**, so they go through the same
 sanitize-to-a-safe-identifier treatment a Title does (lowercase,
@@ -2439,11 +2455,12 @@ the (globally monotonic) version number guarantees it always is.
 
 **A field is never carried over on model rename.** Renaming a model
 already drops its old table (see "Renaming a model" above); the old
-field *definitions* aren't replayed onto the new one either, for the
-same reason Plural Title's cousin (the table itself) isn't preserved --
-a rename starting completely fresh, rather than a rename silently
-generating a whole cascade of new field migrations on the new table on
-your behalf.
+class's field *rows* aren't replayed onto the new one either --
+`Model_Builder::rename()` calls `Model_Fields::forget( $old_class )` to
+delete them from `gateway_fields` outright, for the same reason Plural
+Title's cousin (the table itself) isn't preserved -- a rename starting
+completely fresh, rather than a rename silently generating a whole
+cascade of new field migrations on the new table on your behalf.
 
 `Model_Field_REST_Controller`: `GET`/`POST /gateway/v1/models/<class>/fields`,
 `PUT`/`DELETE /gateway/v1/models/<class>/fields/<field_name>` -- the URL
