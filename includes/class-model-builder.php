@@ -725,6 +725,19 @@ PHP;
 		// ucfirst() away -- no separate mapping needed.
 		$return_type = 'Illuminate\\Database\\Eloquent\\Relations\\' . ucfirst( $type );
 
+		// belongsToMany's own pivot table always has created_at/updated_at
+		// columns (Model_Relationships::ensure_pivot_table() creates them
+		// unconditionally) -- but Eloquent only ever populates them on
+		// attach()/sync() if the relationship itself opts in via
+		// withTimestamps(); without this, every pivot row silently gets
+		// NULL for both, real columns nothing ever fills in. hasOne/
+		// hasMany/belongsTo need no such call -- they're plain columns on
+		// a real model's own table, already covered by that model's usual
+		// Eloquent timestamp behavior on create()/save().
+		$call = 'belongsToMany' === $type
+			? "\$this->{$type}( \\{$related_class}::class )->withTimestamps()"
+			: "\$this->{$type}( \\{$related_class}::class )";
+
 		return <<<PHP
 
 	/**
@@ -734,7 +747,7 @@ PHP;
 	 * @return \\{$return_type}
 	 */
 	public function {$method_name}() {
-		return \$this->{$type}( \\{$related_class}::class );
+		return {$call};
 	}
 
 PHP;

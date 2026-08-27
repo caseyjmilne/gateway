@@ -3170,6 +3170,32 @@ the rewrite -- `Model_Fields` fetches `Model_Relationships::all()` (and
 vice versa) so neither one's change ever regenerates the file without
 the other's current data still in it.
 
+**`belongsToMany` prints `->withTimestamps()` -- every other type
+doesn't.** **A real bug here, fixed**: a `belongsToMany`'s pivot table
+always has real `created_at`/`updated_at` columns (`ensure_pivot_table()`
+creates them unconditionally, above), but Eloquent only ever actually
+*populates* them on `attach()`/`sync()` if the relationship itself opts
+in via `->withTimestamps()` -- without it, every pivot row silently got
+`NULL` for both, real columns nothing ever wrote to. `relationship_method()`
+now appends `->withTimestamps()` specifically for `belongsToMany`:
+
+```php
+public function tags() {
+	return $this->belongsToMany( \Tag::class )->withTimestamps();
+}
+```
+
+`hasOne`/`hasMany`/`belongsTo` need no such call -- each is a plain
+column on a real model's own table, already covered by that model's
+usual Eloquent timestamp handling on `create()`/`save()`, no pivot
+involved. Since the model file is only rewritten when something about
+its fields or relationships actually changes, a `belongsToMany`
+relationship added before this fix won't pick it up on its own --
+removing and re-adding it (safe: the pivot table itself is untouched,
+`add()`'s own `hasTable()` check already makes recreating it a no-op)
+regenerates the file with the fix, the same as any other model-file
+repair in this plugin.
+
 **The current model is never offered as its own related model.** The
 Relationship Editor's own model picker only lists every *other*
 registered model (reusing `GET /models`, filtered client-side); server-side,
