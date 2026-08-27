@@ -17,7 +17,13 @@
  * deal in post types -- passing a plain `postType` string (no second
  * argument) keeps them working unchanged; only gateway/datatable's own
  * edit.js currently ever passes `{ sourceType: 'collection', collection }`.
- *
+ */
+
+import { useEffect, useState } from '@wordpress/element';
+import apiFetch from '@wordpress/api-fetch';
+import { __ } from '@wordpress/i18n';
+
+/**
  * @param {string} postType Selected post type -- ignored when `options.sourceType` is 'collection'.
  * @param {Object} [options]
  * @param {string} [options.sourceType]  'postType' (default) or 'collection'.
