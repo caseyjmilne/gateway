@@ -1766,6 +1766,47 @@ All of this lives in the new `Data_Cards_Renderer` service class
 reused by both the initial page's SSR (see "One query, three siblings")
 and every later page `Data_Cards_REST_Controller` serves.
 
+### Swapping the card template on a Source switch
+
+The default starter template -- Featured Image + Title + Excerpt -- is
+built entirely from core WordPress blocks that only know how to read a
+real post; switching the parent `gateway/data-cards`'s Source to
+Collection leaves it pointed at content that renders nothing at all for
+a model record. Rather than requiring a site owner to manually delete
+three post blocks and hand-insert field ones every time they switch,
+`edit.js` does it for them: two `useEffect`s, keyed off a `useRef`
+tracking the *previous* `sourceType`, detect an actual transition (never
+firing just from loading an already-configured instance -- the ref's
+initial value always matches the current `sourceType`, so a merely
+-opened block's own deliberately-authored template is never touched) and
+call `replaceInnerBlocks()`:
+
+- **Collection → Post Type**: back to `TEMPLATE` itself (the same
+  Featured Image/Title/Excerpt starter a brand-new block gets).
+- **Post Type → Collection**: the first three of the newly-chosen
+  Collection's own available fields (`COLLECTION_FIELD_COUNT`, using
+  the same `useAvailableColumns( '', { sourceType: 'collection',
+  collection } )` call every other field-picker in this plugin already
+  uses) become three `gateway/card-field-text` blocks, one per field, via
+  `createBlock( 'gateway/card-field-text', { fieldKey } )`. Fewer than
+  three if the Collection doesn't have that many -- always at least one,
+  since `get_columns_for_collection()`'s own leading synthetic `id`
+  column means there's never genuinely nothing to offer. If no Collection
+  is chosen yet (or its fields are still loading), the swap is deferred
+  -- a second effect, watching `collectionFields`/`isLoadingCollectionFields`,
+  performs it once a real field list actually arrives, rather than
+  replacing the template with an empty one the moment Source flips before
+  a model has even been picked.
+
+This only ever touches the SOURCE TYPE transition itself -- switching
+which specific Collection is selected while already in Collection mode
+does *not* re-trigger it (an already-placed `gateway/card-field-text`
+block keeps whatever `fieldKey` it has; if that key doesn't exist on the
+newly-chosen model, its own Inspector already surfaces a "no longer
+exists" warning -- see that block's own section above -- and its
+`render.php` already renders nothing for an invalid key, so this degrades
+safely rather than requiring a second auto-swap layer).
+
 ### One query, three siblings
 
 Three of this family's blocks need the SAME query result: the grid itself

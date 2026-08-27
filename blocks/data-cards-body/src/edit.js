@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState } from '@wordpress/element';
-import { useSelect } from '@wordpress/data';
+import { memo, useEffect, useMemo, useRef, useState } from '@wordpress/element';
+import { useDispatch, useSelect } from '@wordpress/data';
+import { createBlock } from '@wordpress/blocks';
 import apiFetch from '@wordpress/api-fetch';
 import { __ } from '@wordpress/i18n';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@wordpress/block-editor';
 import { Spinner } from '@wordpress/components';
 import { store as coreStore } from '@wordpress/core-data';
+import { useAvailableColumns } from '../../shared/use-available-columns';
 
 /**
  * A card's default starting content on first insert -- Featured Image +
@@ -19,12 +21,24 @@ import { store as coreStore } from '@wordpress/core-data';
  * Nothing stops a user from removing/replacing any of these; this is a
  * starting point, not a restriction (no `allowedBlocks` on this block --
  * any block can go inside, same as core/post-template).
+ *
+ * Also the target this card's own content is swapped BACK to if the
+ * parent's Source is switched from Collection back to Post Type -- see
+ * the swap effects in Edit() below.
  */
 const TEMPLATE = [
 	[ 'core/post-featured-image' ],
 	[ 'core/post-title' ],
 	[ 'core/post-excerpt' ],
 ];
+
+/**
+ * How many of a Collection's own available fields to seed the card
+ * template with when Source switches from Post Type to Collection --
+ * "the first 3 fields available... 1-2 if 3 aren't", per this behavior's
+ * own request.
+ */
+const COLLECTION_FIELD_COUNT = 3;
 
 // This block's own `supports.layout` (grid) arranges the CARD ITEMS, not
 // the blocks *within* one card, which should always stack vertically
@@ -111,6 +125,98 @@ export default function Edit( {
 } ) {
 	const [ activeBlockContextId, setActiveBlockContextId ] = useState();
 	const isCollection = 'collection' === sourceType;
+
+	const { replaceInnerBlocks } = useDispatch( blockEditorStore );
+
+	// The Collection's own fields -- fetched purely to seed the card
+	// template's replacement content on a Source switch (see the two
+	// effects below), via the same hook/REST route the field-picker
+	// blocks already use. `collection: isCollection ? collection : ''`
+	// keeps this from ever fetching post-type columns instead (this
+	// component has no use for those) -- useAvailableColumns() already
+	// skips its fetch entirely when sourceType is 'collection' but
+	// `collection` is blank.
+	const {
+		availableColumns: collectionFields,
+		isLoading: isLoadingCollectionFields,
+	} = useAvailableColumns( '', {
+		sourceType: 'collection',
+		collection: isCollection ? collection : '',
+	} );
+
+	// Switching the parent's Source between Post Type and Collection
+	// leaves this card's own authored content pointed at blocks that make
+	// no sense for the new source (Post Title/Featured Image/Excerpt all
+	// need a real WP post; gateway/card-field-text needs a Collection
+	// record) -- these two effects replace it on that transition: back to
+	// TEMPLATE's own default shape for Post Type, or the first
+	// COLLECTION_FIELD_COUNT of the newly-chosen Collection's own fields
+	// (fewer if it doesn't have that many) for Collection.
+	//
+	// Keyed off a ref, not state, specifically so this only ever fires on
+	// a REAL, editor-observed change of `sourceType` during THIS editing
+	// session -- never retroactively just from loading an already
+	// -configured instance (the ref's initial value always matches the
+	// current `sourceType`, so the "did it actually change" check below
+	// is trivially false on mount, and content already saved with a
+	// deliberately-authored template is never touched just by opening it).
+	const previousSourceTypeRef = useRef( sourceType );
+	const [ isCollectionSwapPending, setIsCollectionSwapPending ] = useState( false );
+
+	useEffect( () => {
+		const previousSourceType = previousSourceTypeRef.current;
+		previousSourceTypeRef.current = sourceType;
+
+		if ( previousSourceType === sourceType ) {
+			return;
+		}
+
+		if ( 'collection' === sourceType ) {
+			// The Collection's own fields may still be loading, or a
+			// Collection may not even be chosen yet -- deferred to the
+			// effect below, which watches for that to resolve.
+			setIsCollectionSwapPending( true );
+		} else {
+			replaceInnerBlocks(
+				clientId,
+				TEMPLATE.map( ( [ name, attrs ] ) => createBlock( name, attrs || {} ) ),
+				false
+			);
+		}
+	}, [ sourceType, clientId, replaceInnerBlocks ] );
+
+	useEffect( () => {
+		if ( ! isCollectionSwapPending || ! collection || isLoadingCollectionFields ) {
+			return;
+		}
+
+		// Always led by the synthetic `id` column (Column_Registry::
+		// get_columns_for_collection()), so a Collection with zero of its
+		// own user-defined fields still gets at least one -- `id` -- rather
+		// than an empty template.
+		const fieldKeys = collectionFields
+			.slice( 0, COLLECTION_FIELD_COUNT )
+			.map( ( column ) => column.key );
+
+		if ( fieldKeys.length ) {
+			replaceInnerBlocks(
+				clientId,
+				fieldKeys.map( ( fieldKey ) =>
+					createBlock( 'gateway/card-field-text', { fieldKey } )
+				),
+				false
+			);
+		}
+
+		setIsCollectionSwapPending( false );
+	}, [
+		isCollectionSwapPending,
+		collection,
+		isLoadingCollectionFields,
+		collectionFields,
+		clientId,
+		replaceInnerBlocks,
+	] );
 
 	const { posts, blocks } = useSelect(
 		( select ) => {
