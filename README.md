@@ -3163,6 +3163,119 @@ RelationshipEditor.jsx` is the UI, seeded from the model detail
 response's own new `relationships` array the same way `FieldEditor` is
 seeded from `fields`.
 
+### `Relate to One` / `Relate to Many` -- fields bound to a relationship, not a free-typed name
+
+Two more built-in field types, on top of the seven plain ones: **Relate
+to One** and **Relate to Many**. Where every other field type stores an
+arbitrary value a site owner types in, these two instead display and
+let an admin *select* one of this model's own relationships' related
+records -- "if the model has `belongsTo` or `belongsToMany`, we need a
+field type that can display the relationship and enable selection of
+related models" was the whole point. They're deliberately
+**autocomplete**, not a plain `<select>` full of every row: a model
+could have thousands of records, and rendering all of them as `<option>`
+elements doesn't scale the way a search-as-you-type does.
+
+**A new `Relationship_Field_Type` interface, not a new method on
+`Field_Type` itself.** Rather than adding a `relationship_type()` method
+to the base `Field_Type` interface (which every one of the seven
+existing type classes would then have to implement, returning `null`),
+`includes/interface-relationship-field-type.php` declares a small
+interface *extending* `Field_Type` with exactly one extra method:
+
+```php
+interface Relationship_Field_Type extends Field_Type {
+	public static function relationship_type(); // 'belongsTo' or 'belongsToMany'
+}
+```
+
+`Relate_To_One_Field_Type`/`Relate_To_Many_Field_Type`
+(`includes/class-relate-to-{one,many}-field-type.php`) are the only two
+classes that implement it; everywhere that needs to tell one of these
+two apart from a plain field checks `is_subclass_of( $type_class,
+Relationship_Field_Type::class )` -- `Field_Type_Registry::describe_all()`
+now includes a `relationship_type` key (`null` for every plain type,
+`'belongsTo'`/`'belongsToMany'` for these two) so the admin app can make
+that same distinction without hardcoding either type's own key.
+
+**The field's name is never typed in -- it's derived from the chosen
+relationship.** Picking one of these two types asks for a relationship
+instead of a name (see the admin app section below); `Model_Fields::add()`
+validates it (must be one of this model's own `Model_Relationships`,
+and of the exact matching type -- a Relate to One can only bind to a
+`belongsTo` relationship, a Relate to Many only to `belongsToMany`,
+enforced server-side even though the UI's own picker already only
+offers the matching kind) and derives the real field name itself
+(`derive_relationship_field_name()`):
+
+- **Relate to One** (`belongsTo`): `Str::snake( $method_name ) . '_id'`
+  -- exactly the foreign-key column Eloquent's own `belongsTo()`
+  convention expects with no explicit arguments, confirmed against
+  `HasRelationships::belongsTo()` itself. A `make()` relationship
+  becomes field `make_id`, a real `unsignedBigInteger` column.
+- **Relate to Many** (`belongsToMany`): the relationship's own
+  `method_name`, used only as this field's metadata identity -- there's
+  no column to name at all (next paragraph).
+
+**Relate to Many has no real column -- `blueprint_method()` returning
+`''` is a new sentinel meaning exactly that.** A many-to-many
+relationship's data lives in the pivot table `Model_Relationships::add()`
+already creates for it (see "Relationships" above), never a column on
+either side's own table. `Model_Fields::add()`/`update()`/`remove()` all
+now check `'' !== $type_class::blueprint_method()` before generating or
+running any migration at all -- for Relate to Many, that check is
+`false`, so adding or removing one of these fields never touches the
+schema, the same "pure metadata" territory a relationship itself already
+occupies. Relate to One, in contrast, is a completely ordinary column
+migration under the hood (`unsignedBigInteger`, nullable) -- only its
+name and the fact that a relationship, not a site owner, chose it are
+different from any other field.
+
+**Immutable once created -- matches how a relationship itself already
+works.** Neither the name nor the type of one of these two fields can
+ever be changed via `update()`; a new guard rejects the attempt
+(`gateway_field_relationship_immutable`) whether the field already *was*
+a relate field or `update()` is being asked to retype a plain field
+*into* one (which `update()` has no `relationship_method` parameter to
+do correctly anyway). This is the same "remove and add a new one
+instead of editing in place" rule `RelationshipEditor` already applies
+to relationships themselves -- a relate field's whole identity comes
+from its relationship, so "editing" it isn't really a smaller operation
+than replacing it. Label stays freely editable regardless, same as
+every other field type (no schema, no identity, purely display).
+
+**`Model_Fields::all()`'s own shape grows two columns**:
+`relationship_method` (`null` for a plain field) and `related_model`
+-- resolved fresh on every call by cross-referencing
+`Model_Relationships::all( $class_name )`, never stored redundantly in
+`gateway_fields` itself (a relationship's own `related_model` can't
+change without removing and re-adding it, so resolving it fresh costs
+nothing and rules out drift by construction). The `gateway_fields`
+table itself gains a matching nullable `relationship_method` column,
+added via the same upgrade-path `ALTER TABLE` pattern `label`/`position`
+already use.
+
+**Removing a relationship a field still depends on is blocked.**
+`Model_Relationships::remove()` now checks every one of the model's own
+fields first; if any field's `relationship_method` matches, it returns
+`gateway_relationship_in_use` instead of deleting the row -- otherwise
+the generated model file would end up with a relate field pointing at a
+relationship method that no longer exists on it. Remove the dependent
+field first (an ordinary `Model_Fields::remove()` call -- no special
+case there, since a relate field's own removal has no such reverse
+dependency to worry about), then the relationship.
+
+**The admin app**: picking "Relate to One" or "Relate to Many" in
+`FieldEditor`'s Add Field form swaps the free-text Name `<input>` for a
+`<select>` of this model's own relationships (`GET .../relationships`,
+filtered client-side to the picked type's own `relationship_type`) and
+sends `relationship_method` instead of `name` in the request body; with
+none of the matching type configured yet, the form shows a message
+pointing at the Relationship Editor below instead of an empty dropdown.
+Editing an existing relate field disables its Name and Type inputs
+(only Label stays editable), matching the server-side immutability
+guard rather than letting a doomed request round-trip to find out.
+
 ### `Field_Type_Registry` -- one class per field type, controlling its own attributes
 
 Rather than a flat lookup array mapping type names to behavior (which is
@@ -3262,6 +3375,71 @@ as every other write path in this plugin, and every query is wrapped in
 `try`/`catch` so a real `QueryException` (a stale field pointing at a
 column that's since been dropped by hand, say) comes back as a clean
 `\WP_Error` rather than a fatal.
+
+### Relate fields in the Records screen: search, selection, and enriched responses
+
+A Relate to One/Relate to Many field's own value is never a plain
+scalar in a Records response -- `create_record`/`update_record`/
+`get_record`/`list_records` all pass their result through a new
+`enrich_records()` first, which replaces that field's raw stored value
+(a bare FK id, or nothing at all for Relate to Many) with `{id, label}`
+(`null` if unset) or `[{id, label}, ...]` (`[]` if none selected) --
+`label` is that related record's own display value, so `RecordsCrud`'s
+table and `RecordForm`'s own pre-filled selection can render it
+directly with no second request. `label` is resolved via a new private
+`resolve_display_field()` -- the first field on the *related* model
+whose own type is genuinely free text (`text`/`textarea`/`email`/`url`;
+deliberately excludes Number/Range/Password and a relate field itself,
+none of which is a meaningful "name" for a record) -- falling back to
+`#<id>` for a model with no such field at all rather than blocking the
+feature. Every relate field's relationship is eager-loaded via one
+`Collection::load()` call up front (`Illuminate\Database\Eloquent\
+Collection`, not the plain `collect()` helper -- the latter has no
+`load()` method at all, since eager-loading is Eloquent-`Collection`
+-specific), so this stays one extra query *per relate field*, not per
+row, even for the paginated Records list.
+
+**Writing a relate field's value.** Relate to One is an ordinary column
+-- its submitted id flows through `sanitize_record_data()`/`cast()`
+like any other field. Relate to Many has no column to write to at all,
+so a new `Model_Fields::extract_relate_many_data()` pulls its submitted
+array of ids *out* of the sanitized data (by reference) before
+`create()`/`update()` ever runs, and `Records_REST_Controller::
+sync_relate_many()` applies it afterward via the relationship's own
+`sync()` -- not `attach()` -- once the record actually has an id to
+attach to. `sync()` replaces the *entire* set of related records with
+whatever was submitted, so removing a previously-selected one (this
+feature's own explicit requirement) is just submitting the value
+without it, the same as any other field; submitting `[]` clears every
+related record.
+
+**`GET /gateway/v1/models/<class>/records/search?q=&exclude=`** is the
+new route powering the actual search-as-you-type: searches the
+*related* model's own rows by its `resolve_display_field()` (a LIKE
+match, with the visitor's own typed wildcards escaped so they're
+matched literally), or by exact id if the model has no text-ish field
+and the query is all digits, capped at 20 results, returning `{id,
+label}` pairs -- never full record data. `exclude` is a comma-joined
+list of ids to leave out of the results (query-string-friendly, since
+this value travels as a GET param rather than a JSON body) -- what
+keeps an already-selected Relate to Many option from reappearing while
+its own search box is still open for picking more.
+
+**`admin-app/src/components/RelateAutocomplete.jsx`** is the UI: a
+debounced (300ms) search box calling the route above, a dropdown of
+results to click, and a chip per selected record with its own "×"
+remove button. `multiple` is the only thing distinguishing the two
+field types here -- `false` (Relate to One) replaces the single
+selection outright and hides the search box once something's picked;
+`true` (Relate to Many) appends to the array and leaves the search box
+open for further picks, passing every already-selected id as `exclude`
+so it can't be picked twice. `RecordForm` renders this instead of a
+plain `<input>` for either field type's own `input_type`
+(`relate_one`/`relate_many` -- like `textarea`, not real HTML `<input>`
+values, just `RecordForm`'s own signal to special-case them), holding
+the enriched `{id, label}`/`[{id, label}, ...]` shape directly as its
+form state and converting it back to just the id(s) on submit; `RecordsCrud`'s
+table renders a relate field's own label(s) instead of the raw shape.
 
 ## The Gateway admin app
 

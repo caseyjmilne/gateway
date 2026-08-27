@@ -92,6 +92,9 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-range-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-email-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-url-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
@@ -134,6 +137,8 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\Email_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\URL_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Password_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
 	do_action( 'gateway_register_field_types' );
 
 	// Pick up every model/migration class living in wp-content/gateway --

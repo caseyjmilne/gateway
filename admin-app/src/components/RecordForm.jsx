@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import RelateAutocomplete from './RelateAutocomplete.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -16,6 +17,16 @@ import { useState } from 'react';
  * special case below. "range" is a real `<input>` type, but a bare
  * slider with no visible number is barely usable, so it gets its own
  * small live readout alongside it.
+ *
+ * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
+ * are two more special cases: Records_REST_Controller enriches a relate
+ * field's value into `{id, label}` (relate_one) or `[{id, label}, ...]`
+ * (relate_many) rather than a plain scalar, so unlike every other field
+ * here its form state holds that same shape (not a stringified value)
+ * and renders as a RelateAutocomplete instead of a plain `<input>`.
+ * Submitting converts it back to what the server actually expects --
+ * just the id(s), not the enriched `{id, label}` shape it was displayed
+ * with.
  */
 export default function RecordForm( {
 	fields,
@@ -26,14 +37,28 @@ export default function RecordForm( {
 	submitLabel,
 	submitting,
 } ) {
+	const inputTypeFor = ( type ) => {
+		const found = fieldTypes.find( ( fieldType ) => fieldType.key === type );
+		return found ? found.input_type : 'text';
+	};
+
 	const [ values, setValues ] = useState( () => {
 		const initial = {};
 		fields.forEach( ( field ) => {
+			const inputType = inputTypeFor( field.type );
 			const existing =
 				initialValues && initialValues[ field.name ] !== undefined
 					? initialValues[ field.name ]
-					: '';
-			initial[ field.name ] = null === existing ? '' : String( existing );
+					: null;
+
+			if ( 'relate_one' === inputType ) {
+				initial[ field.name ] = existing || null;
+			} else if ( 'relate_many' === inputType ) {
+				initial[ field.name ] = existing || [];
+			} else {
+				initial[ field.name ] =
+					null === existing ? '' : String( existing );
+			}
 		} );
 		return initial;
 	} );
@@ -42,14 +67,30 @@ export default function RecordForm( {
 		setValues( ( current ) => ( { ...current, [ name ]: event.target.value } ) );
 	};
 
-	const handleSubmit = ( event ) => {
-		event.preventDefault();
-		onSubmit( values );
+	const handleRelateChange = ( name ) => ( newValue ) => {
+		setValues( ( current ) => ( { ...current, [ name ]: newValue } ) );
 	};
 
-	const inputTypeFor = ( type ) => {
-		const found = fieldTypes.find( ( fieldType ) => fieldType.key === type );
-		return found ? found.input_type : 'text';
+	const handleSubmit = ( event ) => {
+		event.preventDefault();
+
+		const payload = {};
+		fields.forEach( ( field ) => {
+			const inputType = inputTypeFor( field.type );
+
+			if ( 'relate_one' === inputType ) {
+				const selected = values[ field.name ];
+				payload[ field.name ] = selected ? selected.id : null;
+			} else if ( 'relate_many' === inputType ) {
+				payload[ field.name ] = ( values[ field.name ] || [] ).map(
+					( item ) => item.id
+				);
+			} else {
+				payload[ field.name ] = values[ field.name ];
+			}
+		} );
+
+		onSubmit( payload );
 	};
 
 	return (
@@ -84,15 +125,27 @@ export default function RecordForm( {
 								<output>{ values[ field.name ] || 0 }</output>
 							</>
 						) }
-						{ 'textarea' !== inputType && 'range' !== inputType && (
-							<input
-								id={ inputId }
-								type={ inputType }
-								className="regular-text"
+						{ ( 'relate_one' === inputType ||
+							'relate_many' === inputType ) && (
+							<RelateAutocomplete
+								relatedModel={ field.related_model }
+								multiple={ 'relate_many' === inputType }
 								value={ values[ field.name ] }
-								onChange={ handleChange( field.name ) }
+								onChange={ handleRelateChange( field.name ) }
 							/>
 						) }
+						{ 'textarea' !== inputType &&
+							'range' !== inputType &&
+							'relate_one' !== inputType &&
+							'relate_many' !== inputType && (
+								<input
+									id={ inputId }
+									type={ inputType }
+									className="regular-text"
+									value={ values[ field.name ] }
+									onChange={ handleChange( field.name ) }
+								/>
+							) }
 					</p>
 				);
 			} ) }

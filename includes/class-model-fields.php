@@ -113,6 +113,10 @@ class Model_Fields {
 					// Sort order for the Field Editor's own sortable list --
 					// see this class's own docblock and reorder().
 					$table->unsignedInteger( 'position' )->default( 0 );
+					// NULL for every plain field; set only for a Relate to
+					// One/Relate to Many field -- see the upgrade-path
+					// ALTER below and all()'s own docblock.
+					$table->string( 'relationship_method' )->nullable();
 					$table->timestamps();
 
 					// Belt-and-suspenders alongside validate()'s own uniqueness
@@ -151,6 +155,22 @@ class Model_Fields {
 				}
 			);
 		}
+
+		// Which of this model's own relationships (Model_Relationships,
+		// by method_name) a Relate to One/Relate to Many field is bound
+		// to -- NULL for every plain field type. Nullable for the same
+		// upgrade-path reason as label/position: an existing row (every
+		// one of which predates this column, and none of which could
+		// have been a relationship field before it existed) simply has
+		// nothing to backfill it with.
+		if ( ! $schema->hasColumn( self::TABLE, 'relationship_method' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->string( 'relationship_method' )->nullable();
+				}
+			);
+		}
 	}
 
 	/**
@@ -171,26 +191,54 @@ class Model_Fields {
 	 * own sortable list, and that's what a model's own generated
 	 * getFields() prints fields in.
 	 *
+	 * `relationship_method`/`related_model` are `null` for every plain
+	 * field. For a Relate to One/Relate to Many field, `relationship_method`
+	 * is read straight off its own row; `related_model` is resolved fresh
+	 * here from Model_Relationships::find() -- not stored redundantly in
+	 * this table -- so it always reflects that relationship's current
+	 * `related_model`, never a stale copy (a relationship's own
+	 * related_model can't actually change without removing and re-adding
+	 * it, but resolving it fresh costs nothing and rules out drift by
+	 * construction rather than by convention). `null` here specifically
+	 * (rather than the field simply being dropped) if the field's own
+	 * relationship_method no longer matches any of the model's current
+	 * relationships -- shouldn't normally happen (Model_Relationships::
+	 * remove() refuses to remove one a field still depends on), but
+	 * degrades safely if it ever does (e.g. hand-edited data) rather than
+	 * fatal-erroring on a null related_model somewhere downstream.
+	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{name:string,label:string,type:string,position:int}>
+	 * @return array<int,array{name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string}>
 	 */
 	public static function all( $class_name ) {
+		$relationships_by_method = array();
+
+		foreach ( Model_Relationships::all( $class_name ) as $relationship ) {
+			$relationships_by_method[ $relationship['method_name'] ] = $relationship['related_model'];
+		}
+
 		return self::table()
 			->where( 'model', $class_name )
 			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'name', 'label', 'type', 'position' ) )
+			->get( array( 'name', 'label', 'type', 'position', 'relationship_method' ) )
 			->map(
-				function ( $row ) {
+				function ( $row ) use ( $relationships_by_method ) {
+					$relationship_method = ! empty( $row->relationship_method ) ? $row->relationship_method : null;
+
 					return array(
-						'name'     => $row->name,
+						'name'                 => $row->name,
 						// A row recorded before the label column existed
 						// (or saved with one left blank) has no label of
 						// its own yet -- fall back to the same
 						// auto-derived default validate() would give it.
-						'label'    => ! empty( $row->label ) ? $row->label : self::default_label( $row->name ),
-						'type'     => $row->type,
-						'position' => (int) $row->position,
+						'label'                => ! empty( $row->label ) ? $row->label : self::default_label( $row->name ),
+						'type'                 => $row->type,
+						'position'             => (int) $row->position,
+						'relationship_method'  => $relationship_method,
+						'related_model'        => null !== $relationship_method && isset( $relationships_by_method[ $relationship_method ] )
+							? $relationships_by_method[ $relationship_method ]
+							: null,
 					);
 				}
 			)
@@ -233,23 +281,53 @@ class Model_Fields {
 	 * first, and only records the field's metadata once that has
 	 * actually succeeded.
 	 *
-	 * @param string $class_name Model class name.
-	 * @param string $name       Raw field name -- sanitized to a
-	 *                            lowercase snake_case machine name, which
-	 *                            becomes the real column name too.
-	 * @param string $type       One of Field_Type_Registry::keys().
-	 * @param string $label      Display label; blank defaults to a
-	 *                            title-cased version of the (sanitized)
-	 *                            name -- see this class's own docblock.
-	 * @return array{name:string,label:string,type:string,position:int}|\WP_Error
+	 * For a Relationship_Field_Type ("Relate to One"/"Relate to Many"),
+	 * $name is ignored entirely (there's nothing meaningful for a site
+	 * owner to type -- see derive_relationship_field_name()) and
+	 * $relationship_method is required instead: it must name one of this
+	 * model's own already-configured relationships (Model_Relationships),
+	 * of the exact type this field type binds to
+	 * (Relationship_Field_Type::relationship_type()) -- "Relate to One"
+	 * only offers `belongsTo` relationships, "Relate to Many" only
+	 * `belongsToMany`, so a field can never end up pointing at, say, a
+	 * `hasMany` relationship it can't actually represent.
+	 *
+	 * @param string      $class_name          Model class name.
+	 * @param string      $name                Raw field name -- sanitized to a
+	 *                                           lowercase snake_case machine name, which
+	 *                                           becomes the real column name too. Ignored
+	 *                                           for a Relationship_Field_Type -- see above.
+	 * @param string      $type                One of Field_Type_Registry::keys().
+	 * @param string      $label               Display label; blank defaults to a
+	 *                                           title-cased version of the (sanitized)
+	 *                                           name -- see this class's own docblock.
+	 * @param string|null $relationship_method Required for a Relationship_Field_Type;
+	 *                                           ignored otherwise.
+	 * @return array{name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
-	public static function add( $class_name, $name, $type, $label = '' ) {
+	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
 			return $model;
+		}
+
+		$type_class = Field_Type_Registry::get( trim( (string) $type ) );
+		$related_model = null;
+
+		if ( $type_class && is_subclass_of( $type_class, Relationship_Field_Type::class ) ) {
+			$relationship = self::require_relationship_for_field( $class_name, $relationship_method, $type_class );
+
+			if ( is_wp_error( $relationship ) ) {
+				return $relationship;
+			}
+
+			$name          = self::derive_relationship_field_name( $relationship, $type_class );
+			$related_model = $relationship['related_model'];
+		} else {
+			$relationship_method = null;
 		}
 
 		$field = self::validate( $class_name, $name, $type, null, $label );
@@ -262,17 +340,22 @@ class Model_Fields {
 			return self::unavailable_error();
 		}
 
-		$table       = $model->getTable();
-		$type_class  = Field_Type_Registry::get( $field['type'] );
-		$method      = $type_class::blueprint_method();
+		$table  = $model->getTable();
+		$method = $type_class::blueprint_method();
 
-		$up_body   = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
-		$down_body = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
+		// '' means this field type has no real column at all (Relate to
+		// Many -- its data lives in a pivot table Model_Relationships
+		// already manages, not a column here) -- nothing to migrate,
+		// straight to recording the metadata below.
+		if ( '' !== $method ) {
+			$up_body   = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
+			$down_body = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
 
-		$migration_result = self::generate_and_run_migration( "Add{$field['name']}To{$table}Table", $up_body, $down_body );
+			$migration_result = self::generate_and_run_migration( "Add{$field['name']}To{$table}Table", $up_body, $down_body );
 
-		if ( is_wp_error( $migration_result ) ) {
-			return $migration_result;
+			if ( is_wp_error( $migration_result ) ) {
+				return $migration_result;
+			}
 		}
 
 		// Always appended after every existing field -- max() returns null
@@ -283,15 +366,19 @@ class Model_Fields {
 
 		self::table()->insert(
 			array(
-				'model'      => $class_name,
-				'name'       => $field['name'],
-				'label'      => $field['label'],
-				'type'       => $field['type'],
-				'position'   => $field['position'],
-				'created_at' => current_time( 'mysql' ),
-				'updated_at' => current_time( 'mysql' ),
+				'model'               => $class_name,
+				'name'                => $field['name'],
+				'label'               => $field['label'],
+				'type'                => $field['type'],
+				'position'            => $field['position'],
+				'relationship_method' => $relationship_method,
+				'created_at'          => current_time( 'mysql' ),
+				'updated_at'          => current_time( 'mysql' ),
 			)
 		);
+
+		$field['relationship_method'] = $relationship_method;
+		$field['related_model']       = $related_model;
 
 		// The table row above is already the recorded field -- rewriting
 		// the model file with the now-current, DB-sourced field list is a
@@ -352,6 +439,33 @@ class Model_Fields {
 
 		$name_changed = $old_field['name'] !== $new_field['name'];
 		$type_changed = $old_field['type'] !== $new_field['type'];
+
+		// A Relate to One/Relate to Many field's name and type both follow
+		// directly from its chosen relationship (see add()'s own
+		// derive_relationship_field_name()) -- there's no "rename"/"retype"
+		// concept for one that wouldn't just be a completely different
+		// field, the same "no in-place edit, remove and re-add instead"
+		// rule RelationshipEditor's own relationships already follow. Label
+		// is still freely editable (that's true of every field type, and
+		// touches no schema either way), so this only blocks the two
+		// changes that would otherwise attempt an ADD-COLUMN-shaped
+		// migration this field never had a real column for in the first
+		// place (a Relate to Many's own blueprint_method() is '', which
+		// would otherwise produce a malformed `$table->()->...` migration
+		// statement). update() also has no `relationship_method` parameter
+		// at all -- add() is the only path that can ever create one of
+		// these -- so retyping *into* one here could never derive a valid
+		// name for it regardless.
+		$new_type_is_relationship = is_subclass_of( Field_Type_Registry::get( $new_field['type'] ), Relationship_Field_Type::class );
+		$touches_relationship     = null !== $old_field['relationship_method'] || $new_type_is_relationship;
+
+		if ( $touches_relationship && ( $name_changed || $type_changed ) ) {
+			return new \WP_Error(
+				'gateway_field_relationship_immutable',
+				__( 'A Relate to One/Relate to Many field\'s relationship can\'t be changed -- remove it and add a new one instead.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
 
 		// Compared against the *raw* stored label, not $old_field['label']
 		// -- that came from all(), which already substitutes a computed
@@ -492,13 +606,19 @@ class Model_Fields {
 		$type_class = Field_Type_Registry::get( $field['type'] );
 		$method     = $type_class::blueprint_method();
 
-		$up_body   = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
-		$down_body = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
+		// '' means this field never had a real column at all (Relate to
+		// Many) -- nothing to drop, straight to forgetting the metadata
+		// below. Its pivot table (Model_Relationships) is untouched --
+		// removing the field doesn't remove the relationship itself.
+		if ( '' !== $method ) {
+			$up_body   = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
+			$down_body = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
 
-		$migration_result = self::generate_and_run_migration( "Remove{$field['name']}From{$table}Table", $up_body, $down_body );
+			$migration_result = self::generate_and_run_migration( "Remove{$field['name']}From{$table}Table", $up_body, $down_body );
 
-		if ( is_wp_error( $migration_result ) ) {
-			return $migration_result;
+			if ( is_wp_error( $migration_result ) ) {
+				return $migration_result;
+			}
 		}
 
 		self::table()
@@ -817,6 +937,128 @@ PHP;
 			'label' => $label,
 			'type'  => $type,
 		);
+	}
+
+	/**
+	 * Validates a Relationship_Field_Type field's chosen relationship: it
+	 * must name one of $class_name's own already-configured relationships
+	 * (Model_Relationships), and that relationship's own type must match
+	 * exactly what $type_class binds to (Relate to One only ever offers
+	 * `belongsTo`, Relate to Many only `belongsToMany`) -- never trusted
+	 * from the request, since nothing about the type dropdown or a
+	 * relationship picker actually enforces that pairing client-side.
+	 *
+	 * @param string $class_name          Model class name.
+	 * @param mixed  $relationship_method Raw relationship_method from the request.
+	 * @param string $type_class          The Relationship_Field_Type class being added.
+	 * @return array{related_model:string,type:string,method_name:string}|\WP_Error
+	 */
+	private static function require_relationship_for_field( $class_name, $relationship_method, $type_class ) {
+		$relationship_method = trim( (string) $relationship_method );
+
+		if ( '' === $relationship_method ) {
+			return new \WP_Error(
+				'gateway_field_relationship_required',
+				__( 'Choose a relationship for this field.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$relationship = Model_Relationships::find( $class_name, $relationship_method );
+
+		if ( ! $relationship ) {
+			return new \WP_Error(
+				'gateway_relationship_not_found',
+				__( 'Relationship not found.', 'gateway' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$expected_type = $type_class::relationship_type();
+
+		if ( $relationship['type'] !== $expected_type ) {
+			return new \WP_Error(
+				'gateway_field_relationship_type_mismatch',
+				sprintf(
+					/* translators: 1: field type label, 2: expected relationship type key */
+					__( 'A "%1$s" field can only be bound to a "%2$s" relationship.', 'gateway' ),
+					$type_class::label(),
+					$expected_type
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		return $relationship;
+	}
+
+	/**
+	 * The real field name a Relationship_Field_Type field always gets --
+	 * never typed in, always derived from the chosen relationship itself,
+	 * so it's guaranteed to be exactly what Eloquent's own relationship
+	 * conventions expect:
+	 *
+	 * - `belongsTo` ("Relate to One"): `Str::snake( $method_name ) . '_id'`
+	 *   -- the real FK column Eloquent's own `belongsTo()` default
+	 *   convention looks for (confirmed against `Illuminate\Database\Eloquent\
+	 *   Concerns\HasRelationships::belongsTo()`: the foreign key defaults
+	 *   to the calling method's own name, snake-cased, plus "_id").
+	 * - `belongsToMany` ("Relate to Many"): the method_name itself, used
+	 *   only as this field's own metadata identity (gateway_fields'
+	 *   `name` column) -- there's no real column to name at all (see
+	 *   blueprint_method()'s own docblock), so nothing about Eloquent's
+	 *   own conventions constrains this one; it just needs to be a valid,
+	 *   unique field name, and a relationship's own method_name already is.
+	 *
+	 * @param array  $relationship {related_model, type, method_name}.
+	 * @param string $type_class   The Relationship_Field_Type class being added.
+	 * @return string
+	 */
+	private static function derive_relationship_field_name( array $relationship, $type_class ) {
+		if ( 'belongsTo' === $relationship['type'] ) {
+			return \Illuminate\Support\Str::snake( $relationship['method_name'] ) . '_id';
+		}
+
+		return $relationship['method_name'];
+	}
+
+	/**
+	 * Pulls every Relate to Many field's own value out of $data (by
+	 * reference) -- there's no column for Records_REST_Controller to
+	 * write it to via a plain create()/update() call the way every other
+	 * field's value gets written; the caller uses the returned map to
+	 * call each one's own relationship method's `sync()` instead, after
+	 * the record itself is saved.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $data       Sanitized record data (Model_Fields::sanitize_record_data()'s
+	 *                            own output) -- modified in place, with
+	 *                            every Relate to Many key removed.
+	 * @return array<string,int[]> Map of relationship method_name => ids
+	 *                               to sync, for whichever Relate to Many
+	 *                               fields were actually present in $data.
+	 */
+	public static function extract_relate_many_data( $class_name, array &$data ) {
+		$extracted = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( null === $field['relationship_method'] ) {
+				continue;
+			}
+
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			if ( ! $type_class || ! is_subclass_of( $type_class, Relationship_Field_Type::class ) || 'belongsToMany' !== $type_class::relationship_type() ) {
+				continue;
+			}
+
+			if ( array_key_exists( $field['name'], $data ) ) {
+				$extracted[ $field['relationship_method'] ] = (array) $data[ $field['name'] ];
+				unset( $data[ $field['name'] ] );
+			}
+		}
+
+		return $extracted;
 	}
 
 	/**

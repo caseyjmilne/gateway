@@ -102,20 +102,33 @@ class Model_Field_REST_Controller {
 	 */
 	private static function field_args() {
 		return array(
-			'name'  => array(
-				'required' => true,
+			'name'                 => array(
+				// Not required: ignored entirely for a Relationship_Field_Type
+				// ("Relate to One"/"Relate to Many") -- see Model_Fields::
+				// add()'s own docblock for why there's nothing meaningful
+				// to type in for one of those.
+				'required' => false,
 				'type'     => 'string',
+				'default'  => '',
 			),
-			'type'  => array(
+			'type'                 => array(
 				'required' => true,
 				'type'     => 'string',
 				'enum'     => Field_Type_Registry::keys(),
 			),
-			'label' => array(
+			'label'                => array(
 				'required' => false,
 				'type'     => 'string',
 				// Blank (the default) means "derive one from name" -- see
 				// Model_Fields' own docblock.
+			),
+			'relationship_method'  => array(
+				// Required only for a Relationship_Field_Type -- Model_Fields::
+				// add() itself enforces that (this route accepts it
+				// unconditionally so the same args shape works for every
+				// field type without a per-type schema).
+				'required' => false,
+				'type'     => 'string',
 			),
 		);
 	}
@@ -155,7 +168,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'class' ),
 			$request->get_param( 'name' ),
 			$request->get_param( 'type' ),
-			(string) $request->get_param( 'label' )
+			(string) $request->get_param( 'label' ),
+			$request->get_param( 'relationship_method' )
 		);
 
 		if ( is_wp_error( $result ) ) {

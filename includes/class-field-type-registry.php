@@ -76,7 +76,16 @@ class Field_Type_Registry extends Registry {
 	 * render, and know whether to mask a value in a list view, without
 	 * duplicating that knowledge in JavaScript.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool}>
+	 * `relationship_type` is `null` for every plain field type, or one of
+	 * Model_Relationships::TYPES' own keys ('belongsTo'/'belongsToMany')
+	 * for a Relationship_Field_Type (Relate_To_One_Field_Type/
+	 * Relate_To_Many_Field_Type) -- this is what tells the admin app's
+	 * Field Editor a type needs an extra "which relationship" step (and
+	 * which of the model's own configured relationships to offer for it)
+	 * instead of the usual free-text Name input, without hardcoding
+	 * either type's own key there.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -87,10 +96,11 @@ class Field_Type_Registry extends Registry {
 			}
 
 			$described[] = array(
-				'key'          => $class::key(),
-				'label'        => $class::label(),
-				'input_type'   => $class::input_type(),
-				'is_sensitive' => $class::is_sensitive(),
+				'key'               => $class::key(),
+				'label'             => $class::label(),
+				'input_type'        => $class::input_type(),
+				'is_sensitive'      => $class::is_sensitive(),
+				'relationship_type' => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
 			);
 		}
 

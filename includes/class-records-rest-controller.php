@@ -24,6 +24,14 @@ class Records_REST_Controller {
 	const MAX_PER_PAGE     = 100;
 
 	/**
+	 * Maximum results returned by the autocomplete search route -- same
+	 * cap Facet_Query::get_facet_options() already uses for its own
+	 * discovered-values list, for the same reason: an autocomplete only
+	 * ever needs "enough to be useful," not every matching row.
+	 */
+	const SEARCH_LIMIT = 20;
+
+	/**
 	 * Hook route registration into WordPress.
 	 */
 	public static function init() {
@@ -33,6 +41,7 @@ class Records_REST_Controller {
 	/**
 	 * GET/POST      /gateway/v1/models/<class>/records
 	 * GET/PUT/DELETE /gateway/v1/models/<class>/records/<id>
+	 * GET           /gateway/v1/models/<class>/records/search
 	 *
 	 * Record create/update bodies are deliberately NOT given a fixed
 	 * 'args' schema -- unlike every other route in this plugin, the set
@@ -40,6 +49,15 @@ class Records_REST_Controller {
 	 * currently returns for this specific model), so it's read straight
 	 * from the request body and filtered through
 	 * Model_Fields::sanitize_record_data() inside the callback instead.
+	 *
+	 * `/records/search` is registered as its own route rather than a
+	 * query param on `/records` -- it needs a genuinely different
+	 * response shape ({id, label} pairs, not full record data) and
+	 * powers a different UI (RelateAutocomplete.jsx's search-as-you-type,
+	 * not the Records table) -- and it's matched before
+	 * `/records/(?P<id>\d+)` could ever conflict with it: that pattern
+	 * only matches digits, so the literal path segment "search" never
+	 * reaches it regardless of registration order.
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -55,6 +73,40 @@ class Records_REST_Controller {
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'create_record' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/models/(?P<class>[A-Za-z0-9_]+)/records/search',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'search_records' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				'args'                => array(
+					'q'       => array(
+						'required' => false,
+						'type'     => 'string',
+						'default'  => '',
+					),
+					'exclude' => array(
+						'required' => false,
+						'type'     => 'string',
+						'default'  => '',
+						// Comma-separated ids -- e.g. RelateAutocomplete.jsx
+						// excluding a Relate to Many field's own
+						// already-selected records from further search
+						// results. A plain string, not a REST 'array' param
+						// with 'items', to match how every id-list this
+						// admin app sends around (fields-order's own
+						// `order`, a Relate to Many field's submitted
+						// value) is already just handled as a plain array
+						// client-side -- kept a query-string-friendly
+						// comma-joined string here specifically because
+						// this is the one place that value travels as a
+						// GET param, not a JSON body.
+					),
 				),
 			)
 		);
@@ -121,11 +173,79 @@ class Records_REST_Controller {
 
 		return rest_ensure_response(
 			array(
-				'records'  => $records->values()->toArray(),
+				'records'  => self::enrich_records( $class, $records ),
 				'total'    => $total,
 				'page'     => $page,
 				'per_page' => $per_page,
 			)
+		);
+	}
+
+	/**
+	 * GET /gateway/v1/models/<class>/records/search?q=&exclude=
+	 *
+	 * What RelateAutocomplete.jsx (the admin app's search-as-you-type
+	 * control for a Relate to One/Relate to Many field) calls as a
+	 * visitor types -- searches $class's own records by whichever field
+	 * resolve_display_field() picks for it (the same field a Relate
+	 * field's own already-selected value is *labeled* with, so "what you
+	 * can find" and "what you see once you've picked it" are always the
+	 * same field), and returns just enough to render an option list:
+	 * `{id, label}`, never full record data.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function search_records( \WP_REST_Request $request ) {
+		$class = self::require_model( $request->get_param( 'class' ) );
+
+		if ( is_wp_error( $class ) ) {
+			return $class;
+		}
+
+		$query_text     = trim( (string) $request->get_param( 'q' ) );
+		$display_field  = self::resolve_display_field( $class );
+		$exclude_ids    = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'exclude' ) ) ) );
+
+		try {
+			$builder = $class::query();
+
+			if ( $exclude_ids ) {
+				$builder->whereNotIn( 'id', $exclude_ids );
+			}
+
+			if ( '' !== $query_text ) {
+				if ( $display_field ) {
+					// Wildcards already present in the visitor's own typed
+					// text are escaped first so they're matched literally,
+					// not treated as LIKE wildcards themselves -- the same
+					// reasoning (if not the same escaping mechanics --
+					// Eloquent's query builder always parameter-binds this
+					// value, so there's no SQL-injection concern here the
+					// way $wpdb->esc_like() guards against) Facet_Query::
+					// apply_collection_facets() already documents for its
+					// own LIKE branch.
+					$escaped = str_replace( array( '\\', '%', '_' ), array( '\\\\', '\\%', '\\_' ), $query_text );
+					$builder->where( $display_field, 'LIKE', '%' . $escaped . '%' );
+				} elseif ( ctype_digit( $query_text ) ) {
+					// No text-ish field to search by name at all -- an
+					// id lookup is still a coherent search, better than
+					// refusing to filter at all.
+					$builder->where( 'id', (int) $query_text );
+				}
+			}
+
+			$records = $builder->orderBy( 'id', 'desc' )->limit( self::SEARCH_LIMIT )->get();
+		} catch ( \Throwable $e ) {
+			return new \WP_Error( 'gateway_records_query_failed', $e->getMessage(), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response(
+			$records->map(
+				function ( $record ) use ( $display_field ) {
+					return self::record_option( $record, $display_field );
+				}
+			)->values()->all()
 		);
 	}
 
@@ -144,15 +264,17 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$data        = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
 			$record = $class::create( $data );
+			self::sync_relate_many( $record, $relate_many );
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_record_create_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
 
-		return rest_ensure_response( $record->toArray() );
+		return rest_ensure_response( self::enrich_record( $class, $record->fresh() ) );
 	}
 
 	/**
@@ -172,7 +294,7 @@ class Records_REST_Controller {
 			return $record;
 		}
 
-		return rest_ensure_response( $record->toArray() );
+		return rest_ensure_response( self::enrich_record( $class, $record ) );
 	}
 
 	/**
@@ -196,15 +318,17 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$data        = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
 			$record->update( $data );
+			self::sync_relate_many( $record, $relate_many );
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_record_update_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
 
-		return rest_ensure_response( $record->fresh()->toArray() );
+		return rest_ensure_response( self::enrich_record( $class, $record->fresh() ) );
 	}
 
 	/**
@@ -275,6 +399,174 @@ class Records_REST_Controller {
 		}
 
 		return $record;
+	}
+
+	/**
+	 * Applies a Relate to Many field's own submitted value(s) via the
+	 * relationship's real `sync()` -- there's no column these ever get
+	 * written to via the record's own create()/update() call (see
+	 * Model_Fields::extract_relate_many_data()'s own docblock for why),
+	 * so this is the actual save step for that data, run once the record
+	 * itself already exists (a brand new record needs its own id before
+	 * a pivot row referencing it can exist at all).
+	 *
+	 * `sync()` -- not `attach()` -- replaces the full set of related
+	 * records with exactly what was submitted, so removing a previously
+	 * -selected record (per this feature's own request, "the user must
+	 * be able to remove the selected related record") is just submitting
+	 * the value without it, the same as every other field.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Model $record      The just-saved record.
+	 * @param array<string,int[]>                  $relate_many Map of relationship method_name => ids (Model_Fields::extract_relate_many_data()'s own shape).
+	 */
+	private static function sync_relate_many( \Illuminate\Database\Eloquent\Model $record, array $relate_many ) {
+		foreach ( $relate_many as $method_name => $ids ) {
+			$record->{$method_name}()->sync( array_map( 'absint', $ids ) );
+		}
+	}
+
+	/**
+	 * The one field resolve_display_field() (and therefore search_records()/
+	 * enrich_records()) call would consider showing a related record's
+	 * *label* as, if this model has one at all: the first field whose own
+	 * type is genuinely free text and never sensitive -- a Password
+	 * field's value must never be shown as another record's own label
+	 * (Field_Type::is_sensitive()), and a Number/Range/Relate field
+	 * itself isn't a meaningful "name" for a record the way a Text/
+	 * TextArea/Email/URL field's value is.
+	 */
+	const DISPLAY_FIELD_TYPES = array( 'text', 'textarea', 'email', 'url' );
+
+	/**
+	 * @param string $class_name Model class name.
+	 * @return string|null The field name to use as this model's own
+	 *                       records' display label, or null if it has no
+	 *                       suitable field (falls back to "#<id>" wherever
+	 *                       this matters).
+	 */
+	private static function resolve_display_field( $class_name ) {
+		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			if ( in_array( $field['type'], self::DISPLAY_FIELD_TYPES, true ) ) {
+				return $field['name'];
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * @param \Illuminate\Database\Eloquent\Model $record        A record of any model.
+	 * @param string|null                          $display_field resolve_display_field()'s own result for that model.
+	 * @return array{id:int,label:string}
+	 */
+	private static function record_option( \Illuminate\Database\Eloquent\Model $record, $display_field ) {
+		$label = $display_field ? (string) ( $record->{$display_field} ?? '' ) : '';
+
+		return array(
+			'id'    => (int) $record->id,
+			'label' => '' !== $label ? $label : ( '#' . $record->id ),
+		);
+	}
+
+	/**
+	 * @param string                                $class_name Model class name.
+	 * @param \Illuminate\Database\Eloquent\Model $record     A single record.
+	 * @return array Record data, with every Relate to One/Relate to Many
+	 *                field's own raw value replaced by a richer shape --
+	 *                see enrich_records()'s own docblock.
+	 */
+	private static function enrich_record( $class_name, \Illuminate\Database\Eloquent\Model $record ) {
+		// Not the plain collect() helper -- that always returns a base
+		// Illuminate\Support\Collection, which has no load() method at
+		// all (that's Eloquent\Collection-specific); enrich_records()
+		// needs the real thing to batch-eager-load every relate field's
+		// relationship the same way it does for a genuine query result.
+		$records = new \Illuminate\Database\Eloquent\Collection( array( $record ) );
+
+		return self::enrich_records( $class_name, $records )[0];
+	}
+
+	/**
+	 * Replaces every Relate to One/Relate to Many field's own raw stored
+	 * value (a bare FK id, or -- for Relate to Many -- nothing at all,
+	 * since there's no column) with a shape the admin app's RecordForm/
+	 * RecordsCrud can render directly, without a second round trip per
+	 * field per row: `{id, label}` for Relate to One (`null` if unset),
+	 * `[{id, label}, ...]` for Relate to Many (`[]` if none selected).
+	 * `label` is that related record's own resolve_display_field() value
+	 * -- the exact same field search_records() searches by, so what a
+	 * visitor finds while typing and what they see once it's selected are
+	 * always the same field.
+	 *
+	 * Every relate field's own relationship is eager-loaded via one
+	 * `Collection::load()` call up front (one query per *field*, not per
+	 * record -- Eloquent's own lazy-eager-loading, batched regardless of
+	 * how many records are in $records) rather than resolving each
+	 * record's own relation lazily one at a time, so this stays cheap for
+	 * the Records list view (many rows), not just a single record.
+	 *
+	 * @param string                                     $class_name Model class name.
+	 * @param \Illuminate\Database\Eloquent\Collection $records    Records of $class_name.
+	 * @return array[] Each record's own toArray(), enriched.
+	 */
+	private static function enrich_records( $class_name, \Illuminate\Database\Eloquent\Collection $records ) {
+		$relate_fields = array();
+
+		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			if ( null !== $field['relationship_method'] ) {
+				$relate_fields[] = $field;
+			}
+		}
+
+		if ( empty( $relate_fields ) || $records->isEmpty() ) {
+			return $records->map(
+				function ( $record ) {
+					return $record->toArray();
+				}
+			)->values()->all();
+		}
+
+		$records->load( wp_list_pluck( $relate_fields, 'relationship_method' ) );
+
+		// Cached per related model class -- several Relate fields could
+		// point at the same related model (or the same field could, across
+		// many rows), and this never changes per class within one request.
+		$display_fields_by_class = array();
+
+		return $records->map(
+			function ( $record ) use ( $relate_fields, &$display_fields_by_class ) {
+				$array = $record->toArray();
+
+				foreach ( $relate_fields as $field ) {
+					$related_class = $field['related_model'];
+
+					if ( $related_class && ! array_key_exists( $related_class, $display_fields_by_class ) ) {
+						$display_fields_by_class[ $related_class ] = self::resolve_display_field( $related_class );
+					}
+
+					$display_field = $related_class ? $display_fields_by_class[ $related_class ] : null;
+					$relation      = $record->{ $field['relationship_method'] };
+
+					if ( $relation instanceof \Illuminate\Database\Eloquent\Model ) {
+						$array[ $field['name'] ] = self::record_option( $relation, $display_field );
+					} elseif ( $relation instanceof \Illuminate\Support\Collection ) {
+						$array[ $field['name'] ] = $relation->map(
+							function ( $related ) use ( $display_field ) {
+								return self::record_option( $related, $display_field );
+							}
+						)->values()->all();
+					} else {
+						// Relate to One with nothing selected -- Relate to
+						// Many's own "nothing selected" case already took
+						// the Collection branch above (an empty Collection,
+						// not null).
+						$array[ $field['name'] ] = null;
+					}
+				}
+
+				return $array;
+			}
+		)->values()->all();
 	}
 
 	/**

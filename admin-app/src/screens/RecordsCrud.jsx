@@ -154,7 +154,25 @@ export default function RecordsCrud() {
 		fieldTypes.find( ( fieldType ) => fieldType.key === type )
 			?.is_sensitive ?? false;
 
+	const inputTypeFor = ( type ) =>
+		fieldTypes.find( ( fieldType ) => fieldType.key === type )?.input_type;
+
+	// A relate field's value arrives already enriched (Records_REST_Controller::
+	// enrich_records()) into `{id, label}`/`[{id, label}, ...]` rather than a
+	// plain scalar -- shown here as just its label(s), not the raw shape.
 	const displayValue = ( field, record ) => {
+		const inputType = inputTypeFor( field.type );
+
+		if ( 'relate_one' === inputType ) {
+			const value = record[ field.name ];
+			return value ? value.label : '';
+		}
+
+		if ( 'relate_many' === inputType ) {
+			const value = record[ field.name ] || [];
+			return value.map( ( item ) => item.label ).join( ', ' );
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};

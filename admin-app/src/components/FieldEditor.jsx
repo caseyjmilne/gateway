@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
+import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
@@ -31,15 +32,33 @@ import useFieldTypes from '../hooks/useFieldTypes.js';
  * The type dropdown is built from useFieldTypes() (Gateway\Field_Type_Registry,
  * via GET /field-types) rather than a hardcoded list here, so a future
  * field type shows up automatically.
+ *
+ * "Relate to One"/"Relate to Many" (Relate_To_One_Field_Type/Relate_To_Many_
+ * Field_Type) are special-cased throughout: each one's `relationship_type`
+ * (from useFieldTypes(), null for every other type) says which of this
+ * model's own belongsTo/belongsToMany relationships it can attach to.
+ * Picking one of these types swaps the free-text Name input out for a
+ * dropdown of this model's matching-type relationships -- there's nothing
+ * meaningful to type a name in for one of these, since Model_Fields::add()
+ * derives the real column/field name itself from the relationship (e.g.
+ * a "make" belongsTo becomes a "make_id" field) -- and the request sends
+ * `relationship_method` instead of `name`. Matching the server-side
+ * immutability guard (a relate field's relationship can't be changed once
+ * created), editing one disables the Name and Type inputs -- only its
+ * Label stays editable, same as every other field type.
  */
 export default function FieldEditor( { modelClass, initialFields } ) {
 	const fieldTypes = useFieldTypes();
+	const relationshipTypes = useRelationshipTypes();
 	const [ fields, setFields ] = useState( initialFields || [] );
 	const [ error, setError ] = useState( '' );
+
+	const [ relationships, setRelationships ] = useState( [] );
 
 	const [ newName, setNewName ] = useState( '' );
 	const [ newLabel, setNewLabel ] = useState( '' );
 	const [ newType, setNewType ] = useState( 'text' );
+	const [ newRelationshipMethod, setNewRelationshipMethod ] = useState( '' );
 	const [ adding, setAdding ] = useState( false );
 
 	// The field currently being edited, identified by its existing name
@@ -59,24 +78,83 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/fields`;
 	const dragEnabled = null === editingName && null === deletingName;
 
+	// This model's own relationships -- what the relationship dropdown
+	// offers once a Relate to One/Relate to Many type is picked. Fetched
+	// independently (rather than passed down from ModelDetail) the same
+	// way RelationshipEditor fetches its own "other models" list, so
+	// there's one clear owner of when this list gets (re-)loaded.
+	useEffect( () => {
+		let cancelled = false;
+
+		apiFetch( `/models/${ encodeURIComponent( modelClass ) }/relationships` )
+			.then( ( data ) => {
+				if ( ! cancelled ) {
+					setRelationships( data );
+				}
+			} )
+			.catch( () => {} );
+
+		return () => {
+			cancelled = true;
+		};
+	}, [ modelClass ] );
+
+	const relationshipTypeFor = ( typeKey ) =>
+		fieldTypes.find( ( type ) => type.key === typeKey )?.relationship_type ||
+		null;
+
+	const relationshipTypeLabel = ( key ) =>
+		relationshipTypes.find( ( type ) => type.key === key )?.label || key;
+
+	const newRelationshipType = relationshipTypeFor( newType );
+	const matchingRelationships = newRelationshipType
+		? relationships.filter(
+				( relationship ) => relationship.type === newRelationshipType
+		  )
+		: [];
+
+	// Whenever the picked type changes, default (or clear) the relationship
+	// dropdown to match -- a relationship chosen for a different type no
+	// longer makes sense once the type itself has changed.
+	useEffect( () => {
+		if ( ! newRelationshipType ) {
+			setNewRelationshipMethod( '' );
+			return;
+		}
+
+		const matches = relationships.filter(
+			( relationship ) => relationship.type === newRelationshipType
+		);
+		setNewRelationshipMethod( matches[ 0 ] ? matches[ 0 ].method_name : '' );
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ newType, relationships ] );
+
+	const relationshipOptionLabel = ( relationship ) =>
+		`${ relationship.related_model } (${ relationship.method_name }())`;
+
 	const handleAdd = async ( event ) => {
 		event.preventDefault();
 		setError( '' );
 		setAdding( true );
 
 		try {
+			const body = newRelationshipType
+				? {
+						relationship_method: newRelationshipMethod,
+						type: newType,
+						label: newLabel,
+				  }
+				: { name: newName, label: newLabel, type: newType };
+
 			const field = await apiFetch( basePath, {
 				method: 'POST',
-				body: JSON.stringify( {
-					name: newName,
-					label: newLabel,
-					type: newType,
-				} ),
+				body: JSON.stringify( body ),
 			} );
 			setFields( ( current ) => [ ...current, field ] );
 			setNewName( '' );
 			setNewLabel( '' );
 			setNewType( 'text' );
+			setNewRelationshipMethod( '' );
 		} catch ( err ) {
 			setError( err.message );
 		} finally {
@@ -93,6 +171,13 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 	};
 
 	const cancelEdit = () => setEditingName( null );
+
+	const editingField = editingName
+		? fields.find( ( field ) => field.name === editingName )
+		: null;
+	const editingIsRelate = editingField
+		? Boolean( relationshipTypeFor( editingField.type ) )
+		: false;
 
 	const handleSaveEdit = async ( event ) => {
 		event.preventDefault();
@@ -244,6 +329,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 												className="regular-text"
 												placeholder="Name"
 												value={ editName }
+												disabled={ editingIsRelate }
 												onChange={ ( event ) =>
 													setEditName(
 														event.target.value
@@ -263,6 +349,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 											/>
 											<select
 												value={ editType }
+												disabled={ editingIsRelate }
 												onChange={ ( event ) =>
 													setEditType(
 														event.target.value
@@ -299,6 +386,15 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 												Cancel
 											</button>
 										</form>
+										{ editingIsRelate && (
+											<p className="description">
+												This field&rsquo;s
+												relationship can&rsquo;t be
+												changed -- remove it and add a
+												new one instead if it needs to
+												point somewhere else.
+											</p>
+										) }
 									</td>
 								</tr>
 							) : (
@@ -375,16 +471,46 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 				Name must be unique on this model and is always stored
 				lowercase (it becomes the real column name) --{ ' ' }
 				<code>First Name</code> is a <em>label</em>;{ ' ' }
-				<code>first_name</code> is a <em>name</em>.
+				<code>first_name</code> is a <em>name</em>.{ ' ' }
+				Picking &ldquo;Relate to One&rdquo; or &ldquo;Relate to
+				Many&rdquo; below replaces this with a relationship picker
+				instead -- the field&rsquo;s real name is derived from the
+				relationship you choose.
 			</p>
 			<form onSubmit={ handleAdd } className="gateway-field-editor-row">
-				<input
-					type="text"
-					className="regular-text"
-					placeholder="e.g. first_name"
-					value={ newName }
-					onChange={ ( event ) => setNewName( event.target.value ) }
-				/>
+				{ newRelationshipType ? (
+					matchingRelationships.length > 0 ? (
+						<select
+							value={ newRelationshipMethod }
+							onChange={ ( event ) =>
+								setNewRelationshipMethod( event.target.value )
+							}
+						>
+							{ matchingRelationships.map( ( relationship ) => (
+								<option
+									key={ relationship.method_name }
+									value={ relationship.method_name }
+								>
+									{ relationshipOptionLabel( relationship ) }
+								</option>
+							) ) }
+						</select>
+					) : (
+						<p className="description">
+							No { relationshipTypeLabel( newRelationshipType ) }{ ' ' }
+							relationships yet -- add one in the Relationships
+							section below first.
+						</p>
+					)
+				) : (
+					<input
+						type="text"
+						className="regular-text"
+						placeholder="e.g. first_name"
+						value={ newName }
+						onChange={ ( event ) => setNewName( event.target.value ) }
+					/>
+				) }
 				<input
 					type="text"
 					className="regular-text"
@@ -405,7 +531,12 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 				<button
 					type="submit"
 					className="button button-primary"
-					disabled={ adding || ! newName.trim() }
+					disabled={
+						adding ||
+						( newRelationshipType
+							? ! newRelationshipMethod
+							: ! newName.trim() )
+					}
 				>
 					{ adding ? 'Adding…' : 'Add Field' }
 				</button>

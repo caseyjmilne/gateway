@@ -10,12 +10,29 @@
  * into the model's .php file (see Model_Builder::model_template()/
  * relationships_literal()) every time add()/remove() changes something.
  *
- * Unlike a field, a relationship never touches the schema at all -- no
- * migration, ever. It's pure metadata: which Eloquent relationship
- * method (hasOne/hasMany/belongsTo/belongsToMany -- see TYPES) a model
- * gets, pointing at which other model. add()/remove() here are
- * accordingly simpler than their Model_Fields counterparts: write the
- * row, rewrite the file, done.
+ * Unlike a field, a relationship never touches EITHER model's own table
+ * -- no migration against `model`'s or `related_model`'s own schema,
+ * ever. It's pure metadata: which Eloquent relationship method
+ * (hasOne/hasMany/belongsTo/belongsToMany -- see TYPES) a model gets,
+ * pointing at which other model. add()/remove() here are accordingly
+ * simpler than their Model_Fields counterparts: write the row, rewrite
+ * the file, done.
+ *
+ * One exception: `belongsToMany` is the one relationship type Eloquent
+ * genuinely cannot function without a THIRD table for at all -- a pivot
+ * table, never a column on either side's own table (which is why the
+ * "no migration" rule above is scoped to "either model's own table," not
+ * schema in general). add() creates one automatically the first time a
+ * `belongsToMany` relationship is added between two given models (see
+ * ensure_pivot_table()) -- Gateway-managed infrastructure the same way
+ * `gateway_fields`/`gateway_relationships` themselves are, not something
+ * a site owner configures. remove() deliberately never drops it: a
+ * relationship's own row can be removed independently of the pivot
+ * table's data, and another `belongsToMany` relationship (from the
+ * opposite direction, or a future one) could still be relying on the
+ * exact same table -- Eloquent's own naming convention doesn't
+ * distinguish direction, so there's no way to know it's safe to drop
+ * without asking.
  *
  * Method names are never typed in -- they're derived automatically from
  * the related model's own class name and the relationship's plurality
@@ -141,6 +158,27 @@ class Model_Relationships {
 	}
 
 	/**
+	 * Look up one of a model's relationships by its (auto-derived) method
+	 * name -- what Model_Fields::add() uses to validate a Relate to One/
+	 * Relate to Many field's chosen relationship (must exist, and must be
+	 * the matching type -- belongsTo/belongsToMany) before deriving that
+	 * field's own real column (or lack of one).
+	 *
+	 * @param string $class_name  Model class name.
+	 * @param string $method_name Relationship's method_name.
+	 * @return array{related_model:string,type:string,method_name:string}|null
+	 */
+	public static function find( $class_name, $method_name ) {
+		foreach ( self::all( $class_name ) as $relationship ) {
+			if ( $relationship['method_name'] === $method_name ) {
+				return $relationship;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Every relationship type the Relationship Editor's own type dropdown
 	 * needs -- key/label -- without duplicating TYPES' own contents in
 	 * JavaScript.
@@ -221,6 +259,15 @@ class Model_Relationships {
 			return self::unavailable_error();
 		}
 
+		// Must exist before the relationship is usable at all -- see this
+		// class's own docblock for why this is the one exception to
+		// "never touches schema." Idempotent: a second belongsToMany
+		// between the same two models (e.g. declared from the other
+		// direction too) reuses the same table rather than erroring.
+		if ( 'belongsToMany' === $type ) {
+			self::ensure_pivot_table( $class_name, $related_model );
+		}
+
 		self::table()->insert(
 			array(
 				'model'         => $class_name,
@@ -286,6 +333,26 @@ class Model_Relationships {
 			);
 		}
 
+		// A Relate to One/Relate to Many field (Model_Fields) is bound to
+		// this exact relationship -- removing it out from under that field
+		// would leave the field pointing at a relationship method that no
+		// longer exists on the generated model file. The field must be
+		// removed first (its own remove() has no such reverse dependency
+		// to worry about).
+		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			if ( $method_name === $field['relationship_method'] ) {
+				return new \WP_Error(
+					'gateway_relationship_in_use',
+					sprintf(
+						/* translators: %s: field label */
+						__( 'Remove the "%s" field first -- it depends on this relationship.', 'gateway' ),
+						$field['label']
+					),
+					array( 'status' => 409 )
+				);
+			}
+		}
+
 		if ( ! Database_Connection::is_healthy() ) {
 			return self::unavailable_error();
 		}
@@ -324,6 +391,71 @@ class Model_Relationships {
 	 */
 	public static function forget( $class_name ) {
 		self::table()->where( 'model', $class_name )->delete();
+	}
+
+	/**
+	 * Creates the pivot table a `belongsToMany` relationship between
+	 * these two models needs to function at all, if it doesn't already
+	 * exist -- see this class's own docblock for why this is the one
+	 * exception to "a relationship never touches schema."
+	 *
+	 * Table/column names computed to match Eloquent's own default
+	 * `belongsToMany()` convention exactly (confirmed against
+	 * `Illuminate\Database\Eloquent\Concerns\HasRelationships::
+	 * joiningTable()`/`joiningTableSegment()`): both models' own class
+	 * names, snake_cased, sorted alphabetically, joined with an
+	 * underscore for the table (e.g. "Make" + "Model" -> "make_model");
+	 * each one's own snake_cased name + "_id" for its own pivot column
+	 * (e.g. "make_id"/"model_id"). This is exactly what `$this->belongsToMany(
+	 * \Model::class )` (no explicit table/key arguments -- see
+	 * Model_Builder::relationship_method(), which never adds any) resolves
+	 * to on its own, so nothing about the generated relationship method
+	 * itself needs to know this table even exists.
+	 *
+	 * @param string $class_a One side's model class name.
+	 * @param string $class_b The other side's model class name.
+	 * @return string The pivot table's name.
+	 */
+	private static function ensure_pivot_table( $class_a, $class_b ) {
+		$table_name = self::pivot_table_name( $class_a, $class_b );
+
+		$schema = \Illuminate\Database\Capsule\Manager::schema();
+
+		if ( $schema->hasTable( $table_name ) ) {
+			return $table_name;
+		}
+
+		$column_a = \Illuminate\Support\Str::snake( $class_a ) . '_id';
+		$column_b = \Illuminate\Support\Str::snake( $class_b ) . '_id';
+
+		$schema->create(
+			$table_name,
+			function ( \Illuminate\Database\Schema\Blueprint $table ) use ( $column_a, $column_b ) {
+				$table->id();
+				$table->unsignedBigInteger( $column_a );
+				$table->unsignedBigInteger( $column_b );
+				$table->timestamps();
+			}
+		);
+
+		return $table_name;
+	}
+
+	/**
+	 * @param string $class_a One side's model class name.
+	 * @param string $class_b The other side's model class name.
+	 * @return string Eloquent's own default pivot table name for these
+	 *                 two models -- see ensure_pivot_table()'s own docblock.
+	 */
+	private static function pivot_table_name( $class_a, $class_b ) {
+		$segments = array(
+			\Illuminate\Support\Str::snake( $class_a ),
+			\Illuminate\Support\Str::snake( $class_b ),
+		);
+
+		sort( $segments );
+
+		return implode( '_', $segments );
 	}
 
 	/**
