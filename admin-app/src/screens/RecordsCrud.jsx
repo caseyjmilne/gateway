@@ -223,7 +223,7 @@ export default function RecordsCrud() {
 											<th>ID</th>
 											{ fields.map( ( field ) => (
 												<th key={ field.name }>
-													{ field.name }
+													{ field.label || field.name }
 												</th>
 											) ) }
 											<th></th>

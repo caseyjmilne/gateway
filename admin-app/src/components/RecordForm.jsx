@@ -50,7 +50,7 @@ export default function RecordForm( {
 			{ fields.map( ( field ) => (
 				<p key={ field.name }>
 					<label htmlFor={ `gateway-record-field-${ field.name }` }>
-						{ field.name }
+						{ field.label || field.name }
 					</label>
 					<br />
 					<input

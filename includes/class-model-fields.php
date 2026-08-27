@@ -37,9 +37,19 @@
  * A model's fields are stored (and returned by all()) as one flat array
  * of field arrays -- deliberately never split into parallel arrays keyed
  * by property (no {names: [...], types: [...]} shape): two fields simply
- * sit as neighbors in the same array, each one a plain {name, type}.
- * This is also exactly the shape a model's own getFillable() override
- * needs: array_column( getFields(), 'name' ).
+ * sit as neighbors in the same array, each one a plain {name, label,
+ * type}. This is also exactly the shape a model's own getFillable()
+ * override needs: array_column( getFields(), 'name' ).
+ *
+ * `label` is purely a display string -- unlike name/type, changing it
+ * never touches the schema (no column to rename, nothing to migrate):
+ * it exists so a field can be retitled for display (e.g. correcting a
+ * typo, or just preferring different wording) without the real
+ * consequences a genuine column rename carries. Left blank when adding
+ * or editing a field, it defaults to a title-cased version of the name
+ * (Illuminate\Support\Str::headline() -- "first_name" becomes "First
+ * Name"), including for a row recorded before this column existed (see
+ * all()'s own fallback for that).
  *
  * @package Gateway
  */
@@ -76,26 +86,48 @@ class Model_Fields {
 	 * WordPress never re-fires the activation hook on its own.
 	 */
 	public static function ensure_table() {
-		if ( \Illuminate\Database\Capsule\Manager::schema()->hasTable( self::TABLE ) ) {
+		$schema = \Illuminate\Database\Capsule\Manager::schema();
+
+		if ( ! $schema->hasTable( self::TABLE ) ) {
+			$schema->create(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->id();
+					$table->string( 'model' ); // Model class name, e.g. "Ticket".
+					$table->string( 'name' );  // Sanitized field name -- the real column name too.
+					// Nullable even though add()/update() never actually
+					// write a blank one (validate() always fills in a
+					// default) -- kept consistent with the upgrade-path
+					// ALTER below, which can't backfill a real value for
+					// existing rows.
+					$table->string( 'label' )->nullable();
+					$table->string( 'type' );  // One of Field_Type_Registry::keys().
+					$table->timestamps();
+
+					// Belt-and-suspenders alongside validate()'s own uniqueness
+					// check below -- a duplicate (model, name) pair can never
+					// land in the table even if two requests somehow raced past
+					// that check at the same time.
+					$table->unique( array( 'model', 'name' ) );
+				}
+			);
+
 			return;
 		}
 
-		\Illuminate\Database\Capsule\Manager::schema()->create(
-			self::TABLE,
-			function ( \Illuminate\Database\Schema\Blueprint $table ) {
-				$table->id();
-				$table->string( 'model' ); // Model class name, e.g. "Ticket".
-				$table->string( 'name' );  // Sanitized field name -- the real column name too.
-				$table->string( 'type' );  // One of Field_Type_Registry::keys().
-				$table->timestamps();
-
-				// Belt-and-suspenders alongside validate()'s own uniqueness
-				// check below -- a duplicate (model, name) pair can never
-				// land in the table even if two requests somehow raced past
-				// that check at the same time.
-				$table->unique( array( 'model', 'name' ) );
-			}
-		);
+		// Upgrade path for a table created by a version of this plugin that
+		// predates the label column -- added nullable (existing rows get
+		// NULL) since there's no real value to backfill them with; all()'s
+		// own fallback covers those rows the same way it covers a brand
+		// new, blank label.
+		if ( ! $schema->hasColumn( self::TABLE, 'label' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->string( 'label' )->nullable();
+				}
+			);
+		}
 	}
 
 	/**
@@ -115,18 +147,23 @@ class Model_Fields {
 	 * own generated getFields() prints fields in.
 	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{name:string,type:string}>
+	 * @return array<int,array{name:string,label:string,type:string}>
 	 */
 	public static function all( $class_name ) {
 		return self::table()
 			->where( 'model', $class_name )
 			->orderBy( 'id' )
-			->get( array( 'name', 'type' ) )
+			->get( array( 'name', 'label', 'type' ) )
 			->map(
 				function ( $row ) {
 					return array(
-						'name' => $row->name,
-						'type' => $row->type,
+						'name'  => $row->name,
+						// A row recorded before the label column existed
+						// (or saved with one left blank) has no label of
+						// its own yet -- fall back to the same
+						// auto-derived default validate() would give it.
+						'label' => ! empty( $row->label ) ? $row->label : self::default_label( $row->name ),
+						'type'  => $row->type,
 					);
 				}
 			)
@@ -174,17 +211,20 @@ class Model_Fields {
 	 *                            lowercase snake_case machine name, which
 	 *                            becomes the real column name too.
 	 * @param string $type       One of Field_Type_Registry::keys().
-	 * @return array{name:string,type:string}|\WP_Error The added field
-	 *              (with its sanitized name) on success.
+	 * @param string $label      Display label; blank defaults to a
+	 *                            title-cased version of the (sanitized)
+	 *                            name -- see this class's own docblock.
+	 * @return array{name:string,label:string,type:string}|\WP_Error The
+	 *              added field (with its sanitized name) on success.
 	 */
-	public static function add( $class_name, $name, $type ) {
+	public static function add( $class_name, $name, $type, $label = '' ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
 			return $model;
 		}
 
-		$field = self::validate( $class_name, $name, $type, null );
+		$field = self::validate( $class_name, $name, $type, null, $label );
 
 		if ( is_wp_error( $field ) ) {
 			return $field;
@@ -211,6 +251,7 @@ class Model_Fields {
 			array(
 				'model'      => $class_name,
 				'name'       => $field['name'],
+				'label'      => $field['label'],
 				'type'       => $field['type'],
 				'created_at' => current_time( 'mysql' ),
 				'updated_at' => current_time( 'mysql' ),
@@ -244,9 +285,12 @@ class Model_Fields {
 	 * @param string $current_name The field's existing (sanitized) name.
 	 * @param string $name         New raw name.
 	 * @param string $type         New type.
-	 * @return array{name:string,type:string}|\WP_Error
+	 * @param string $label        New display label; blank defaults to a
+	 *                              title-cased version of the (sanitized)
+	 *                              name -- see this class's own docblock.
+	 * @return array{name:string,label:string,type:string}|\WP_Error
 	 */
-	public static function update( $class_name, $current_name, $name, $type ) {
+	public static function update( $class_name, $current_name, $name, $type, $label = '' ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -261,16 +305,17 @@ class Model_Fields {
 		}
 
 		$old_field = $model_fields[ $index ];
-		$new_field = self::validate( $class_name, $name, $type, $current_name );
+		$new_field = self::validate( $class_name, $name, $type, $current_name, $label );
 
 		if ( is_wp_error( $new_field ) ) {
 			return $new_field;
 		}
 
-		$name_changed = $old_field['name'] !== $new_field['name'];
-		$type_changed = $old_field['type'] !== $new_field['type'];
+		$name_changed  = $old_field['name'] !== $new_field['name'];
+		$type_changed  = $old_field['type'] !== $new_field['type'];
+		$label_changed = $old_field['label'] !== $new_field['label'];
 
-		if ( ! $name_changed && ! $type_changed ) {
+		if ( ! $name_changed && ! $type_changed && ! $label_changed ) {
 			return $old_field;
 		}
 
@@ -279,8 +324,17 @@ class Model_Fields {
 		}
 
 		$table = $model->getTable();
-		$up    = array();
-		$down  = array();
+
+		// A label-only change never touches the schema -- there's no
+		// column to rename, nothing to migrate -- so it skips straight to
+		// recording the new metadata below, the same way a truly no-op
+		// update (caught above) skips it entirely.
+		if ( ! $name_changed && ! $type_changed ) {
+			return self::save_updated_field( $class_name, $table, $old_field['name'], $new_field );
+		}
+
+		$up   = array();
+		$down = array();
 
 		// Reversing a combined rename + type change means undoing the
 		// *last* thing up() did first -- down() modifies the type while
@@ -313,12 +367,31 @@ class Model_Fields {
 			return $migration_result;
 		}
 
+		return self::save_updated_field( $class_name, $table, $old_field['name'], $new_field );
+	}
+
+	/**
+	 * Shared tail end of update(): records the new name/label/type against
+	 * the field's existing row (found by its *current* name, which may
+	 * itself be one of the values changing) and rewrites the model file --
+	 * used both after a schema-changing update (name and/or type changed,
+	 * migration already run) and for a label-only one (nothing to migrate
+	 * at all, see update()'s own early return for that case).
+	 *
+	 * @param string $class_name   Model class name.
+	 * @param string $table        Table name.
+	 * @param string $current_name The field's existing row, found by name.
+	 * @param array  $new_field    {name, label, type} to save.
+	 * @return array{name:string,label:string,type:string}|\WP_Error
+	 */
+	private static function save_updated_field( $class_name, $table, $current_name, array $new_field ) {
 		self::table()
 			->where( 'model', $class_name )
-			->where( 'name', $old_field['name'] )
+			->where( 'name', $current_name )
 			->update(
 				array(
 					'name'       => $new_field['name'],
+					'label'      => $new_field['label'],
 					'type'       => $new_field['type'],
 					'updated_at' => current_time( 'mysql' ),
 				)
@@ -559,9 +632,12 @@ PHP;
 	 * @param string      $type        Field type.
 	 * @param string|null $ignore_name Exclude this existing name from the
 	 *                                  uniqueness check.
-	 * @return array{name:string,type:string}|\WP_Error
+	 * @param string      $label       Raw display label; blank defaults
+	 *                                  to a title-cased version of the
+	 *                                  (sanitized) name.
+	 * @return array{name:string,label:string,type:string}|\WP_Error
 	 */
-	private static function validate( $class_name, $name, $type, $ignore_name ) {
+	private static function validate( $class_name, $name, $type, $ignore_name, $label = '' ) {
 		$sanitized_name = self::sanitize_name( $name );
 
 		if ( '' === $sanitized_name ) {
@@ -612,10 +688,25 @@ PHP;
 			}
 		}
 
+		$label = sanitize_text_field( trim( (string) $label ) );
+
+		if ( '' === $label ) {
+			$label = self::default_label( $sanitized_name );
+		}
+
 		return array(
-			'name' => $sanitized_name,
-			'type' => $type,
+			'name'  => $sanitized_name,
+			'label' => $label,
+			'type'  => $type,
 		);
+	}
+
+	/**
+	 * @param string $name Sanitized field name, e.g. "first_name".
+	 * @return string Title-cased default label, e.g. "First Name".
+	 */
+	private static function default_label( $name ) {
+		return \Illuminate\Support\Str::headline( $name );
 	}
 
 	/**

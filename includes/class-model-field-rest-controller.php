@@ -76,14 +76,20 @@ class Model_Field_REST_Controller {
 	 */
 	private static function field_args() {
 		return array(
-			'name' => array(
+			'name'  => array(
 				'required' => true,
 				'type'     => 'string',
 			),
-			'type' => array(
+			'type'  => array(
 				'required' => true,
 				'type'     => 'string',
 				'enum'     => Field_Type_Registry::keys(),
+			),
+			'label' => array(
+				'required' => false,
+				'type'     => 'string',
+				// Blank (the default) means "derive one from name" -- see
+				// Model_Fields' own docblock.
 			),
 		);
 	}
@@ -122,7 +128,8 @@ class Model_Field_REST_Controller {
 		$result = Model_Fields::add(
 			$request->get_param( 'class' ),
 			$request->get_param( 'name' ),
-			$request->get_param( 'type' )
+			$request->get_param( 'type' ),
+			(string) $request->get_param( 'label' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -141,7 +148,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'class' ),
 			$request->get_param( 'field_name' ),
 			$request->get_param( 'name' ),
-			$request->get_param( 'type' )
+			$request->get_param( 'type' ),
+			(string) $request->get_param( 'label' )
 		);
 
 		if ( is_wp_error( $result ) ) {

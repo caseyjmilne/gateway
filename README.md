@@ -2369,17 +2369,19 @@ add/rename/change-type/drop all worked with no `doctrine/dbal` involved),
 unlike older Laravel versions that needed it for column modification.
 
 **Storage: a real `gateway_fields` table, not an option.** Every field
-is a row (`model`, `name`, `type`, unique on `model`+`name`) in its own
-table -- created by `Model_Fields::ensure_table()`, called once on plugin
-activation and defensively before every read/write in that class too
-(covers a site upgrading from a version of this plugin that predates the
-table, since WordPress never re-fires the activation hook on its own).
-This table, not anything cached in memory or baked into a model's own
-code, is the one source of truth: `Model_Fields::all( $class_name )`
-always queries it fresh, ordered by `id` (insertion order) into the same
-flat array of `{name, type}` field arrays a model's own `getFillable()`
-needs -- deliberately never split into parallel `{names: [...], types:
-[...]}` arrays; two fields simply sit as neighbors in the same array.
+is a row (`model`, `name`, `label`, `type`, unique on `model`+`name`) in
+its own table -- created by `Model_Fields::ensure_table()`, called once
+on plugin activation and defensively before every read/write in that
+class too (covers a site upgrading from a version of this plugin that
+predates the table, since WordPress never re-fires the activation hook
+on its own; also handles a table that exists but predates the `label`
+column specifically, adding it via `ALTER TABLE`). This table, not
+anything cached in memory or baked into a model's own code, is the one
+source of truth: `Model_Fields::all( $class_name )` always queries it
+fresh, ordered by `id` (insertion order) into the same flat array of
+`{name, label, type}` field arrays a model's own `getFillable()` needs --
+deliberately never split into parallel `{names: [...], types: [...]}`
+arrays; two fields simply sit as neighbors in the same array.
 
 **`getFillable()`, overridden -- not a `$fillable` property, and not a
 live reference either.** Per the request that shaped this: rather than
@@ -2396,8 +2398,8 @@ fresh from the `gateway_fields` table every time `add()`/`update()`/
 ```php
 public static function getFields() {
 	return array(
-		array( 'name' => 'subject', 'type' => 'text' ),
-		array( 'name' => 'priority', 'type' => 'number' ),
+		array( 'name' => 'subject', 'label' => 'Subject', 'type' => 'text' ),
+		array( 'name' => 'priority', 'label' => 'Priority', 'type' => 'number' ),
 	);
 }
 
@@ -2407,8 +2409,8 @@ public function getFillable() {
 ```
 
 `Model_Builder::rewrite_model_file( $class_name, $table_name, $fields )`
-does the printing (`fields_literal()`, via `var_export()` per name/type
-so a value containing a quote or backslash still produces valid PHP);
+does the printing (`fields_literal()`, via `var_export()` per name/label/
+type so a value containing a quote or backslash still produces valid PHP);
 `Model_Fields::add()`/`update()`/`remove()` each call it with the
 table's now-current field list right after writing that same list to
 `gateway_fields`. The DB write happens *first*, deliberately: if the
@@ -2445,6 +2447,19 @@ non-alphanumeric runs collapsed to `_`) -- "First Name" becomes column
 `updated_at` -- every model's own base columns already) and rejected
 outright; a name colliding with another field already on the same model
 is rejected too.
+
+**`label` is a display string, not a column -- editing it is never a
+schema change.** Every field also has a friendly `label` (shown in place
+of the raw name in `RecordForm`/`RecordsCrud`), stored in `gateway_fields`
+right alongside `name`/`type` but with no column of its own to keep in
+sync: `Model_Fields::update()` only runs a migration when `name` and/or
+`type` actually change, so relabeling a field is a metadata-only write
+(new label recorded, model file rewritten with it) with nothing to
+migrate. Left blank when adding or editing a field, it defaults to a
+title-cased version of the (sanitized) name (`Illuminate\Support\Str::
+headline()` -- "first_name" becomes "First Name"); a row from before this
+column existed gets the same default computed on read, in `all()`, so an
+upgraded site never shows a blank label either.
 
 **Every field migration's class name is version-suffixed**
 (`AddFirstNameToTicketsTableV7`, not just `AddFirstNameToTicketsTable`)

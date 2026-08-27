@@ -13,6 +13,12 @@ import useFieldTypes from '../hooks/useFieldTypes.js';
  * for real schema reasons (a duplicate or reserved name, an unsupported
  * type) and is reported inline via the same notice area other screens use.
  *
+ * Label is the one field-level thing here that *isn't* a schema change --
+ * it's a plain display string (shown in place of the raw name wherever a
+ * field is rendered for a human, e.g. RecordForm/RecordsCrud), so editing
+ * it alone never runs a migration. Left blank, the server derives one
+ * from the name automatically (e.g. "first_name" -> "First Name").
+ *
  * The type dropdown is built from useFieldTypes() (Gateway\Field_Type_Registry,
  * via GET /field-types) rather than a hardcoded list here, so a future
  * field type shows up automatically.
@@ -23,6 +29,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 	const [ error, setError ] = useState( '' );
 
 	const [ newName, setNewName ] = useState( '' );
+	const [ newLabel, setNewLabel ] = useState( '' );
 	const [ newType, setNewType ] = useState( 'text' );
 	const [ adding, setAdding ] = useState( false );
 
@@ -31,6 +38,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 	// and as the real column name).
 	const [ editingName, setEditingName ] = useState( null );
 	const [ editName, setEditName ] = useState( '' );
+	const [ editLabel, setEditLabel ] = useState( '' );
 	const [ editType, setEditType ] = useState( 'text' );
 	const [ savingEdit, setSavingEdit ] = useState( false );
 
@@ -46,10 +54,15 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 		try {
 			const field = await apiFetch( basePath, {
 				method: 'POST',
-				body: JSON.stringify( { name: newName, type: newType } ),
+				body: JSON.stringify( {
+					name: newName,
+					label: newLabel,
+					type: newType,
+				} ),
 			} );
 			setFields( ( current ) => [ ...current, field ] );
 			setNewName( '' );
+			setNewLabel( '' );
 			setNewType( 'text' );
 		} catch ( err ) {
 			setError( err.message );
@@ -62,6 +75,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 		setError( '' );
 		setEditingName( field.name );
 		setEditName( field.name );
+		setEditLabel( field.label );
 		setEditType( field.type );
 	};
 
@@ -77,7 +91,11 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 				`${ basePath }/${ encodeURIComponent( editingName ) }`,
 				{
 					method: 'PUT',
-					body: JSON.stringify( { name: editName, type: editType } ),
+					body: JSON.stringify( {
+						name: editName,
+						label: editLabel,
+						type: editType,
+					} ),
 				}
 			);
 			setFields( ( current ) =>
@@ -134,6 +152,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 					<thead>
 						<tr>
 							<th>Name</th>
+							<th>Label</th>
 							<th>Type</th>
 							<th></th>
 						</tr>
@@ -142,7 +161,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 						{ fields.map( ( field ) =>
 							editingName === field.name ? (
 								<tr key={ field.name }>
-									<td colSpan={ 3 }>
+									<td colSpan={ 4 }>
 										<form
 											onSubmit={ handleSaveEdit }
 											className="gateway-field-editor-row"
@@ -150,9 +169,21 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 											<input
 												type="text"
 												className="regular-text"
+												placeholder="Name"
 												value={ editName }
 												onChange={ ( event ) =>
 													setEditName(
+														event.target.value
+													)
+												}
+											/>
+											<input
+												type="text"
+												className="regular-text"
+												placeholder="Label"
+												value={ editLabel }
+												onChange={ ( event ) =>
+													setEditLabel(
 														event.target.value
 													)
 												}
@@ -202,6 +233,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 									<td>
 										<code>{ field.name }</code>
 									</td>
+									<td>{ field.label }</td>
 									<td>
 										{ fieldTypes.find(
 											( type ) => type.key === field.type
@@ -248,6 +280,13 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 					placeholder="e.g. First Name"
 					value={ newName }
 					onChange={ ( event ) => setNewName( event.target.value ) }
+				/>
+				<input
+					type="text"
+					className="regular-text"
+					placeholder="Label (optional)"
+					value={ newLabel }
+					onChange={ ( event ) => setNewLabel( event.target.value ) }
 				/>
 				<select
 					value={ newType }

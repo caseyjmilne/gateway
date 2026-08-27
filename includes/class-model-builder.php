@@ -593,9 +593,10 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	 * added, edited, or removed, so this is always the actual, current,
 	 * inspectable list. A flat array of field arrays (never separated
 	 * into parallel {names: [...], types: [...]} arrays) -- two fields
-	 * simply sit as neighbors in the same array.
+	 * simply sit as neighbors in the same array. `label` is a display
+	 * string only -- it never affects the real column.
 	 *
-	 * @return array<int,array{name:string,type:string}>
+	 * @return array<int,array{name:string,label:string,type:string}>
 	 */
 	public static function getFields() {
 		return {$fields_literal};
@@ -619,13 +620,13 @@ PHP;
 
 	/**
 	 * Renders a flat field array as PHP source -- e.g.
-	 * "array(\n\t\t\tarray( 'name' => 'title', 'type' => 'text' ),\n\t\t)"
-	 * -- for printing directly into getFields()'s own return statement in
-	 * model_template(). Each name/type goes through var_export() so a
-	 * value containing a quote or backslash still produces valid,
-	 * safely-escaped PHP source.
+	 * "array(\n\t\t\tarray( 'name' => 'title', 'label' => 'Title', 'type'
+	 * => 'text' ),\n\t\t)" -- for printing directly into getFields()'s own
+	 * return statement in model_template(). Each name/label/type goes
+	 * through var_export() so a value containing a quote or backslash
+	 * still produces valid, safely-escaped PHP source.
 	 *
-	 * @param array $fields Flat array of {name, type} field arrays.
+	 * @param array $fields Flat array of {name, label, type} field arrays.
 	 * @return string PHP source for the array literal (no trailing
 	 *                 semicolon -- the caller's own "return ...;" adds it).
 	 */
@@ -637,7 +638,7 @@ PHP;
 		$lines = array();
 
 		foreach ( $fields as $field ) {
-			$lines[] = "\t\t\tarray( 'name' => " . var_export( $field['name'], true ) . ", 'type' => " . var_export( $field['type'], true ) . ' ),';
+			$lines[] = "\t\t\tarray( 'name' => " . var_export( $field['name'], true ) . ", 'label' => " . var_export( $field['label'], true ) . ", 'type' => " . var_export( $field['type'], true ) . ' ),';
 		}
 
 		return "array(\n" . implode( "\n", $lines ) . "\n\t\t)";
