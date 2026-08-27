@@ -9,7 +9,7 @@
 	"keywords": [ "field", "text", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [ "gateway/data-cards-body" ],
+	"ancestor": [ "gateway/data-cards-body" ],
 	"usesContext": [
 		"gateway/data-cards/sourceType",
 		"gateway/data-cards/collection",

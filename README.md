@@ -2347,8 +2347,19 @@ value in the editor too, not just on the front end.
 
 ### `gateway/card-field-text`
 
-A dynamic, leaf block, insertable only inside `gateway/data-cards-body`
-(`block.json`'s `parent`). `usesContext` lists
+A dynamic, leaf block, insertable anywhere *within* `gateway/data-cards-body`'s
+own subtree -- not just as its direct child (`block.json`'s `ancestor`,
+not `parent`: `parent` would only allow this block immediately under
+`gateway/data-cards-body` itself, but a card's own layout very reasonably
+wants it nested inside a `core/columns`/`core/group`/etc. placed there
+instead, e.g. two fields side by side in a row). `ancestor` permits that
+-- any depth, as long as `gateway/data-cards-body` is somewhere above it
+-- with zero effect on how context reaches it: `usesContext` resolution
+was never tied to `parent`/`ancestor` in the first place, only to the
+real block tree at render time (the same reason `gateway/card-field-text`
+already works correctly nested inside arbitrary layout blocks for
+context purposes -- this only changes where the *inserter* allows it to
+be placed). `usesContext` lists
 `gateway/data-cards/sourceType`, `gateway/data-cards/collection` (the
 true, `providesContext`-based context chain from the parent
 `gateway/data-cards`), and the plain `record` key described above. Its
