@@ -300,7 +300,7 @@ class Model_Fields {
 		// safely recorded either way, and the next add()/update()/
 		// remove() (or an explicit resync()) will rewrite the file again
 		// with the complete, correct list.
-		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 
 		if ( is_wp_error( $rewrite_result ) ) {
 			$field['warnings'] = array( $rewrite_result->get_error_message() );
@@ -451,7 +451,7 @@ class Model_Fields {
 				)
 			);
 
-		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 
 		if ( is_wp_error( $rewrite_result ) ) {
 			$new_field['warnings'] = array( $rewrite_result->get_error_message() );
@@ -509,7 +509,7 @@ class Model_Fields {
 		// Not surfaced as a warning here (unlike add()/update()) -- removing
 		// a field succeeded regardless, and there's no freshly-added field
 		// whose immediate usability depends on this the way there is there.
-		Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ) );
+		Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 
 		return true;
 	}
@@ -547,7 +547,7 @@ class Model_Fields {
 			return $model;
 		}
 
-		return Model_Builder::rewrite_model_file( $class_name, $model->getTable(), self::all( $class_name ) );
+		return Model_Builder::rewrite_model_file( $class_name, $model->getTable(), self::all( $class_name ), Model_Relationships::all( $class_name ) );
 	}
 
 	/**
@@ -609,7 +609,7 @@ class Model_Fields {
 		// file here is purely cosmetic (getFields()'s *order*, not its
 		// contents) until the next field change or an explicit resync()
 		// heals it.
-		Model_Builder::rewrite_model_file( $class_name, $model->getTable(), $reordered );
+		Model_Builder::rewrite_model_file( $class_name, $model->getTable(), $reordered, Model_Relationships::all( $class_name ) );
 
 		return $reordered;
 	}

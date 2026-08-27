@@ -2557,6 +2557,95 @@ response's own `fields` array (`Model_REST_Controller::describe_model()`)
 so the page
 doesn't need a second request just to show them.
 
+### Relationships (`Model_Relationships`) -- real Eloquent relationship methods, printed the same way fields are
+
+Right below the Field Editor on a model's detail screen sits a
+Relationship Editor: pick another model, pick a relationship type, Add
+-- structurally the same `gateway_relationships` table +
+"DB row first, file second" design `Model_Fields` uses, applied to a
+different kind of thing. `gateway_relationships` (`model`,
+`related_model`, `type`, `method_name`, unique on `model`+`method_name`)
+is the one source of truth, created/upgraded by
+`Model_Relationships::ensure_table()` the same way as `gateway_fields`;
+`Model_Relationships::all( $class_name )` always queries it fresh.
+
+**The one real difference from a field: no migration, ever.** A
+relationship is pure metadata pointing at another model -- there's no
+column of its own to create, rename, or drop, so `add()`/`remove()`
+skip straight from validating to writing the row and rewriting the model
+file. There's also no `update()` at all (unlike `Model_Fields`): every
+part of a relationship, including its method name, follows automatically
+from *which* related model and *what* type were picked, so "editing" one
+is really just removing it and adding a different one -- nothing to
+change in place.
+
+**Method names are never typed in -- always derived automatically,
+by design.** Relating a model to another via `belongsTo` or `hasOne`
+(a "to one" relationship) names the method after the related model
+itself, camelCased and singular; `hasMany` or `belongsToMany` ("to
+many") pluralizes it. Relating `Make` to `Model` via `belongsTo` always
+becomes:
+
+```php
+public function model() {
+	return $this->belongsTo( \Model::class );
+}
+```
+
+-- exactly the motivating example this feature was built around. Two
+relationships that would derive the *same* method name (most likely: a
+second relationship to the same related model) are rejected outright
+(`gateway_relationship_exists`) rather than silently overwriting one
+another -- a method can't be declared twice in the same generated class.
+
+**A relationship is a real, callable method, not an array entry.**
+Unlike `fields_literal()` (one PHP array literal), `Model_Builder::
+relationships_block()`/`relationship_method()` print one whole method per
+relationship directly into the class body, each with its own docblock
+(`@return \Illuminate\Database\Eloquent\Relations\{BelongsTo,HasOne,
+HasMany,BelongsToMany}` -- every one of `Model_Relationships::TYPES`'
+own keys already matches its real Illuminate class name, one `ucfirst()`
+away, so no separate mapping is needed) right after `getFillable()`.
+Since fields and relationships are both printed into the *same* file,
+`Model_Builder::rewrite_model_file( $class_name, $table_name, $fields,
+$relationships )` always takes both, regardless of which side triggered
+the rewrite -- `Model_Fields` fetches `Model_Relationships::all()` (and
+vice versa) so neither one's change ever regenerates the file without
+the other's current data still in it.
+
+**The current model is never offered as its own related model.** The
+Relationship Editor's own model picker only lists every *other*
+registered model (reusing `GET /models`, filtered client-side); server-side,
+`Model_Relationships::add()` rejects a related model equal to
+`$class_name` too (`gateway_relationship_self`), rather than only
+trusting that exclusion to have happened in the UI.
+
+**A relationship is never carried over on model rename**, for the same
+reason a field isn't -- `Model_Builder::rename()` calls
+`Model_Relationships::forget( $old_class )` when retiring the old class.
+One known limitation, not yet fixed: this only forgets the renamed
+model's *own* relationships -- another model's relationship whose
+`related_model` pointed at the old class name is left referencing a
+class that no longer exists. A future version could cascade that
+cleanup too.
+
+Only four relationship types ship built in -- `hasOne`, `hasMany`,
+`belongsTo`, `belongsToMany` -- each one just an entry in
+`Model_Relationships::TYPES` (label + whether it pluralizes the derived
+method name), not a full one-class-per-type `Registry` the way field
+types are: a relationship type's only two variable behaviors (the
+literal Eloquent method name and whether to pluralize) are already
+exactly its own array key + a boolean, with nothing else per-type
+worth its own class the way a field type's `blueprint_method()`/
+`input_type()`/`cast()`/`is_sensitive()` are.
+
+`Model_Relationship_REST_Controller`: `GET`/`POST /gateway/v1/models/<class>/relationships`,
+`DELETE /gateway/v1/models/<class>/relationships/<method_name>`,
+`GET /gateway/v1/relationship-types`. `admin-app/src/components/
+RelationshipEditor.jsx` is the UI, seeded from the model detail
+response's own new `relationships` array the same way `FieldEditor` is
+seeded from `fields`.
+
 ### `Field_Type_Registry` -- one class per field type, controlling its own attributes
 
 Rather than a flat lookup array mapping type names to behavior (which is

@@ -155,7 +155,7 @@ class Model_Builder {
 			);
 		}
 
-		$written_model     = false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, array() ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		$written_model     = false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, array(), array() ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- freshly created, no fields/relationships yet
 		$written_migration = $written_model ? true : false === file_put_contents( $migration_path, self::migration_template( $migration_class, $table_name, $version ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 
 		if ( $written_model || $written_migration ) {
@@ -321,6 +321,10 @@ class Model_Builder {
 		// avoid a rename silently generating a whole cascade of
 		// additional field migrations on its own.
 		Model_Fields::forget( $old_class );
+		// Same reasoning, for relationships -- see Model_Relationships::
+		// forget()'s own docblock for the one thing this doesn't cover
+		// (another model's relationship still pointing at $old_class).
+		Model_Relationships::forget( $old_class );
 
 		$old_model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $old_class . '.php';
 
@@ -536,17 +540,28 @@ class Model_Builder {
 	 * already accepts for its own model-file rewrite: a hand-edited model
 	 * file is only safe from this while nothing about its fields changes.
 	 *
-	 * @param string $class_name Model class name.
-	 * @param string $table_name Table name.
-	 * @param array  $fields     The model's current flat field array --
-	 *                            printed into the file as a literal, not
-	 *                            referenced.
+	 * @param string $class_name    Model class name.
+	 * @param string $table_name    Table name.
+	 * @param array  $fields        The model's current flat field array --
+	 *                                printed into the file as a literal,
+	 *                                not referenced.
+	 * @param array  $relationships The model's current flat relationship
+	 *                                array (see Model_Relationships) --
+	 *                                printed into the file as literal
+	 *                                relationship methods. Required, not
+	 *                                defaulted to an empty array: the file
+	 *                                is regenerated in full on every call,
+	 *                                from whichever of Model_Fields/
+	 *                                Model_Relationships triggered it, so
+	 *                                a caller that forgot this would
+	 *                                silently wipe out every relationship
+	 *                                the model already has.
 	 * @return true|\WP_Error
 	 */
-	public static function rewrite_model_file( $class_name, $table_name, array $fields ) {
+	public static function rewrite_model_file( $class_name, $table_name, array $fields, array $relationships ) {
 		$model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $class_name . '.php';
 
-		if ( false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, $fields ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( false === file_put_contents( $model_path, self::model_template( $class_name, $table_name, $fields, $relationships ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			return new \WP_Error(
 				'gateway_model_write_failed',
 				__( 'Could not update the model file -- check that wp-content/gateway is writable.', 'gateway' ),
@@ -558,24 +573,32 @@ class Model_Builder {
 	}
 
 	/**
-	 * @param string $class_name Model class name.
-	 * @param string $table_name Table name.
-	 * @param array  $fields     The model's current flat field array (see
-	 *                            Model_Fields) -- printed into the file as
-	 *                            a literal PHP array, via fields_literal().
+	 * @param string $class_name    Model class name.
+	 * @param string $table_name    Table name.
+	 * @param array  $fields        The model's current flat field array
+	 *                                (see Model_Fields) -- printed into
+	 *                                the file as a literal PHP array, via
+	 *                                fields_literal().
+	 * @param array  $relationships The model's current flat relationship
+	 *                                array (see Model_Relationships) --
+	 *                                printed into the file as one real
+	 *                                method per relationship, via
+	 *                                relationships_block().
 	 * @return string PHP source for the model file.
 	 */
-	private static function model_template( $class_name, $table_name, array $fields = array() ) {
-		$fields_literal = self::fields_literal( $fields );
+	private static function model_template( $class_name, $table_name, array $fields = array(), array $relationships = array() ) {
+		$fields_literal      = self::fields_literal( $fields );
+		$relationships_block = self::relationships_block( $relationships );
 
 		return <<<PHP
 <?php
 /**
  * Gateway-generated Eloquent model -- created via the admin app's Models
- * screen. Safe to hand-edit (e.g. add relationships, casts, accessors);
- * regenerated (getFields()/getFillable() included) every time a field is
- * added, edited, or removed via the admin app's Field Editor -- see
- * Gateway\\Model_Fields.
+ * screen. Safe to hand-edit (e.g. add casts, accessors, a relationship
+ * of your own); regenerated (getFields()/getFillable()/every
+ * relationship method included) every time a field or relationship is
+ * added, edited, removed, or reordered via the admin app's Field/
+ * Relationship Editors -- see Gateway\\Model_Fields/Gateway\\Model_Relationships.
  */
 
 class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
@@ -616,7 +639,7 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	public function getFillable() {
 		return array_column( static::getFields(), 'name' );
 	}
-}
+{$relationships_block}}
 
 PHP;
 	}
@@ -650,6 +673,71 @@ PHP;
 		}
 
 		return "array(\n" . implode( "\n", $lines ) . "\n\t\t)";
+	}
+
+	/**
+	 * Renders every relationship as a real PHP method, one per
+	 * relationship, for printing directly into the class body in
+	 * model_template() (right after getFillable(), before the class's
+	 * own closing brace). Unlike fields_literal() (one array literal),
+	 * each relationship becomes actual, callable code -- exactly what
+	 * makes it a relationship Eloquent can use at all, not just metadata
+	 * describing one.
+	 *
+	 * @param array $relationships Flat array of {related_model, type,
+	 *                              method_name} relationship arrays (see
+	 *                              Model_Relationships).
+	 * @return string PHP source for every relationship method,
+	 *                 concatenated -- '' if there are none, so the
+	 *                 template's own `{$relationships_block}}` collapses
+	 *                 back to a plain closing brace right after
+	 *                 getFillable() with nothing in between.
+	 */
+	private static function relationships_block( array $relationships ) {
+		if ( empty( $relationships ) ) {
+			return '';
+		}
+
+		// No separator -- each method's own heredoc already carries a
+		// leading blank line (and the last one, a trailing one right
+		// before the class's own closing brace); joining with another
+		// "\n" on top would double up the blank line between methods.
+		return implode( '', array_map( array( __CLASS__, 'relationship_method' ), $relationships ) );
+	}
+
+	/**
+	 * @param array $relationship {related_model, type, method_name}.
+	 * @return string PHP source for one relationship method, e.g.:
+	 *                 "\n\t/**\n\t * ...\n\t *\/\n\tpublic function
+	 *                 model() {\n\t\treturn \$this->belongsTo(
+	 *                 \Model::class );\n\t}\n" -- leading/trailing
+	 *                 newlines are what give it its own blank line above
+	 *                 and below once concatenated with its neighbors in
+	 *                 relationships_block().
+	 */
+	private static function relationship_method( array $relationship ) {
+		$method_name   = $relationship['method_name'];
+		$type          = $relationship['type'];
+		$related_class = $relationship['related_model'];
+		// Every one of Model_Relationships::TYPES' own keys (hasOne,
+		// hasMany, belongsTo, belongsToMany) already matches its real
+		// Illuminate\Database\Eloquent\Relations class name exactly, one
+		// ucfirst() away -- no separate mapping needed.
+		$return_type = 'Illuminate\\Database\\Eloquent\\Relations\\' . ucfirst( $type );
+
+		return <<<PHP
+
+	/**
+	 * Relationship added via the admin app's Relationship Editor -- see
+	 * Gateway\\Model_Relationships.
+	 *
+	 * @return \\{$return_type}
+	 */
+	public function {$method_name}() {
+		return \$this->{$type}( \\{$related_class}::class );
+	}
+
+PHP;
 	}
 
 	/**

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import FieldEditor from '../components/FieldEditor.jsx';
+import RelationshipEditor from '../components/RelationshipEditor.jsx';
 
 /**
  * Single-model detail view -- shows what's known about one registered
@@ -298,6 +299,12 @@ export default function ModelDetail() {
 						key={ model.class }
 						modelClass={ model.class }
 						initialFields={ model.fields }
+					/>
+
+					<RelationshipEditor
+						key={ model.class }
+						modelClass={ model.class }
+						initialRelationships={ model.relationships }
 					/>
 				</>
 			) }

@@ -48,12 +48,13 @@ if ( file_exists( GATEWAY_PLUGIN_DIR . 'vendor/autoload.php' ) ) {
  * a site can see (and, if it wants, pre-populate) the directories
  * immediately after activating, not only after first use.
  *
- * Also creates the gateway_fields table (see Model_Fields) the same way --
- * boot_capsule() just registers the connection config (cheap, no query of
- * its own), so this is safe to call here even though gateway_boot() itself
- * doesn't run until plugins_loaded. Model_Fields::ensure_table() is also
- * called defensively from within that class itself, covering a site
- * upgrading from a version of this plugin that predates this table,
+ * Also creates the gateway_fields/gateway_relationships tables (see
+ * Model_Fields/Model_Relationships) the same way -- boot_capsule() just
+ * registers the connection config (cheap, no query of its own), so this
+ * is safe to call here even though gateway_boot() itself doesn't run
+ * until plugins_loaded. Both classes' own ensure_table() are also called
+ * defensively from within those classes themselves, covering a site
+ * upgrading from a version of this plugin that predates a given table,
  * where WordPress never re-fires this activation hook on its own.
  */
 function gateway_activate() {
@@ -62,6 +63,7 @@ function gateway_activate() {
 
 	\Gateway\Database_Connection::boot_capsule();
 	\Gateway\Model_Fields::ensure_table();
+	\Gateway\Model_Relationships::ensure_table();
 }
 register_activation_hook( __FILE__, 'gateway_activate' );
 
@@ -93,6 +95,8 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationships.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationship-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 
 /**
@@ -115,6 +119,7 @@ function gateway_boot() {
 	\Gateway\Model_REST_Controller::init();
 	\Gateway\Field_Type_REST_Controller::init();
 	\Gateway\Model_Field_REST_Controller::init();
+	\Gateway\Model_Relationship_REST_Controller::init();
 	\Gateway\Records_REST_Controller::init();
 
 	// The built-in field types -- registered the same way as any other

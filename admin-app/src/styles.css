@@ -41,6 +41,11 @@
 	opacity: 0.5;
 }
 
+.gateway-admin-app .gateway-relationship-editor table td:last-child {
+	white-space: nowrap;
+	width: 1%;
+}
+
 .gateway-admin-app .gateway-records-crud table td:last-child {
 	white-space: nowrap;
 	width: 1%;
