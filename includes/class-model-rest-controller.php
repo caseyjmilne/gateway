@@ -22,9 +22,10 @@ class Model_REST_Controller {
 	}
 
 	/**
-	 * GET  /gateway/v1/models
-	 * POST /gateway/v1/models
-	 * GET  /gateway/v1/models/<class>
+	 * GET   /gateway/v1/models
+	 * POST  /gateway/v1/models
+	 * GET   /gateway/v1/models/<class>
+	 * PUT   /gateway/v1/models/<class>
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -40,12 +41,7 @@ class Model_REST_Controller {
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'create_model' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-					'args'                => array(
-						'title' => array(
-							'required' => true,
-							'type'     => 'string',
-						),
-					),
+					'args'                => self::title_args(),
 				),
 			)
 		);
@@ -54,10 +50,37 @@ class Model_REST_Controller {
 			self::NAMESPACE_,
 			'/models/(?P<class>[A-Za-z0-9_]+)',
 			array(
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => array( __CLASS__, 'get_model' ),
-				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'get_model' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => \WP_REST_Server::EDITABLE,
+					'callback'            => array( __CLASS__, 'rename_model' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+					'args'                => self::title_args(),
+				),
 			)
+		);
+	}
+
+	/**
+	 * Shared 'args' schema for the two routes that accept a title --
+	 * create_model() and rename_model() take the exact same two fields.
+	 *
+	 * @return array
+	 */
+	private static function title_args() {
+		return array(
+			'title'        => array(
+				'required' => true,
+				'type'     => 'string',
+			),
+			'plural_title' => array(
+				'required' => false,
+				'type'     => 'string',
+			),
 		);
 	}
 
@@ -120,7 +143,28 @@ class Model_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public static function create_model( \WP_REST_Request $request ) {
-		$result = Model_Builder::create( $request->get_param( 'title' ) );
+		$result = Model_Builder::create(
+			$request->get_param( 'title' ),
+			(string) $request->get_param( 'plural_title' )
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( $result );
+	}
+
+	/**
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function rename_model( \WP_REST_Request $request ) {
+		$result = Model_Builder::rename(
+			$request->get_param( 'class' ),
+			$request->get_param( 'title' ),
+			(string) $request->get_param( 'plural_title' )
+		);
 
 		if ( is_wp_error( $result ) ) {
 			return $result;

@@ -88,6 +88,49 @@ class Migration_Runner {
 	}
 
 	/**
+	 * Run a migration's down() method and remove it from the ran-migrations
+	 * log -- the counterpart to run(), used when a model is renamed
+	 * (Model_Builder::rename()) to retire its old table. Unlike run(),
+	 * this isn't idempotent against "already rolled back": down() runs
+	 * every time this is called, since Schema::dropIfExists() (what every
+	 * generated migration's down() actually calls) is itself already safe
+	 * to call on a table that doesn't exist.
+	 *
+	 * @param string $migration_class Fully-qualified migration class name.
+	 * @return true|\WP_Error
+	 */
+	public static function rollback( $migration_class ) {
+		if ( ! class_exists( $migration_class ) ) {
+			return new \WP_Error(
+				'gateway_migration_missing',
+				sprintf( __( 'Migration class "%s" does not exist.', 'gateway' ), $migration_class ),
+				array( 'status' => 500 )
+			);
+		}
+
+		$migration = new $migration_class();
+		$version   = isset( $migration->version ) ? $migration->version : null;
+
+		try {
+			$migration->down();
+		} catch ( \Throwable $e ) {
+			return new \WP_Error(
+				'gateway_migration_rollback_failed',
+				$e->getMessage(),
+				array( 'status' => 500 )
+			);
+		}
+
+		if ( null !== $version ) {
+			$ran = get_option( self::OPTION_RAN, array() );
+			unset( $ran[ $version ] );
+			update_option( self::OPTION_RAN, $ran );
+		}
+
+		return true;
+	}
+
+	/**
 	 * The highest version number actually run so far, or 0 if none have.
 	 *
 	 * @return int
