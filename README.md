@@ -2463,6 +2463,17 @@ headline()` -- "first_name" becomes "First Name"); a row from before this
 column existed gets the same default computed on read, in `all()`, so an
 upgraded site never shows a blank label either.
 
+**A real bug here, fixed**: `update()`'s own "did the label actually
+change" check originally compared against `all()`'s already-defaulted
+value -- so resaving a field whose real `label` was still `NULL` (a
+legacy row, say), with the exact text the fallback happened to already
+display, looked like "nothing changed" and the row's `NULL` was never
+replaced; only typing something *different* from the fallback ever
+triggered a save. Fixed by diffing against the raw stored value (a
+direct query, not `all()`'s own display-only substitution) -- a
+genuinely blank stored label is now always "changed" against whatever
+concrete label is being saved, fallback text or not.
+
 **Every field migration's class name is version-suffixed**
 (`AddFirstNameToTicketsTableV7`, not just `AddFirstNameToTicketsTable`)
 -- unlike a model's one-time "create table" migration, the *same* field

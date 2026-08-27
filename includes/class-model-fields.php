@@ -350,9 +350,24 @@ class Model_Fields {
 		// that -- so the position simply carries over unchanged.
 		$new_field['position'] = $old_field['position'];
 
-		$name_changed  = $old_field['name'] !== $new_field['name'];
-		$type_changed  = $old_field['type'] !== $new_field['type'];
-		$label_changed = $old_field['label'] !== $new_field['label'];
+		$name_changed = $old_field['name'] !== $new_field['name'];
+		$type_changed = $old_field['type'] !== $new_field['type'];
+
+		// Compared against the *raw* stored label, not $old_field['label']
+		// -- that came from all(), which already substitutes a computed
+		// default for a NULL/blank one purely for display. Diffing
+		// against that display value instead of what's actually in the
+		// row was a real bug: resubmitting a field whose real label is
+		// still NULL, with the same text the fallback already happened to
+		// show, made this look like "nothing changed" and the row kept
+		// its NULL forever -- only ever fixed by typing something the
+		// fallback *wouldn't* have shown. A genuinely null/blank stored
+		// value is always "changed" against any concrete label here.
+		$stored_label  = self::table()
+			->where( 'model', $class_name )
+			->where( 'name', $old_field['name'] )
+			->value( 'label' );
+		$label_changed = (string) $stored_label !== $new_field['label'];
 
 		if ( ! $name_changed && ! $type_changed && ! $label_changed ) {
 			return $old_field;
