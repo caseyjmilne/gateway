@@ -4,15 +4,24 @@
  *
  * Renders the interactive filter control (input/select/checkboxes) for one
  * of the parent gateway/datatable block's configured facets. Everything
- * this needs about that parent -- postType, columns, facets -- arrives via
- * block context (see gateway/datatable's block.json "providesContext" and
- * this block's "usesContext"), the same mechanism that makes a facet
- * "discoverable by other scripts": any block nested inside a datatable
- * block, not just this one, can read the same context -- context
- * propagates transitively through any number of intermediate blocks (here,
- * gateway/datatable-facets, this block's direct parent) that don't
- * themselves override it, so this block doesn't need to be a *direct*
- * child of gateway/datatable to see its context.
+ * this needs about that parent -- sourceType, postType/collection, columns,
+ * facets -- arrives via block context (see gateway/datatable's block.json
+ * "providesContext" and this block's "usesContext"), the same mechanism
+ * that makes a facet "discoverable by other scripts": any block nested
+ * inside a datatable block, not just this one, can read the same context --
+ * context propagates transitively through any number of intermediate
+ * blocks (here, gateway/datatable-facets, this block's direct parent) that
+ * don't themselves override it, so this block doesn't need to be a
+ * *direct* child of gateway/datatable to see its context.
+ *
+ * `sourceType` branches the column/options lookup the same way gateway/
+ * card-facet's own render.php does -- Column_Registry::
+ * get_column_for_collection()/Facet_Query::get_facet_options_for_collection()
+ * in place of their postType counterparts when the parent's data source is
+ * a Collection. The "must also be a displayed column" gate below is
+ * unaffected either way: `gateway/datatable/columns` context already
+ * reflects whichever source is active (datatable-body/render.php validates
+ * it against the right Column_Registry method itself).
  *
  * @package Gateway
  *
@@ -23,8 +32,16 @@
 
 defined( 'ABSPATH' ) || exit;
 
+$source_type = isset( $block->context['gateway/datatable/sourceType'] ) && 'collection' === $block->context['gateway/datatable/sourceType']
+	? 'collection'
+	: 'postType';
+
 $post_type = isset( $block->context['gateway/datatable/postType'] )
 	? sanitize_key( $block->context['gateway/datatable/postType'] )
+	: '';
+
+$collection = isset( $block->context['gateway/datatable/collection'] ) && is_string( $block->context['gateway/datatable/collection'] )
+	? $block->context['gateway/datatable/collection']
 	: '';
 
 $parent_facets = isset( $block->context['gateway/datatable/facets'] ) && is_array( $block->context['gateway/datatable/facets'] )
@@ -50,7 +67,9 @@ if ( 'equals' !== $compare ) {
 	$compare = 'contains';
 }
 
-if ( ! $post_type || '' === $facet_key ) {
+$has_source = 'collection' === $source_type ? '' !== $collection : '' !== $post_type;
+
+if ( ! $has_source || '' === $facet_key ) {
 	return; // Not configured yet.
 }
 
@@ -83,7 +102,9 @@ if ( ! $facet_definition || ! $is_displayed_column ) {
 	return;
 }
 
-$column_definition = \Gateway\Column_Registry::get_column( $post_type, $facet_key );
+$column_definition = 'collection' === $source_type
+	? \Gateway\Column_Registry::get_column_for_collection( $collection, $facet_key )
+	: \Gateway\Column_Registry::get_column( $post_type, $facet_key );
 
 if ( ! $column_definition ) {
 	return;
@@ -106,7 +127,9 @@ $default_in_options = false;
 $default_label      = $default_value;
 
 if ( in_array( $ui_type, array( 'select', 'checkboxes' ), true ) ) {
-	$facet_options      = \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition );
+	$facet_options      = 'collection' === $source_type
+		? \Gateway\Facet_Query::get_facet_options_for_collection( $collection, $column_definition )
+		: \Gateway\Facet_Query::get_facet_options( $post_type, $column_definition );
 	$default_in_options = '' !== $default_value && in_array( $default_value, wp_list_pluck( $facet_options, 'value' ), true );
 
 	// The preset value might not be among the discovered options (e.g. a

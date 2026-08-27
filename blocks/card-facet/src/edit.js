@@ -25,10 +25,12 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		className: `gateway-card-facet gateway-card-facet--${ uiType }`,
 	} );
 
+	const sourceType = context[ 'gateway/data-cards/sourceType' ] || 'postType';
 	const postType = context[ 'gateway/data-cards/postType' ] || 'post';
+	const collection = context[ 'gateway/data-cards/collection' ] || '';
 	const parentFacets = context[ 'gateway/data-cards/facets' ] || [];
 
-	const { availableColumns } = useAvailableColumns( postType );
+	const { availableColumns } = useAvailableColumns( postType, { sourceType, collection } );
 	const labelsByKey = availableColumns.reduce( ( acc, column ) => {
 		acc[ column.key ] = column.label;
 		return acc;

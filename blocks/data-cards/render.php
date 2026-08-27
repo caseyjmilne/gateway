@@ -27,10 +27,12 @@
  * `sourceType` ('postType' or 'collection') branches this file the same
  * way gateway/datatable-body/render.php branches -- see that file's own
  * docblock for why this is two full paths rather than one merged one.
- * The Collection branch skips facets entirely (see Data_Cards_Renderer::
- * get_collection_page()'s own docblock for why) and computes its
- * template-transient key from the collection's class name instead of a
- * post type slug.
+ * The Collection branch resolves/validates/applies its own configured
+ * facets the same way the postType branch does (Facet_Query::
+ * validate_facets() + Facet_Query::apply_collection_facets() in place of
+ * apply_facets() -- see Data_Cards_Renderer::get_collection_page()'s own
+ * docblock), and computes its template-transient key from the
+ * collection's class name instead of a post type slug.
  *
  * @package Gateway
  *
@@ -84,12 +86,25 @@ if ( 'collection' === $source_type ) {
 		);
 		$rest_url = '';
 	} else {
+		// Resolve + validate this block's own configured facets against
+		// this Collection's own available columns -- same defensive
+		// re-check as the postType branch below, just against
+		// get_columns_for_collection() instead of get_columns().
+		$available_columns = array();
+
+		foreach ( \Gateway\Column_Registry::get_columns_for_collection( $collection ) as $available_column ) {
+			$available_columns[ $available_column['key'] ] = $available_column;
+		}
+
+		$raw_facets = $attributes['facets'] ?? array();
+		$facets     = is_array( $raw_facets ) ? \Gateway\Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
+
 		// Page 0 (zero-based, see Data_Cards_Renderer's own docblock) --
 		// the always-fresh state for a real, full-page render. Later pages
 		// are fetched by the front end via Data_Cards_REST_Controller's
-		// own Collection route. No facets/search yet -- see
+		// own Collection route. No search yet -- see
 		// Data_Cards_Renderer::get_collection_page()'s own docblock.
-		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit );
+		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets );
 		$html        = \Gateway\Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 		$pager_meta  = $page_result['pager_meta'];
 		$rest_url    = rest_url( 'gateway/v1/data-cards-collection/' . $collection );

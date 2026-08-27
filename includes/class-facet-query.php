@@ -205,6 +205,113 @@ class Facet_Query {
 	}
 
 	/**
+	 * Layer validated facets onto an Eloquent query builder -- the
+	 * Collection counterpart to apply_facets() (which only ever works
+	 * against WP_Query args/meta_query/tax_query). A Gateway model's own
+	 * fields are just real columns on its own table, so there's only ever
+	 * one "type" of column to handle here, unlike apply_facets()'s
+	 * meta/taxonomy/core branching.
+	 *
+	 * `$facet['value']` may be a single string or an array of strings (a
+	 * Checkboxes facet with more than one box checked) -- same convention
+	 * as apply_facets(), an array value always means "match any of these"
+	 * via `whereIn()` regardless of `compare`.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Builder $query  Query builder to modify.
+	 * @param array                                  $facets Validated facets (validate_facets()'s own shape).
+	 * @return \Illuminate\Database\Eloquent\Builder
+	 */
+	public static function apply_collection_facets( $query, array $facets ) {
+		foreach ( $facets as $facet ) {
+			$key = $facet['key'];
+
+			if ( is_array( $facet['value'] ) ) {
+				$values = array_values( array_filter( $facet['value'], 'strlen' ) );
+
+				if ( empty( $values ) ) {
+					continue;
+				}
+
+				$query->whereIn( $key, $values );
+				continue;
+			}
+
+			$compare = self::sanitize_compare( $facet['compare'] );
+
+			if ( in_array( $compare, array( 'LIKE', 'NOT LIKE' ), true ) ) {
+				// Best-effort wildcard escaping -- unlike $wpdb->esc_like()'s
+				// paired ESCAPE clause, Eloquent's fluent where() has no
+				// clean way to specify one, so a value that itself contains
+				// '%'/'_' can still match more broadly than a visitor might
+				// expect. A documented, minor gap, not a safety issue: the
+				// value is always parameter-bound by Eloquent regardless.
+				$escaped = str_replace( array( '\\', '%', '_' ), array( '\\\\', '\\%', '\\_' ), (string) $facet['value'] );
+				$query->where( $key, $compare, '%' . $escaped . '%' );
+				continue;
+			}
+
+			$query->where( $key, $compare, $facet['value'] );
+		}
+
+		return $query;
+	}
+
+	/**
+	 * get_facet_options()'s own Collection counterpart: distinct values
+	 * currently in use for one of a model's own fields, via a real
+	 * Eloquent query instead of a direct $wpdb scan. No taxonomy-equivalent
+	 * branch -- a Gateway model has no notion of one.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $column     Column definition ('key') from Column_Registry::get_columns_for_collection().
+	 * @param int    $limit      Maximum options to return.
+	 * @return array[] [ 'value' => string, 'label' => string ][], non-empty, sorted.
+	 */
+	public static function get_facet_options_for_collection( $class_name, array $column, $limit = 50 ) {
+		$limit = max( 1, (int) $limit );
+
+		$cache_key = 'gwdt_cvals_' . md5( $class_name . '|' . $column['key'] . '|' . $limit );
+		$cached    = get_transient( $cache_key );
+
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		try {
+			$values = $class_name::query()
+				->whereNotNull( $column['key'] )
+				->where( $column['key'], '!=', '' )
+				->distinct()
+				->orderBy( $column['key'] )
+				->limit( $limit )
+				->pluck( $column['key'] )
+				->all();
+		} catch ( \Throwable $e ) {
+			return array();
+		}
+
+		$values  = array_values( array_filter( array_map( 'strval', $values ), 'strlen' ) );
+		$options = array_map(
+			static function ( $value ) {
+				return array(
+					'value' => $value,
+					'label' => $value,
+				);
+			},
+			$values
+		);
+
+		set_transient(
+			$cache_key,
+			$options,
+			/** This filter is documented in get_facet_options() above. */
+			apply_filters( 'gateway_datatable_facet_values_cache_ttl', 15 * MINUTE_IN_SECONDS, $class_name, $column )
+		);
+
+		return $options;
+	}
+
+	/**
 	 * Validate a raw, client-supplied (or attribute-stored) facet list
 	 * against a post type's actual available columns -- the one place
 	 * this check happens, shared by every caller that ever hands facets

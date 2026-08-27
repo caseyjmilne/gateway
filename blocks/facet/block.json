@@ -11,7 +11,9 @@
 	"textdomain": "gateway",
 	"parent": [ "gateway/datatable-facets" ],
 	"usesContext": [
+		"gateway/datatable/sourceType",
 		"gateway/datatable/postType",
+		"gateway/datatable/collection",
 		"gateway/datatable/columns",
 		"gateway/datatable/facets"
 	],

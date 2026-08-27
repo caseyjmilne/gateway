@@ -36,11 +36,14 @@
  * the column *header* markup (same {key, label, sortable} shape either
  * way) and the outer <table>/no-results structure are shared.
  *
- * No facet support yet for a Collection -- see Column_Registry::
- * get_columns_for_collection()'s own docblock (every one of its columns
- * has isFilterable => false, so the Facets panel already can't offer
- * anything broken; $facets is simply never resolved/applied in that
- * branch at all).
+ * A Collection's own facets ARE supported (Column_Registry::
+ * get_columns_for_collection() / Facet_Query::apply_collection_facets(),
+ * the Eloquent counterparts to the postType branch's Column_Registry::
+ * get_columns()/Facet_Query::apply_facets()) -- this only ever applies a
+ * facet's *default value* (the top-level Facets panel) to the initial
+ * query; gateway/facet's own front-end live interaction is a separate,
+ * client-side DataTables column().search() call, unaffected by where the
+ * table's rows actually came from.
  *
  * @package Gateway
  *
@@ -133,6 +136,14 @@ if ( 'collection' === $source_type ) :
 
 	$columns = array_values( $columns );
 
+	// Resolve + validate the requested facets the same way the postType
+	// branch below does, against this Collection's own available columns
+	// instead -- a facet's *default value* (top-level Facets panel) is
+	// what this applies; the front-end gateway/facet block's own live
+	// per-visitor interaction is a separate, client-side DataTables
+	// column().search() call that doesn't go through this at all.
+	$collection_facets = is_array( $raw_facets ) ? \Gateway\Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
+
 	$query = $collection::query()->orderBy( 'id', 'desc' );
 
 	if ( $limit > 0 ) {
@@ -154,6 +165,7 @@ if ( 'collection' === $source_type ) :
 	 * @param WP_Block                               $block      Block instance.
 	 */
 	$query = apply_filters( 'gateway_datatable_collection_query', $query, $collection, $attributes, $block );
+	$query = \Gateway\Facet_Query::apply_collection_facets( $query, $collection_facets );
 
 	$records = $query->get();
 	?>

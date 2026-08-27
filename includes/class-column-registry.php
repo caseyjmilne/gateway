@@ -162,6 +162,24 @@ class Column_Registry {
 	}
 
 	/**
+	 * The `get_column()` counterpart for a Collection -- get_column()'s own
+	 * `foreach`, against `get_columns_for_collection()` instead.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param string $key        Column key.
+	 * @return array|null
+	 */
+	public static function get_column_for_collection( $class_name, $key ) {
+		foreach ( self::get_columns_for_collection( $class_name ) as $column ) {
+			if ( $column['key'] === $key ) {
+				return $column;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * The `get_columns()` counterpart for a Collection (Gateway model)
 	 * data source, in the same `{key, label, type, isFilterable,
 	 * facetType}` shape -- so `gateway/datatable`'s own column-validation
@@ -175,14 +193,21 @@ class Column_Registry {
 	 * RESERVED_NAMES), the same way `get_columns()` always leads with a
 	 * post type's own `ID`.
 	 *
-	 * No facet support yet for any of these (`isFilterable` is always
-	 * `false`): `Facet_Query` -- what actually applies a facet to a query
-	 * -- is built entirely around `WP_Query` (post meta, taxonomies, core
-	 * post columns); wiring an equivalent for Eloquent queries is real,
-	 * separate work, not yet done. `gateway/datatable`'s own Facets panel
-	 * already only offers `isFilterable` columns, so this alone is enough
-	 * to keep it from offering anything broken for a Collection -- no
-	 * caller needs its own extra check for source type.
+	 * `isFilterable`/`facetType` mirror the same UX judgment
+	 * FILTERABLE_CORE_COLUMNS/get_meta_columns() already make for post
+	 * columns, applied via each field's own `Field_Type` (something a post
+	 * type's meta columns don't have -- see get_meta_columns()'s own
+	 * docblock for why *that* method can't narrow by type): a
+	 * `Password_Field_Type` field (`is_sensitive()`) is never filterable
+	 * at all -- there's no legitimate reason to search/facet a secret
+	 * value; a TextArea field is free text, `['input']` only, the same
+	 * "a Select of every distinct value would be unusable" reasoning
+	 * `post_content`/`post_excerpt` already get; every other type
+	 * (Text, Number, Range, Email, URL, and any future type that doesn't
+	 * opt out) gets the full `['input', 'select', 'checkboxes']`
+	 * vocabulary, same default as post meta. `Facet_Query::
+	 * apply_collection_facets()` is what actually applies one of these to
+	 * an Eloquent query -- the Collection counterpart to `apply_facets()`.
 	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
@@ -198,18 +223,43 @@ class Column_Registry {
 				'key'          => 'id',
 				'label'        => __( 'ID', 'gateway' ),
 				'type'         => 'model_id',
-				'isFilterable' => false,
-				'facetType'    => array(),
+				'isFilterable' => true,
+				// Free-text/exact only -- a Select of every distinct id
+				// would be unusable, same reasoning as core `ID`.
+				'facetType'    => array( 'input' ),
 			),
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			$type_class   = Field_Type_Registry::get( $field['type'] );
+			$is_sensitive = $type_class && class_exists( $type_class ) && $type_class::is_sensitive();
+
+			$facet_type = array();
+
+			if ( ! $is_sensitive ) {
+				$facet_type = 'textarea' === $field['type']
+					? array( 'input' )
+					: array( 'input', 'select', 'checkboxes' );
+			}
+
+			/**
+			 * Filters which UI types (subset of 'input'/'select'/
+			 * 'checkboxes') a model field offers as a facet -- and
+			 * whether it's filterable at all (an empty array). Mirrors
+			 * `gateway_datatable_meta_facet_type` for post meta.
+			 *
+			 * @param string[] $facet_type Allowed UI types.
+			 * @param array    $field      Model_Fields::all()'s own entry (name, label, type, position).
+			 * @param string   $class_name Model class name.
+			 */
+			$facet_type = apply_filters( 'gateway_datatable_collection_facet_type', $facet_type, $field, $class_name );
+
 			$columns[] = array(
 				'key'          => $field['name'],
 				'label'        => $field['label'],
 				'type'         => 'model_field',
-				'isFilterable' => false,
-				'facetType'    => array(),
+				'isFilterable' => ! empty( $facet_type ),
+				'facetType'    => array_values( $facet_type ),
 			);
 		}
 

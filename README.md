@@ -316,14 +316,22 @@ computed fresh from `availableColumns` itself, both in `edit.js` (for
 `useReconcileFieldList()`'s own fallback) and in `render.php` (for the
 front end).
 
-**No facet support yet for a Collection.** Every column
-`get_columns_for_collection()` returns has `isFilterable: false` --
-`Facet_Query` (what actually applies a facet to a query) is built
-entirely around `WP_Query` semantics (post meta, taxonomies, core post
-columns); wiring an Eloquent equivalent is real, separate work not done
-here. Because the Facets panel already only offers `isFilterable`
-columns, this alone keeps it from offering anything broken for a
-Collection, with no extra check needed anywhere else.
+**Facets work for a Collection too** (see "Facets work for Collections
+too" under the Data Cards section below for the full Eloquent-side
+story -- `Column_Registry::get_columns_for_collection()`'s
+`isFilterable`/`facetType` values and `Facet_Query::
+apply_collection_facets()`/`get_facet_options_for_collection()` are
+shared by both blocks). For `gateway/datatable` specifically: a facet's
+*default value* (top-level Facets panel) is applied to the Collection's
+initial Eloquent query in `gateway/datatable-body/render.php`, the same
+way it already was for a post type's `WP_Query`. `gateway/facet`'s own
+front-end live interaction needs no Collection-specific change at all --
+it drives DataTables' client-side `column().search()` against whatever
+rows are already in the rendered `<table>`, which has never cared where
+those rows came from. `gateway/facet`'s own editor/render.php pieces that
+DO need to know the source (resolving a facet's column definition and its
+Select/Checkboxes options) branch on `sourceType` the same way `gateway/
+card-facet`'s do.
 
 **Rendering a Collection's rows** (`gateway/datatable-body/render.php`)
 is a genuinely separate code path from the post type one -- a real
@@ -2102,14 +2110,21 @@ check needed there.
 independent path:
 
 - **`Data_Cards_Renderer::get_collection_page( $collection, $page,
-  $page_size, $limit )`** -- the Eloquent counterpart to
+  $page_size, $limit, $facets = [] )`** -- the Eloquent counterpart to
   `get_query_args()`/`build_pager_meta()` combined into one call (an
   Eloquent `Builder` needs a genuinely separate `->count()` before the
   paginated `->get()`, unlike `WP_Query`'s `found_posts`). Same
-  zero-based `page`/boundary-clamping semantics as the post path, filterable
-  via a new `gateway_data_cards_collection_query` hook mirroring
-  `gateway_datatable_collection_query`. No search/facet support yet, for
-  the same reason the table's own Collection path has none.
+  zero-based `page`/boundary-clamping semantics as the post path,
+  filterable via a new `gateway_data_cards_collection_query` hook
+  mirroring `gateway_datatable_collection_query`. `$facets` is applied
+  (via `Facet_Query::apply_collection_facets()`) right after that
+  extensibility filter, before `->count()`, so a site's own query
+  narrowing and a visitor's own facet choices compose the same way the
+  postType path's `get_query_args()` + `apply_facets()` already do -- see
+  "Facets work for Collections too" below. No search support yet:
+  Eloquent has no built-in equivalent to `WP_Query`'s own `s` full-text
+  search, and building one (which field(s) to search, how to weight
+  them) is real, separate, undone work.
 - **`Data_Cards_Renderer::render_items_for_collection( $records,
   $template_blocks )`** -- the Collection counterpart to `render_items()`:
   same `core/null`-wrapper-block trick, but instead of injecting
@@ -2132,11 +2147,77 @@ independent path:
 -- `GET /gateway/v1/data-cards-collection/<class>` -- for the same
 `sanitize_key()`-would-corrupt-a-class-name reason
 `columns-for-collection` is its own route rather than a shared one with a
-type param. It accepts `template_id`/`page`/`page_size`/`limit` only (no
-`search`/`facets`), and its callback is a thin wrapper around
-`get_collection_page()` + `render_items_for_collection()`. Public, same
-rationale as the post-type route: front-end pagination for data this same
-page already rendered once with no permission check either.
+type param. It accepts `template_id`/`page`/`page_size`/`limit`/`facets`
+(no `search`, per the search limitation above), and its callback is a
+thin wrapper around `get_collection_page()` + `render_items_for_collection()`.
+Public, same rationale as the post-type route: front-end pagination for
+data this same page already rendered once with no permission check
+either.
+
+### Facets work for Collections too
+
+`Column_Registry::get_columns_for_collection()` marks a model's own
+fields `isFilterable` (mirroring the UX judgment `FILTERABLE_CORE_COLUMNS`/
+`get_meta_columns()` already make for post columns, using each field's
+own `Field_Type` -- something a post type's meta columns don't have): a
+`Password_Field_Type` field (`is_sensitive()`) is never filterable at
+all, since there's no legitimate reason to search/facet a secret value;
+a TextArea field is free text (`facetType: ['input']` only, the same
+"a Select of every distinct value would be unusable" reasoning
+`post_content`/`post_excerpt` already get); every other type gets the
+full `['input', 'select', 'checkboxes']` vocabulary, the same default as
+post meta. A new `gateway_datatable_collection_facet_type` filter lets a
+site narrow this further, mirroring `gateway_datatable_meta_facet_type`.
+Because this is the exact same method `gateway/datatable`'s own Facets
+panel/`gateway/facet` already use, this benefits both blocks at once --
+see the "Facets work for a Collection too" note under the Data Table
+section above for what changed there specifically.
+
+**`Facet_Query` gains two Eloquent counterparts** to its existing
+`WP_Query`-only methods:
+
+- **`apply_collection_facets( $query, $facets )`** -- the counterpart to
+  `apply_facets()`. A Gateway model's own fields are just real columns on
+  its own table, so there's only one "type" of column to handle here,
+  unlike `apply_facets()`'s meta/taxonomy/core branching: every facet is
+  just a `where()`/`whereIn()` call. An array `value` (a Checkboxes facet
+  with more than one box checked) OR-matches via `whereIn()`, same
+  convention as `apply_facets()`.
+- **`get_facet_options_for_collection( $collection, $column )`** -- the
+  counterpart to `get_facet_options()`: distinct values currently in use
+  for a field, via a real Eloquent query (`->distinct()->pluck()`)
+  instead of a direct `$wpdb` scan. No taxonomy-equivalent branch -- a
+  Gateway model has no notion of one. Cached the same way (and under the
+  same `gateway_datatable_facet_values_cache_ttl` filter) as
+  `get_facet_options()`'s own post/meta/taxonomy values.
+
+**`gateway/data-cards`'s own top-level Facets panel needed no changes at
+all** to start offering a Collection's fields: it already computes its
+offered list as `availableColumns.filter(c => c.isFilterable)`, so
+marking those columns filterable in `Column_Registry` was the only thing
+needed. Its own `render.php` resolves + validates the block's configured
+`facets` attribute against `get_columns_for_collection()` (same
+`Facet_Query::validate_facets()` call the postType branch already makes)
+and passes the result into `get_collection_page()`'s new `$facets`
+parameter, so a configured default value narrows the grid on first paint,
+exactly like the postType path.
+
+**`gateway/card-facet`** gains `gateway/data-cards/sourceType`/
+`gateway/data-cards/collection` in its own `usesContext` (it lives inside
+`gateway/data-cards-facets`/`-header`/`-footer`, or directly under
+`gateway/data-cards` itself -- never inside `gateway/data-cards-body`'s
+own synthetic per-record wrapper, so this context is always the real
+thing, propagated normally -- see `gateway/card-field-text`'s own section
+above for the contrasting case where it isn't). Its `edit.js`/`render.php`
+branch on `sourceType` to resolve a facet's column definition and its
+Select/Checkboxes options via `Column_Registry::get_column_for_collection()`/
+`Facet_Query::get_facet_options_for_collection()` in place of their
+postType counterparts -- everything else (the "still configured on the
+parent" check, the actual `<input>`/`<select>`/checkboxes markup,
+`data-facet-key`/`data-ui-type`/`data-compare` attributes) is unchanged,
+since `shared/cards.js`'s `collectActiveFacets()` and the REST fetch it
+drives were already source-agnostic (they just read whatever's currently
+in the DOM).
 
 ### Editor preview: real records, not just posts
 

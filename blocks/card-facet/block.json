@@ -16,7 +16,9 @@
 		"gateway/data-cards-footer"
 	],
 	"usesContext": [
+		"gateway/data-cards/sourceType",
 		"gateway/data-cards/postType",
+		"gateway/data-cards/collection",
 		"gateway/data-cards/facets"
 	],
 	"attributes": {

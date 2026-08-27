@@ -24,9 +24,12 @@
  * source-type param, for the same reason Columns_REST_Controller keeps
  * /columns/<post_type> and /columns-for-collection/<class> apart:
  * sanitize_key() (needed for a post type slug) lowercases everything,
- * which would corrupt a model's real, case-sensitive class name. It never
- * accepts search/facets -- see Data_Cards_Renderer::get_collection_page()'s
- * own docblock for why Collections don't support either yet.
+ * which would corrupt a model's real, case-sensitive class name. It
+ * accepts `facets` the same way the post-type route does (Collections
+ * DO support facets -- see Column_Registry::get_columns_for_collection()/
+ * Facet_Query::apply_collection_facets()); it never accepts `search` --
+ * see Data_Cards_Renderer::get_collection_page()'s own docblock for why
+ * Collections don't support that yet.
  *
  * @package Gateway
  */
@@ -147,6 +150,12 @@ class Data_Cards_REST_Controller {
 						'default'           => 0,
 						'sanitize_callback' => 'absint',
 					),
+					'facets'      => array(
+						'type'    => 'string',
+						'default' => '',
+						// Deliberately no sanitize_callback -- same reasoning
+						// as the post-type route's own 'facets' arg above.
+					),
 				),
 			)
 		);
@@ -246,7 +255,20 @@ class Data_Cards_REST_Controller {
 		$page_size       = max( 1, absint( $request->get_param( 'page_size' ) ) );
 		$limit           = absint( $request->get_param( 'limit' ) );
 
-		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit );
+		// A visitor's own live facet state -- same re-validation boundary
+		// as get_items()'s own postType handling above, against this
+		// Collection's own available columns instead.
+		$raw_facets = json_decode( (string) $request->get_param( 'facets' ), true );
+
+		$available_columns = array();
+
+		foreach ( Column_Registry::get_columns_for_collection( $collection ) as $available_column ) {
+			$available_columns[ $available_column['key'] ] = $available_column;
+		}
+
+		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
+
+		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets );
 		$html        = Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 
 		return rest_ensure_response( array_merge( array( 'html' => $html ), $page_result['pager_meta'] ) );

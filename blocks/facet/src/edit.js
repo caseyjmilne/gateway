@@ -26,14 +26,16 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		className: `gateway-facet gateway-facet--${ uiType }`,
 	} );
 
+	const sourceType = context[ 'gateway/datatable/sourceType' ] || 'postType';
 	const postType = context[ 'gateway/datatable/postType' ] || 'post';
+	const collection = context[ 'gateway/datatable/collection' ] || '';
 	const parentFacets = context[ 'gateway/datatable/facets' ] || [];
 	const parentColumns = context[ 'gateway/datatable/columns' ] || [];
 
 	// Fetched purely to resolve a friendly label for the facet -- context
 	// only carries the parent's raw attribute values (key/compare/value,
 	// key/sortable), not the resolved labels Column_Registry provides.
-	const { availableColumns } = useAvailableColumns( postType );
+	const { availableColumns } = useAvailableColumns( postType, { sourceType, collection } );
 	const labelsByKey = availableColumns.reduce( ( acc, column ) => {
 		acc[ column.key ] = column.label;
 		return acc;

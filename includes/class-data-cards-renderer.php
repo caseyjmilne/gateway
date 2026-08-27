@@ -147,20 +147,24 @@ class Data_Cards_Renderer {
 	 * together here rather than asking every caller to sequence them
 	 * correctly themselves.
 	 *
-	 * No search/facet support yet -- see Column_Registry::
-	 * get_columns_for_collection()'s own docblock (every one of its columns
-	 * has isFilterable => false, since Facet_Query is built entirely
-	 * around WP_Query semantics); an Eloquent equivalent is separate,
-	 * undone work, matching gateway/datatable-body's own documented
-	 * Collection limitation.
+	 * No search support yet for a Collection -- Eloquent has no equivalent
+	 * to WP_Query's own `s` full-text search built in, and building one
+	 * (which field(s) to search, how to weight them) is real, separate,
+	 * undone work. Facets ARE supported (`$facets`, validated the same
+	 * defensive way as the postType path -- see Facet_Query::
+	 * validate_facets()/apply_collection_facets()), applied here after the
+	 * extensibility filter below so a site's own query narrowing and a
+	 * visitor's own facet choices compose the same way the postType path's
+	 * `get_query_args()` + `apply_facets()` already do.
 	 *
 	 * @param string $collection Model class name.
 	 * @param int    $page       Zero-based page index.
 	 * @param int    $page_size  Items per page.
 	 * @param int    $limit      Block's configured Limit (0 = no cap).
+	 * @param array  $facets     Validated facets (Facet_Query::validate_facets()'s own shape), or [] for none.
 	 * @return array { records: \Illuminate\Support\Collection, pager_meta: array }
 	 */
-	public static function get_collection_page( $collection, $page, $page_size, $limit ) {
+	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array() ) {
 		$query = $collection::query()->orderBy( 'id', 'desc' );
 
 		/**
@@ -172,6 +176,7 @@ class Data_Cards_Renderer {
 		 * @param string                                 $collection Model class name.
 		 */
 		$query = apply_filters( 'gateway_data_cards_collection_query', $query, $collection );
+		$query = Facet_Query::apply_collection_facets( $query, $facets );
 
 		$found         = (int) $query->count();
 		$page_size     = max( 1, (int) $page_size );
