@@ -2172,18 +2172,36 @@ guess, and a field that's since been removed from the model surfaces as a
 "no longer exists" warning in the Inspector rather than silently
 rendering nothing.
 
-`render.php` re-validates `fieldKey` against
-`Column_Registry::get_columns_for_collection( $collection )` the same
-defensive way every other block in this plugin re-validates a
-configured key against its own current availability -- a stale field
-name must never surface whatever attribute happens to share its name on
-the Eloquent record instead (`id`, timestamps, anything else Eloquent
-exposes that isn't a real, user-defined field). The value itself is read
-straight off the record injected via context (`$record->{$field_key}`)
-and printed with `esc_html()`, no other formatting -- later field-display
-blocks (Number, Date, Image, ...) are expected to follow this same shape
-(one block per "how to render this field's value") with their own
-type-appropriate output instead.
+**`render.php` deliberately does NOT read `gateway/data-cards/sourceType`/
+`gateway/data-cards/collection` from context**, even though `edit.js`
+does (for its field picker above) and both are declared in `usesContext`.
+On the front end this block is a descendant of the *synthetic* wrapper
+block `render_items_for_collection()` constructs fresh per card
+(`new WP_Block( $wrapper_block )`, no `$available_context` argument) --
+entirely outside the real `gateway/data-cards` -> ... ->
+`gateway/data-cards-body` tree, so it never inherits that tree's own
+`providesContext` chain. Only what a `render_block_context` filter
+explicitly injects while that synthetic tree renders reaches it -- exactly
+how WordPress core's own `render_block_core_post_template()` gets
+`postId`/`postType` to Post Title/Post Excerpt -- and
+`render_items_for_collection()` only ever injects the one thing this
+block actually needs: the unnamespaced `record` key. Reading
+`sourceType`/`collection` from context here would silently read back
+whatever `WP_Block` defaults an absent context key to (`'postType'`/`''`),
+never the real values -- exactly what made every card render empty before
+this was caught and fixed. `render.php` instead derives the model class
+directly off the record itself (`get_class( $record )`, always correct by
+construction, no context needed), then re-validates `fieldKey` against
+`Column_Registry::get_columns_for_collection()` the same defensive way
+every other block in this plugin re-validates a configured key against
+its own current availability -- a stale field name must never surface
+whatever attribute happens to share its name on the Eloquent record
+instead (`id`, timestamps, anything else Eloquent exposes that isn't a
+real, user-defined field). The value itself is read straight off the
+record (`$record->{$field_key}`) and printed with `esc_html()`, no other
+formatting -- later field-display blocks (Number, Date, Image, ...) are
+expected to follow this same shape (one block per "how to render this
+field's value") with their own type-appropriate output instead.
 
 ## Laravel Models (Illuminate/Eloquent)
 

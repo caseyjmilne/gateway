@@ -2,18 +2,27 @@
 /**
  * Server-side render for the gateway/card-field-text block.
  *
- * Everything this needs about the current card arrives via block context:
- * 'gateway/data-cards/sourceType'/'gateway/data-cards/collection' (the
- * parent gateway/data-cards block's own providesContext, propagating
- * transitively through gateway/data-cards-body the same as any other
- * Gateway context) tell it which model this card template is even for,
- * and the unnamespaced 'record' key (injected per-card by
- * Data_Cards_Renderer::render_items_for_collection() via a
- * render_block_context filter, exactly the same mechanism -- and the
- * same unnamespaced-key convention -- WordPress core itself uses for
- * 'postId'/'postType') is the actual Eloquent model instance for THIS
- * card, shared with every other field-display block in the same card
- * rather than each one re-querying it independently.
+ * Deliberately does NOT read 'gateway/data-cards/sourceType' or
+ * 'gateway/data-cards/collection' from context here, even though both are
+ * declared in usesContext (the editor's own edit.js does read them, for
+ * its field picker) -- on the front end this block is a descendant of a
+ * *synthetic* wrapper block Data_Cards_Renderer::render_items_for_collection()
+ * constructs fresh (`new WP_Block( $wrapper_block )`, with no
+ * $available_context argument) once per card, entirely outside the real
+ * gateway/data-cards -> ... -> gateway/data-cards-body block tree. That
+ * synthetic tree never inherits the real tree's own providesContext chain
+ * -- only whatever a `render_block_context` filter explicitly injects
+ * while it renders (exactly how WordPress core's own
+ * render_block_core_post_template() works for 'postId'/'postType') reaches
+ * it. render_items_for_collection() only ever injects the one thing this
+ * block actually needs -- the unnamespaced 'record' key, the real
+ * Eloquent model instance for THIS card -- so that's the only context this
+ * file can rely on; sourceType/collection would silently read back
+ * whatever WP_Block defaults an absent context key to ('postType'/'' here),
+ * never the real values, which is exactly what made every card render
+ * empty before this was fixed. The model class is instead read directly
+ * off the record itself (`get_class( $record )`), which is always correct
+ * by construction and needs no context at all.
  *
  * @package Gateway
  *
@@ -24,17 +33,15 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$source_type = $block->context['gateway/data-cards/sourceType'] ?? 'postType';
-$collection  = isset( $block->context['gateway/data-cards/collection'] ) && is_string( $block->context['gateway/data-cards/collection'] )
-	? $block->context['gateway/data-cards/collection']
-	: '';
 $record = $block->context['record'] ?? null;
 
 $field_key = isset( $attributes['fieldKey'] ) && is_string( $attributes['fieldKey'] ) ? trim( $attributes['fieldKey'] ) : '';
 
-if ( 'collection' !== $source_type || '' === $collection || '' === $field_key || ! $record ) {
+if ( '' === $field_key || ! ( $record instanceof \Illuminate\Database\Eloquent\Model ) ) {
 	return;
 }
+
+$collection = get_class( $record );
 
 // Only ever trust a field key that's genuinely still one of this model's
 // own available columns -- a stale fieldKey (the model's fields changed
@@ -47,7 +54,7 @@ if ( ! in_array( $field_key, $available_keys, true ) ) {
 	return;
 }
 
-$value = $record instanceof \Illuminate\Database\Eloquent\Model ? $record->{ $field_key } : '';
+$value = $record->{ $field_key };
 
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-card-field-text' ) );
 ?>
