@@ -29,3 +29,24 @@
 .gateway-admin-app .gateway-field-editor table td:last-child .button + .button {
 	margin-left: 6px;
 }
+
+.gateway-admin-app .gateway-records-crud table td:last-child {
+	white-space: nowrap;
+	width: 1%;
+}
+
+.gateway-admin-app .gateway-records-crud table td:last-child .button + .button {
+	margin-left: 6px;
+}
+
+.gateway-admin-app .gateway-record-form-wrap {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	padding: 1em 1.5em;
+	margin-bottom: 1.5em;
+	max-width: 480px;
+}
+
+.gateway-admin-app .gateway-record-form label {
+	font-weight: 600;
+}

@@ -39,15 +39,6 @@ class Model_Fields {
 	const OPTION = 'gateway_model_fields';
 
 	/**
-	 * Field types the editor currently supports, mapped to the Schema
-	 * Blueprint column-builder method each one actually creates.
-	 */
-	const BLUEPRINT_METHODS = array(
-		'text'   => 'string',
-		'number' => 'double',
-	);
-
-	/**
 	 * Column names every generated model's own initial migration already
 	 * creates -- never valid as a field name, since that would collide
 	 * with a real column create()/Model_Builder's own migration already
@@ -68,6 +59,37 @@ class Model_Fields {
 	}
 
 	/**
+	 * Filters a raw, arbitrary-keyed array (e.g. straight off a REST
+	 * request body) down to just this model's own known fields, casting
+	 * each surviving value through its field type's own cast() -- used by
+	 * Records_REST_Controller so a record create/update can never write
+	 * to a column that isn't a real, currently-defined field, and so a
+	 * "Number" field's value is actually stored as a number rather than
+	 * whatever raw type the request body happened to send.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $raw_data   Arbitrary-keyed input, e.g. $_POST-shaped.
+	 * @return array Only the keys matching a real field, cast per type.
+	 */
+	public static function sanitize_record_data( $class_name, array $raw_data ) {
+		$sanitized = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( ! array_key_exists( $field['name'], $raw_data ) ) {
+				continue;
+			}
+
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			$sanitized[ $field['name'] ] = $type_class
+				? $type_class::cast( $raw_data[ $field['name'] ] )
+				: $raw_data[ $field['name'] ];
+		}
+
+		return $sanitized;
+	}
+
+	/**
 	 * Add a new field: generates and runs an ADD COLUMN migration for it
 	 * first, and only records the field's metadata once that has
 	 * actually succeeded.
@@ -76,7 +98,7 @@ class Model_Fields {
 	 * @param string $name       Raw field name -- sanitized to a
 	 *                            lowercase snake_case machine name, which
 	 *                            becomes the real column name too.
-	 * @param string $type       One of self::BLUEPRINT_METHODS' keys.
+	 * @param string $type       One of Field_Type_Registry::keys().
 	 * @return array{name:string,type:string}|\WP_Error The added field
 	 *              (with its sanitized name) on success.
 	 */
@@ -97,8 +119,9 @@ class Model_Fields {
 			return self::unavailable_error();
 		}
 
-		$table  = $model->getTable();
-		$method = self::BLUEPRINT_METHODS[ $field['type'] ];
+		$table       = $model->getTable();
+		$type_class  = Field_Type_Registry::get( $field['type'] );
+		$method      = $type_class::blueprint_method();
 
 		$up_body   = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
 		$down_body = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
@@ -173,11 +196,13 @@ class Model_Fields {
 		}
 
 		if ( $type_changed ) {
-			$new_method = self::BLUEPRINT_METHODS[ $new_field['type'] ];
-			$old_method = self::BLUEPRINT_METHODS[ $old_field['type'] ];
+			$new_type_class = Field_Type_Registry::get( $new_field['type'] );
+			$old_type_class = Field_Type_Registry::get( $old_field['type'] );
+			$new_method     = $new_type_class::blueprint_method();
+			$old_method     = $old_type_class::blueprint_method();
 
-			$up[]     = self::column_statement( $table, "\$table->{$new_method}( '{$new_field['name']}' )->nullable()->change();" );
-			$down[]   = self::column_statement( $table, "\$table->{$old_method}( '{$new_field['name']}' )->nullable()->change();" );
+			$up[]   = self::column_statement( $table, "\$table->{$new_method}( '{$new_field['name']}' )->nullable()->change();" );
+			$down[] = self::column_statement( $table, "\$table->{$old_method}( '{$new_field['name']}' )->nullable()->change();" );
 		}
 
 		if ( $name_changed ) {
@@ -227,9 +252,10 @@ class Model_Fields {
 			return self::unavailable_error();
 		}
 
-		$field  = $model_fields[ $index ];
-		$table  = $model->getTable();
-		$method = self::BLUEPRINT_METHODS[ $field['type'] ];
+		$field      = $model_fields[ $index ];
+		$table      = $model->getTable();
+		$type_class = Field_Type_Registry::get( $field['type'] );
+		$method     = $type_class::blueprint_method();
 
 		$up_body   = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
 		$down_body = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
@@ -431,13 +457,13 @@ PHP;
 
 		$type = trim( (string) $type );
 
-		if ( ! array_key_exists( $type, self::BLUEPRINT_METHODS ) ) {
+		if ( null === Field_Type_Registry::get( $type ) ) {
 			return new \WP_Error(
 				'gateway_field_invalid_type',
 				sprintf(
 					/* translators: %s: comma-separated list of valid types */
 					__( 'Field type must be one of: %s.', 'gateway' ),
-					implode( ', ', array_keys( self::BLUEPRINT_METHODS ) )
+					implode( ', ', Field_Type_Registry::keys() )
 				),
 				array( 'status' => 400 )
 			);

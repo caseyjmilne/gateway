@@ -174,16 +174,17 @@ class Model_REST_Controller {
 	}
 
 	/**
-	 * Shape a registered model class into what both the list and detail
-	 * screens need -- its table, its stored Plural Title label (if any),
-	 * its fields (Gateway\Model_Fields -- the detail screen's Field
-	 * Editor uses these as its initial list, avoiding a second request),
-	 * and its migration's version/run status (looked up via the same
-	 * naming convention Model_Builder itself used to generate it, since
-	 * that link isn't stored anywhere separately).
+	 * Shape a registered model class into what the list, detail, and
+	 * Records screens all need -- its table, its stored Plural Title
+	 * label (if any), its fields (Gateway\Model_Fields -- the detail
+	 * screen's Field Editor uses these as its initial list, avoiding a
+	 * second request), its row count (for the Records list screen), and
+	 * its migration's version/run status (looked up via the same naming
+	 * convention Model_Builder itself used to generate it, since that
+	 * link isn't stored anywhere separately).
 	 *
 	 * @param string $class Registered model class name.
-	 * @return array{class:string,table:string,plural_title:string,fields:array,migration:?array}|null
+	 * @return array{class:string,table:string,plural_title:string,fields:array,count:?int,migration:?array}|null
 	 *              Null if $class is no longer a real, loaded class
 	 *              (shouldn't normally happen, but registration and the
 	 *              filesystem could in principle drift apart).
@@ -209,11 +210,22 @@ class Model_REST_Controller {
 			);
 		}
 
+		try {
+			$count = $class::count();
+		} catch ( \Throwable $e ) {
+			// The table may not exist yet (migration never ran) or the
+			// database may be unreachable right now -- either way, the
+			// rest of this model's info is still worth returning; the
+			// Records screen shows this as "--" rather than a number.
+			$count = null;
+		}
+
 		return array(
 			'class'        => $class,
 			'table'        => $table,
 			'plural_title' => Model_Builder::get_plural_title( $class ),
 			'fields'       => Model_Fields::all( $class ),
+			'count'        => $count,
 			'migration'    => $migration,
 		);
 	}

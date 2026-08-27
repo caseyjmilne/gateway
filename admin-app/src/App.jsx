@@ -2,6 +2,8 @@ import { HashRouter, NavLink, Route, Routes } from 'react-router-dom';
 import DatabaseConfig from './screens/DatabaseConfig.jsx';
 import ModelsList from './screens/ModelsList.jsx';
 import ModelDetail from './screens/ModelDetail.jsx';
+import RecordsList from './screens/RecordsList.jsx';
+import RecordsCrud from './screens/RecordsCrud.jsx';
 
 /**
  * HashRouter, not BrowserRouter: this app is loaded from one fixed
@@ -10,8 +12,9 @@ import ModelDetail from './screens/ModelDetail.jsx';
  * admin.php?page=gateway/models/Widget for an actual browser
  * navigation/refresh/bookmark to hit, and no WordPress rewrite rule this
  * plugin could add would change that. Routing via the URL's #hash
- * fragment instead keeps every route (the models list, a single model)
- * bookmarkable and back-button-friendly without needing any of that.
+ * fragment instead keeps every route (the models list, a single model,
+ * a model's records) bookmarkable and back-button-friendly without
+ * needing any of that.
  */
 export default function App() {
 	return (
@@ -22,6 +25,9 @@ export default function App() {
 					<NavLink to="/" end className={ navTabClass }>
 						Models
 					</NavLink>
+					<NavLink to="/records" className={ navTabClass }>
+						Records
+					</NavLink>
 					<NavLink to="/database" className={ navTabClass }>
 						Database
 					</NavLink>
@@ -29,6 +35,8 @@ export default function App() {
 				<Routes>
 					<Route path="/" element={ <ModelsList /> } />
 					<Route path="/models/:className" element={ <ModelDetail /> } />
+					<Route path="/records" element={ <RecordsList /> } />
+					<Route path="/records/:className" element={ <RecordsCrud /> } />
 					<Route path="/database" element={ <DatabaseConfig /> } />
 				</Routes>
 			</div>

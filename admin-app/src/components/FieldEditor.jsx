@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { apiFetch } from '../api.js';
-
-const FIELD_TYPES = [
-	{ value: 'text', label: 'Text' },
-	{ value: 'number', label: 'Number' },
-];
+import useFieldTypes from '../hooks/useFieldTypes.js';
 
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
@@ -16,8 +12,13 @@ const FIELD_TYPES = [
  * Title/Plural Title fields on this same page, every action here can fail
  * for real schema reasons (a duplicate or reserved name, an unsupported
  * type) and is reported inline via the same notice area other screens use.
+ *
+ * The type dropdown is built from useFieldTypes() (Gateway\Field_Type_Registry,
+ * via GET /field-types) rather than a hardcoded list here, so a future
+ * field type shows up automatically.
  */
 export default function FieldEditor( { modelClass, initialFields } ) {
+	const fieldTypes = useFieldTypes();
 	const [ fields, setFields ] = useState( initialFields || [] );
 	const [ error, setError ] = useState( '' );
 
@@ -164,10 +165,10 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 													)
 												}
 											>
-												{ FIELD_TYPES.map( ( type ) => (
+												{ fieldTypes.map( ( type ) => (
 													<option
-														key={ type.value }
-														value={ type.value }
+														key={ type.key }
+														value={ type.key }
 													>
 														{ type.label }
 													</option>
@@ -202,8 +203,8 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 										<code>{ field.name }</code>
 									</td>
 									<td>
-										{ FIELD_TYPES.find(
-											( type ) => type.value === field.type
+										{ fieldTypes.find(
+											( type ) => type.key === field.type
 										)?.label || field.type }
 									</td>
 									<td>
@@ -252,8 +253,8 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 					value={ newType }
 					onChange={ ( event ) => setNewType( event.target.value ) }
 				>
-					{ FIELD_TYPES.map( ( type ) => (
-						<option key={ type.value } value={ type.value }>
+					{ fieldTypes.map( ( type ) => (
+						<option key={ type.key } value={ type.key }>
 							{ type.label }
 						</option>
 					) ) }

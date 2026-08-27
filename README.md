@@ -2350,9 +2350,9 @@ not worth discarding an otherwise-successful rename over.
 A model's detail screen (below) also has a Field Editor: Add Field, a
 list of existing fields, and the ability to edit or remove one -- the
 same shape as ACF's own field editor, deliberately. Two currently
-supported types, **Text** and **Number** (`Model_Fields::BLUEPRINT_METHODS`,
-mapping each to the Schema Blueprint column method it actually creates
--- `string`/`double` respectively).
+supported types, **Text** and **Number** -- each one's own `Field_Type`
+class (see "Field_Type_Registry" below) says which Schema Blueprint
+column method actually creates it (`string`/`double` respectively).
 
 **Every field is a real column, not just metadata.** Adding one
 generates and immediately runs an ADD COLUMN migration; editing one's
@@ -2432,6 +2432,106 @@ Field" form below it, seeded from the model detail response's own
 `fields` array (`Model_REST_Controller::describe_model()`) so the page
 doesn't need a second request just to show them.
 
+### `Field_Type_Registry` -- one class per field type, controlling its own attributes
+
+Rather than a flat lookup array mapping type names to behavior (which is
+exactly what an earlier version of `Model_Fields` had -- a
+`BLUEPRINT_METHODS` constant), each field type is its own class
+implementing a small `Field_Type` interface (`includes/interface-field-type.php`),
+registered the same way a model or migration class is:
+
+```php
+interface Field_Type {
+	public static function key();             // "text", "number", ...
+	public static function label();            // "Text", "Number", ...
+	public static function blueprint_method(); // "string", "double", ...
+	public static function input_type();       // the HTML <input type>
+	public static function cast( $value );     // e.g. "3" -> 3 for Number
+}
+```
+
+`Field_Type_Registry` (`includes/class-field-type-registry.php`) is a
+thin `Registry` subclass -- the same shared `register()`/`all()`/`has()`/
+`count()`/`unregister()` implementation `Model_Registry`/`Migration_Registry`
+already use, with `required_base()` pointing at the `Field_Type`
+interface instead of an Illuminate base class (`is_subclass_of()`, which
+`Registry::register()` uses to enforce this, returns true for interface
+implementation just as readily as class inheritance -- verified directly
+before relying on it). `Text_Field_Type`/`Number_Field_Type`
+(`includes/class-text-field-type.php`/`class-number-field-type.php`) are
+the two built-ins, registered in `gateway_boot()`; a
+`gateway_register_field_types` action fires right after, for a future
+type to hook in the same way models/migrations already can.
+
+`Model_Fields` now asks the registry for a type's `blueprint_method()`
+wherever it used to look one up in the old constant array (every
+`Schema::table()` call add()/update()/remove() generates), and for
+whether a type is valid at all (`Field_Type_Registry::get( $type ) !==
+null`, replacing an `array_key_exists()` check against that same old
+constant). A new `Model_Fields::sanitize_record_data()` -- used by
+`Records_REST_Controller`, below -- filters an arbitrary incoming array
+down to just a model's own known field names and runs each surviving
+value through its type's own `cast()`, so a "Number" field is genuinely
+stored as a number rather than whatever raw type a request body happened
+to send, and a request can never write to a column that isn't a real,
+currently-defined field.
+
+`GET /gateway/v1/field-types` (`Field_Type_REST_Controller`) exposes
+`Field_Type_Registry::describe_all()` (key/label/input_type for every
+registered type) -- both `FieldEditor` and the Records screen's own form
+(below) build their type dropdown/`<input>` rendering from this one
+request (`admin-app/src/hooks/useFieldTypes.js`) instead of each keeping
+a second, hardcoded copy of "text"/"number" in JavaScript.
+
+## Records -- a CRUD UI for a model's actual rows
+
+A third top-level tab, alongside Models and Database: **Records**. Its
+own list screen (`RecordsList`, route `/records`) is every model again,
+this time with its row count, reusing `GET /gateway/v1/models` --
+`Model_REST_Controller::describe_model()` already runs `$class::count()`
+for each one (wrapped in a `try`/`catch`: an unreachable database or a
+migration that never ran shows as "--" rather than breaking the whole
+list). Clicking a model opens `RecordsCrud` (route `/records/:className`),
+the actual CRUD screen: Add New, edit an existing row in place, delete
+one -- the ACF-style "row becomes a form" interaction `FieldEditor`
+already established, reused here for records instead of field
+definitions.
+
+**Every column and every form input comes from the model's own fields**
+-- there's no separate "which columns to show" configuration anywhere.
+`RecordForm` (`admin-app/src/components/RecordForm.jsx`, shared between
+"Add New" and each row's own inline edit) renders one `<input>` per
+field, choosing its HTML `type` from `useFieldTypes()`'s `input_type`
+for that field's own `type` -- a "Number" field genuinely gets
+`<input type="number">`, not a guess made independently of what
+`Field_Type_Registry` already knows.
+
+`Records_REST_Controller` is the one controller in the whole Models/
+Fields/Records trio that actually touches row data:
+
+- `GET /gateway/v1/models/<class>/records` -- paginated (`page`/
+  `per_page`, capped at 100), newest-first, returning `{ records, total,
+  page, per_page }`.
+- `POST .../records` / `PUT .../records/<id>` -- body filtered through
+  `Model_Fields::sanitize_record_data()` before ever reaching
+  `$class::create()`/`$record->update()`, so an unknown key (including
+  `id` itself, which isn't a *field*, just the primary key) is silently
+  dropped rather than erroring or, worse, being written somewhere
+  unintended.
+- `DELETE .../records/<id>` -- plain `$record->delete()`.
+
+Unlike every other route in this plugin, create/update deliberately have
+**no fixed REST `args` schema** -- the set of valid keys is dynamic
+(whatever `Model_Fields::all()` currently returns for that specific
+model), so the body is read directly
+(`$request->get_json_params()`) and validated by
+`sanitize_record_data()` instead. All four actions gate on
+`Database_Connection::is_healthy()` before touching the database, same
+as every other write path in this plugin, and every query is wrapped in
+`try`/`catch` so a real `QueryException` (a stale field pointing at a
+column that's since been dropped by hand, say) comes back as a clean
+`\WP_Error` rather than a fatal.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for
@@ -2474,8 +2574,9 @@ routes as the logged-in administrator viewing the page.
 
 ### Models screens (list + detail)
 
-The app's other screen (alongside Database Connection below), and the
-one at `/` -- what most visits to the page are actually for. Routed with
+One of the app's three tabs (alongside Records, above, and Database
+Connection below), and the one at `/` -- what most visits to the page
+are actually for. Routed with
 `react-router-dom`'s `HashRouter` (URLs like `#/models/BlogPost`) rather
 than `BrowserRouter`: this app is loaded from one single, fixed wp-admin
 URL (`admin.php?page=gateway`) that WordPress's own PHP routing owns, so

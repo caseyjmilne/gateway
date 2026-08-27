@@ -83,7 +83,7 @@ class Model_Field_REST_Controller {
 			'type' => array(
 				'required' => true,
 				'type'     => 'string',
-				'enum'     => array_keys( Model_Fields::BLUEPRINT_METHODS ),
+				'enum'     => Field_Type_Registry::keys(),
 			),
 		);
 	}

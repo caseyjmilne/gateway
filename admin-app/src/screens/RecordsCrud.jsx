@@ -1,0 +1,357 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { apiFetch } from '../api.js';
+import useFieldTypes from '../hooks/useFieldTypes.js';
+import RecordForm from '../components/RecordForm.jsx';
+
+const PER_PAGE = 20;
+
+/**
+ * The actual CRUD UI for one model's records: a table of existing rows
+ * (each row swaps to an inline edit form, matching FieldEditor's own
+ * interaction pattern) plus an "Add New" form above it. Every column and
+ * every form input is driven entirely by the model's own fields
+ * (Gateway\Model_Fields, fetched as part of the model detail response) --
+ * there's no separate "which columns to show" configuration here at all.
+ */
+export default function RecordsCrud() {
+	const { className } = useParams();
+	const fieldTypes = useFieldTypes();
+
+	const [ model, setModel ] = useState( null );
+	const [ modelError, setModelError ] = useState( '' );
+
+	const [ records, setRecords ] = useState( [] );
+	const [ total, setTotal ] = useState( 0 );
+	const [ page, setPage ] = useState( 1 );
+	const [ loadingRecords, setLoadingRecords ] = useState( true );
+	const [ recordsError, setRecordsError ] = useState( '' );
+
+	const [ showAddForm, setShowAddForm ] = useState( false );
+	const [ addSubmitting, setAddSubmitting ] = useState( false );
+	const [ addError, setAddError ] = useState( '' );
+
+	const [ editingId, setEditingId ] = useState( null );
+	const [ editSubmitting, setEditSubmitting ] = useState( false );
+	const [ editError, setEditError ] = useState( '' );
+
+	const [ deletingId, setDeletingId ] = useState( null );
+	const [ deleteError, setDeleteError ] = useState( '' );
+
+	const basePath = `/models/${ encodeURIComponent( className ) }/records`;
+
+	useEffect( () => {
+		let cancelled = false;
+
+		setModel( null );
+		setModelError( '' );
+		setShowAddForm( false );
+		setEditingId( null );
+
+		apiFetch( `/models/${ encodeURIComponent( className ) }` )
+			.then( ( data ) => {
+				if ( ! cancelled ) {
+					setModel( data );
+				}
+			} )
+			.catch( ( err ) => {
+				if ( ! cancelled ) {
+					setModelError( err.message );
+				}
+			} );
+
+		return () => {
+			cancelled = true;
+		};
+	}, [ className ] );
+
+	const loadRecords = useCallback(
+		async ( targetPage ) => {
+			setLoadingRecords( true );
+			setRecordsError( '' );
+
+			try {
+				const data = await apiFetch(
+					`${ basePath }?page=${ targetPage }&per_page=${ PER_PAGE }`
+				);
+				setRecords( data.records );
+				setTotal( data.total );
+				setPage( data.page );
+			} catch ( err ) {
+				setRecordsError( err.message );
+			} finally {
+				setLoadingRecords( false );
+			}
+		},
+		[ basePath ]
+	);
+
+	useEffect( () => {
+		loadRecords( 1 );
+	}, [ loadRecords ] );
+
+	const handleAdd = async ( values ) => {
+		setAddSubmitting( true );
+		setAddError( '' );
+
+		try {
+			await apiFetch( basePath, {
+				method: 'POST',
+				body: JSON.stringify( values ),
+			} );
+			setShowAddForm( false );
+			loadRecords( 1 ); // a new record sorts first (newest-first order)
+		} catch ( err ) {
+			setAddError( err.message );
+		} finally {
+			setAddSubmitting( false );
+		}
+	};
+
+	const handleEditSave = async ( id, values ) => {
+		setEditSubmitting( true );
+		setEditError( '' );
+
+		try {
+			await apiFetch( `${ basePath }/${ id }`, {
+				method: 'PUT',
+				body: JSON.stringify( values ),
+			} );
+			setEditingId( null );
+			loadRecords( page );
+		} catch ( err ) {
+			setEditError( err.message );
+		} finally {
+			setEditSubmitting( false );
+		}
+	};
+
+	const handleDelete = async ( id ) => {
+		setDeleteError( '' );
+		setDeletingId( id );
+
+		try {
+			await apiFetch( `${ basePath }/${ id }`, { method: 'DELETE' } );
+			loadRecords( page );
+		} catch ( err ) {
+			setDeleteError( err.message );
+		} finally {
+			setDeletingId( null );
+		}
+	};
+
+	const fields = model ? model.fields : [];
+	const totalPages = Math.max( 1, Math.ceil( total / PER_PAGE ) );
+
+	return (
+		<div className="gateway-records-crud">
+			<p>
+				<Link to="/records">&larr; Back to Records</Link>
+			</p>
+
+			{ modelError && (
+				<div className="notice notice-error">
+					<p>{ modelError }</p>
+				</div>
+			) }
+
+			{ model && (
+				<>
+					<h2>
+						<code>{ model.class }</code> Records
+					</h2>
+
+					{ fields.length === 0 ? (
+						<p className="description">
+							This model has no fields yet -- add some on its{ ' ' }
+							<Link to={ `/models/${ model.class }` }>
+								Models
+							</Link>{ ' ' }
+							screen first.
+						</p>
+					) : (
+						<>
+							<p>
+								<button
+									type="button"
+									className="button button-primary"
+									onClick={ () =>
+										setShowAddForm( ( current ) => ! current )
+									}
+								>
+									{ showAddForm ? 'Cancel' : 'Add New' }
+								</button>
+							</p>
+
+							{ showAddForm && (
+								<div className="gateway-record-form-wrap">
+									<RecordForm
+										fields={ fields }
+										fieldTypes={ fieldTypes }
+										onSubmit={ handleAdd }
+										onCancel={ () => setShowAddForm( false ) }
+										submitLabel="Add Record"
+										submitting={ addSubmitting }
+									/>
+									{ addError && (
+										<div className="notice notice-error">
+											<p>{ addError }</p>
+										</div>
+									) }
+								</div>
+							) }
+
+							{ recordsError && (
+								<div className="notice notice-error">
+									<p>{ recordsError }</p>
+								</div>
+							) }
+							{ deleteError && (
+								<div className="notice notice-error">
+									<p>{ deleteError }</p>
+								</div>
+							) }
+
+							{ loadingRecords ? (
+								<p>Loading…</p>
+							) : records.length === 0 ? (
+								<p className="description">No records yet.</p>
+							) : (
+								<table className="widefat striped">
+									<thead>
+										<tr>
+											<th>ID</th>
+											{ fields.map( ( field ) => (
+												<th key={ field.name }>
+													{ field.name }
+												</th>
+											) ) }
+											<th></th>
+										</tr>
+									</thead>
+									<tbody>
+										{ records.map( ( record ) =>
+											editingId === record.id ? (
+												<tr key={ record.id }>
+													<td
+														colSpan={
+															fields.length + 2
+														}
+													>
+														<RecordForm
+															fields={ fields }
+															fieldTypes={
+																fieldTypes
+															}
+															initialValues={
+																record
+															}
+															onSubmit={ (
+																values
+															) =>
+																handleEditSave(
+																	record.id,
+																	values
+																)
+															}
+															onCancel={ () =>
+																setEditingId(
+																	null
+																)
+															}
+															submitLabel="Save"
+															submitting={
+																editSubmitting
+															}
+														/>
+														{ editError && (
+															<div className="notice notice-error">
+																<p>
+																	{
+																		editError
+																	}
+																</p>
+															</div>
+														) }
+													</td>
+												</tr>
+											) : (
+												<tr key={ record.id }>
+													<td>{ record.id }</td>
+													{ fields.map( ( field ) => (
+														<td key={ field.name }>
+															{ record[
+																field.name
+															] ?? '' }
+														</td>
+													) ) }
+													<td>
+														<button
+															type="button"
+															className="button"
+															onClick={ () =>
+																setEditingId(
+																	record.id
+																)
+															}
+														>
+															Edit
+														</button>
+														<button
+															type="button"
+															className="button"
+															onClick={ () =>
+																handleDelete(
+																	record.id
+																)
+															}
+															disabled={
+																deletingId ===
+																record.id
+															}
+														>
+															{ deletingId ===
+															record.id
+																? 'Deleting…'
+																: 'Delete' }
+														</button>
+													</td>
+												</tr>
+											)
+										) }
+									</tbody>
+								</table>
+							) }
+
+							{ totalPages > 1 && (
+								<p>
+									<button
+										type="button"
+										className="button"
+										onClick={ () =>
+											loadRecords( page - 1 )
+										}
+										disabled={ page <= 1 }
+									>
+										Previous
+									</button>{ ' ' }
+									Page { page } of { totalPages }{ ' ' }
+									<button
+										type="button"
+										className="button"
+										onClick={ () =>
+											loadRecords( page + 1 )
+										}
+										disabled={ page >= totalPages }
+									>
+										Next
+									</button>
+								</p>
+							) }
+						</>
+					) }
+				</>
+			) }
+		</div>
+	);
+}
