@@ -312,6 +312,15 @@ class Model_Builder {
 		Model_Registry::unregister( $old_class );
 		Migration_Registry::unregister( $old_migration_class );
 		self::forget_plural_title( $old_class );
+		// The old table (and every field's own column on it) is already
+		// gone by this point -- the old field *definitions* aren't
+		// carried over to the new model either, so a renamed model
+		// starts fresh on fields, the same "old data is lost" trade-off
+		// already accepted for the table itself. A future version could
+		// replay each field onto the new table instead; not done here to
+		// avoid a rename silently generating a whole cascade of
+		// additional field migrations on its own.
+		Model_Fields::forget( $old_class );
 
 		$old_model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $old_class . '.php';
 
@@ -449,12 +458,26 @@ class Model_Builder {
 	}
 
 	/**
+	 * The generic counterpart to migration_filename() above, for any
+	 * migration that isn't a table-creation one -- e.g. Model_Fields'
+	 * own add/rename/change/drop-column migrations, which don't share
+	 * create()'s fixed "create_X_table" shape.
+	 *
+	 * @param int    $version         Migration version number.
+	 * @param string $migration_class Migration class name.
+	 * @return string e.g. "000007_addfirstnametoticketstablev7.php".
+	 */
+	public static function migration_filename_for_class( $version, $migration_class ) {
+		return sprintf( '%06d_%s.php', $version, \Illuminate\Support\Str::snake( $migration_class ) );
+	}
+
+	/**
 	 * Claim the next migration version number. A single counter shared
 	 * across every model (not one per table) -- see OPTION_NEXT_VERSION.
 	 *
 	 * @return int
 	 */
-	private static function next_migration_version() {
+	public static function next_migration_version() {
 		$version = (int) get_option( self::OPTION_NEXT_VERSION, 1 );
 		update_option( self::OPTION_NEXT_VERSION, $version + 1 );
 		return $version;
@@ -467,7 +490,7 @@ class Model_Builder {
 	 * removed after activation, so a save never fails just because of a
 	 * missing folder.
 	 */
-	private static function ensure_directories() {
+	public static function ensure_directories() {
 		if ( ! is_dir( GATEWAY_MODELS_DIR ) ) {
 			wp_mkdir_p( GATEWAY_MODELS_DIR );
 		}
@@ -515,6 +538,31 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	 * @var string
 	 */
 	protected \$table = '{$table_name}';
+
+	/**
+	 * Field definitions managed via the admin app's Field Editor -- see
+	 * Gateway\\Model_Fields, which also generates and runs the migration
+	 * for each field's own real column. A flat array of field arrays
+	 * (never separated into parallel {names: [...], types: [...]} arrays)
+	 * -- two fields simply sit as neighbors in the same array.
+	 *
+	 * @return array<int,array{name:string,type:string}>
+	 */
+	public static function getFields() {
+		return \\Gateway\\Model_Fields::all( static::class );
+	}
+
+	/**
+	 * Overrides Eloquent's own getFillable() (rather than declaring
+	 * \$fillable directly) so mass-assignment always reflects whatever
+	 * fields currently exist, without ever needing to regenerate this
+	 * file just because a field was added, edited, or removed.
+	 *
+	 * @return string[]
+	 */
+	public function getFillable() {
+		return array_column( static::getFields(), 'name' );
+	}
 }
 
 PHP;

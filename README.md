@@ -2345,6 +2345,93 @@ as a `warnings` entry rather than failing the rename outright -- worth
 surfacing so a site owner can clean up an orphaned table by hand, but
 not worth discarding an otherwise-successful rename over.
 
+### Fields (`Model_Fields`) -- an ACF-style Field Editor, backed by real columns
+
+A model's detail screen (below) also has a Field Editor: Add Field, a
+list of existing fields, and the ability to edit or remove one -- the
+same shape as ACF's own field editor, deliberately. Two currently
+supported types, **Text** and **Number** (`Model_Fields::BLUEPRINT_METHODS`,
+mapping each to the Schema Blueprint column method it actually creates
+-- `string`/`double` respectively).
+
+**Every field is a real column, not just metadata.** Adding one
+generates and immediately runs an ADD COLUMN migration; editing one's
+name and/or type runs a RENAME COLUMN and/or MODIFY COLUMN migration
+(whichever the change actually needs -- unchanged fields never trigger
+one at all); removing one runs a DROP COLUMN migration. All three follow
+the same "generate, run, only then record the metadata" ordering as
+`Model_Builder::create()` itself -- if the migration fails, nothing about
+the field is recorded, so metadata and the real schema can never drift
+apart. This needed no new vendored dependency: this version of
+`illuminate/database` compiles native SQL for `renameColumn()`/`change()`
+directly (verified empirically against a real SQLite connection --
+add/rename/change-type/drop all worked with no `doctrine/dbal` involved),
+unlike older Laravel versions that needed it for column modification.
+
+**Storage: one flat array per model, deliberately not split into parallel
+arrays.** `gateway_model_fields` (class name => array of `{name, type}`)
+-- two fields simply sit as neighbors in the same array, never a
+`{names: [...], types: [...]}` shape. A generated model's own
+`getFields()` (baked into `model_template()` -- see below) just calls
+`Model_Fields::all( static::class )` every time it's invoked, so editing
+a field's *metadata* never needs to touch or regenerate the model's PHP
+file the way a Title change does -- only the *migration* side of an edit
+writes a new file (one per change, never the model file itself).
+
+**`getFillable()`, overridden -- not a `$fillable` property.** Per the
+request that shaped this: rather than declaring `protected $fillable =
+[...]` (which would need rewriting every time a field changes),
+generated models override Eloquent's own `getFillable()` method instead:
+
+```php
+public static function getFields() {
+	return \Gateway\Model_Fields::all( static::class );
+}
+
+public function getFillable() {
+	return array_column( static::getFields(), 'name' );
+}
+```
+
+Both are written into the model file once, at `create()` time, and never
+need to change again -- `getFillable()` always reflects whatever
+`getFields()` currently returns, and `getFields()` always reflects
+whatever's currently stored, live.
+
+**Field names are real column names**, so they go through the same
+sanitize-to-a-safe-identifier treatment a Title does (lowercase,
+non-alphanumeric runs collapsed to `_`) -- "First Name" becomes column
+`first_name`. Three names are reserved (`id`, `created_at`,
+`updated_at` -- every model's own base columns already) and rejected
+outright; a name colliding with another field already on the same model
+is rejected too.
+
+**Every field migration's class name is version-suffixed**
+(`AddFirstNameToTicketsTableV7`, not just `AddFirstNameToTicketsTable`)
+-- unlike a model's one-time "create table" migration, the *same* field
+can legitimately be added, edited, and removed more than once over a
+model's life, so the class name alone can't be assumed unique; appending
+the (globally monotonic) version number guarantees it always is.
+
+**A field is never carried over on model rename.** Renaming a model
+already drops its old table (see "Renaming a model" above); the old
+field *definitions* aren't replayed onto the new one either, for the
+same reason Plural Title's cousin (the table itself) isn't preserved --
+a rename starting completely fresh, rather than a rename silently
+generating a whole cascade of new field migrations on the new table on
+your behalf.
+
+`Model_Field_REST_Controller`: `GET`/`POST /gateway/v1/models/<class>/fields`,
+`PUT`/`DELETE /gateway/v1/models/<class>/fields/<field_name>` -- the URL
+segment is named `field_name`, not `name`, specifically so it never
+collides with the request body's own `name` (the field's *current* name,
+from the URL, versus the *new* name being saved, from the body).
+`admin-app/src/components/FieldEditor.jsx` is the UI: an editable table
+of existing fields (each row swaps to an inline edit form) plus an "Add
+Field" form below it, seeded from the model detail response's own
+`fields` array (`Model_REST_Controller::describe_model()`) so the page
+doesn't need a second request just to show them.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for
@@ -2433,6 +2520,13 @@ successful Title-changing save navigates to the new class's own
 and carries the result -- including any `warnings`, e.g. the old table
 failing to drop -- through React Router's navigation `state` so they can
 still be shown once on arrival.
+
+Below the Title/Plural Title form, `ModelDetail` also renders
+`FieldEditor` (`admin-app/src/components/FieldEditor.jsx` -- see "Fields
+(`Model_Fields`)" above for what happens on the PHP side) -- an
+editable table of the model's fields plus an "Add Field" form, seeded
+from the same initial `GET /models/<class>` response so it doesn't need
+its own request just to render.
 
 ### Database Connection screen
 

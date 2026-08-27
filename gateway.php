@@ -70,6 +70,8 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-directory-loader.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-migration-runner.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-builder.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-rest-controller.php';
 
 /**
  * Boot the plugin.
@@ -89,6 +91,7 @@ function gateway_boot() {
 	\Gateway\Database_Connection::boot_capsule();
 	\Gateway\Admin_Page::init();
 	\Gateway\Model_REST_Controller::init();
+	\Gateway\Model_Field_REST_Controller::init();
 
 	// Pick up every model/migration class living in wp-content/gateway --
 	// requiring each file and registering whatever class it declares (see
