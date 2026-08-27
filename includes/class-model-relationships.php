@@ -263,9 +263,18 @@ class Model_Relationships {
 		// class's own docblock for why this is the one exception to
 		// "never touches schema." Idempotent: a second belongsToMany
 		// between the same two models (e.g. declared from the other
-		// direction too) reuses the same table rather than erroring.
+		// direction too) reuses the same table rather than erroring. A
+		// failure here must actually stop the relationship from being
+		// recorded (checked, unlike an earlier version of this code that
+		// called this and ignored what it returned) -- otherwise a failed
+		// pivot table migration still leaves a relationship row behind
+		// that looks usable but points at a table that was never created.
 		if ( 'belongsToMany' === $type ) {
-			self::ensure_pivot_table( $class_name, $related_model );
+			$pivot_result = self::ensure_pivot_table( $class_name, $related_model );
+
+			if ( is_wp_error( $pivot_result ) ) {
+				return $pivot_result;
+			}
 		}
 
 		self::table()->insert(
@@ -399,6 +408,24 @@ class Model_Relationships {
 	 * exist -- see this class's own docblock for why this is the one
 	 * exception to "a relationship never touches schema."
 	 *
+	 * Runs as a real, generated-and-run migration -- a file under
+	 * `wp-content/gateway/migrations`, registered with `Migration_Registry`,
+	 * executed via `Migration_Runner::run()` -- the exact same mechanism
+	 * `Model_Fields::add()`/`update()`/`remove()` already use for a
+	 * column change, rather than an inline `Schema::create()` call made
+	 * directly here. An earlier version of this method did exactly that
+	 * inline call: it went unrecorded anywhere Migration_Registry/the
+	 * migrations directory could account for it, and its own caller
+	 * (`add()`, above) didn't even check whether it had actually
+	 * succeeded before recording the relationship -- together, a failure
+	 * here (of any kind) could leave a relationship looking fully set up
+	 * while the table it depends on was never created, exactly the
+	 * `Base table or view not found` failure this was reported as.
+	 * Routing through a real migration -- generate, register, run, and
+	 * only report success once `Migration_Runner::run()` itself confirms
+	 * it -- makes that failure mode visible (an actual `\WP_Error` back to
+	 * the Relationship Editor) instead of silent.
+	 *
 	 * Table/column names computed to match Eloquent's own default
 	 * `belongsToMany()` convention exactly (confirmed against
 	 * `Illuminate\Database\Eloquent\Concerns\HasRelationships::
@@ -414,31 +441,137 @@ class Model_Relationships {
 	 *
 	 * @param string $class_a One side's model class name.
 	 * @param string $class_b The other side's model class name.
-	 * @return string The pivot table's name.
+	 * @return string|\WP_Error The pivot table's name on success.
 	 */
 	private static function ensure_pivot_table( $class_a, $class_b ) {
 		$table_name = self::pivot_table_name( $class_a, $class_b );
 
-		$schema = \Illuminate\Database\Capsule\Manager::schema();
-
-		if ( $schema->hasTable( $table_name ) ) {
+		// Idempotent -- a second belongsToMany between the same two
+		// models (declared from either direction) reuses the same table
+		// rather than generating (or running) a migration for it again.
+		if ( \Illuminate\Database\Capsule\Manager::schema()->hasTable( $table_name ) ) {
 			return $table_name;
 		}
 
 		$column_a = \Illuminate\Support\Str::snake( $class_a ) . '_id';
 		$column_b = \Illuminate\Support\Str::snake( $class_b ) . '_id';
 
-		$schema->create(
-			$table_name,
-			function ( \Illuminate\Database\Schema\Blueprint $table ) use ( $column_a, $column_b ) {
-				$table->id();
-				$table->unsignedBigInteger( $column_a );
-				$table->unsignedBigInteger( $column_b );
-				$table->timestamps();
-			}
+		$up_body   = "\t\tSchema::create( '{$table_name}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {\n"
+			. "\t\t\t\$table->id();\n"
+			. "\t\t\t\$table->unsignedBigInteger( '{$column_a}' );\n"
+			. "\t\t\t\$table->unsignedBigInteger( '{$column_b}' );\n"
+			. "\t\t\t\$table->timestamps();\n"
+			. "\t\t} );";
+		$down_body = "\t\tSchema::dropIfExists( '{$table_name}' );";
+
+		$migration_result = self::generate_and_run_migration(
+			'Create' . \Illuminate\Support\Str::studly( $table_name ) . 'PivotTable',
+			$up_body,
+			$down_body
 		);
 
+		if ( is_wp_error( $migration_result ) ) {
+			return $migration_result;
+		}
+
 		return $table_name;
+	}
+
+	/**
+	 * Generates one migration file (a unique, version-suffixed class name),
+	 * runs it, and cleans up (file + registration) if that run fails --
+	 * the pivot-table counterpart of `Model_Fields`' own private method of
+	 * the same name (identical mechanism, different caller); see
+	 * `ensure_pivot_table()`'s own docblock for why this exists instead of
+	 * a bare inline `Schema::create()` call.
+	 *
+	 * @param string $class_name_prefix Base for the migration class name,
+	 *                                   e.g. "CreateEventTicketPivotTable"
+	 *                                   -- the version number is appended
+	 *                                   to guarantee uniqueness.
+	 * @param string $up_body           up() method body (PHP statements).
+	 * @param string $down_body         down() method body.
+	 * @return int|\WP_Error The migration version on success.
+	 */
+	private static function generate_and_run_migration( $class_name_prefix, $up_body, $down_body ) {
+		Model_Builder::ensure_directories();
+
+		$version         = Model_Builder::next_migration_version();
+		$migration_class = \Illuminate\Support\Str::studly( $class_name_prefix ) . 'V' . $version;
+		$migration_path  = trailingslashit( GATEWAY_MIGRATIONS_DIR ) . Model_Builder::migration_filename_for_class( $version, $migration_class );
+
+		if ( file_exists( $migration_path ) || class_exists( $migration_class, false ) ) {
+			return new \WP_Error(
+				'gateway_relationship_migration_exists',
+				__( 'Could not generate a unique migration for this relationship -- please try again.', 'gateway' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		if ( false === file_put_contents( $migration_path, self::migration_template( $migration_class, $version, $up_body, $down_body ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			return new \WP_Error(
+				'gateway_relationship_write_failed',
+				__( 'Could not write the migration file -- check that wp-content/gateway is writable.', 'gateway' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		require_once $migration_path;
+		Migration_Registry::register( $migration_class );
+
+		$run_result = Migration_Runner::run( $migration_class );
+
+		if ( is_wp_error( $run_result ) ) {
+			Migration_Registry::unregister( $migration_class );
+
+			if ( file_exists( $migration_path ) ) {
+				wp_delete_file( $migration_path );
+			}
+
+			return $run_result;
+		}
+
+		return $version;
+	}
+
+	/**
+	 * @param string $migration_class Migration class name.
+	 * @param int    $version         Migration version number.
+	 * @param string $up_body         up() method body.
+	 * @param string $down_body       down() method body.
+	 * @return string PHP source for the migration file.
+	 */
+	private static function migration_template( $migration_class, $version, $up_body, $down_body ) {
+		return <<<PHP
+<?php
+/**
+ * Gateway-generated migration -- created by the Relationship Editor.
+ * Run automatically once, immediately after being generated.
+ */
+
+class {$migration_class} extends \\Illuminate\\Database\\Migrations\\Migration {
+
+	/**
+	 * @var int
+	 */
+	public \$version = {$version};
+
+	/**
+	 * @return void
+	 */
+	public function up() {
+{$up_body}
+	}
+
+	/**
+	 * @return void
+	 */
+	public function down() {
+{$down_body}
+	}
+}
+
+PHP;
 	}
 
 	/**

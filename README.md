@@ -3086,15 +3086,55 @@ is the one source of truth, created/upgraded by
 `Model_Relationships::ensure_table()` the same way as `gateway_fields`;
 `Model_Relationships::all( $class_name )` always queries it fresh.
 
-**The one real difference from a field: no migration, ever.** A
-relationship is pure metadata pointing at another model -- there's no
-column of its own to create, rename, or drop, so `add()`/`remove()`
-skip straight from validating to writing the row and rewriting the model
-file. There's also no `update()` at all (unlike `Model_Fields`): every
-part of a relationship, including its method name, follows automatically
-from *which* related model and *what* type were picked, so "editing" one
-is really just removing it and adding a different one -- nothing to
-change in place.
+**No migration against either model's own table, ever.** A relationship
+is pure metadata pointing at another model -- there's no column on
+*either side's own table* to create, rename, or drop, so `add()`/
+`remove()` skip straight from validating to writing the row and
+rewriting the model file. There's also no `update()` at all (unlike
+`Model_Fields`): every part of a relationship, including its method
+name, follows automatically from *which* related model and *what* type
+were picked, so "editing" one is really just removing it and adding a
+different one -- nothing to change in place.
+
+**One exception: `belongsToMany` needs a third table Eloquent can't
+function without, so `add()` creates it automatically.** A many-to-many
+relationship's actual data lives in a pivot table, never a column on
+either model -- there's no way around that (the "no migration" rule
+above is scoped to "either model's own table" specifically because of
+this). `Model_Relationships::add()` creates it the first time a
+`belongsToMany` relationship is declared between two given models
+(`ensure_pivot_table()`), with the table/column names computed to match
+Eloquent's own default `belongsToMany()` convention exactly (confirmed
+against `HasRelationships::joiningTable()`/`joiningTableSegment()`):
+both models' class names, snake_cased, sorted alphabetically, joined
+with `_` for the table name (`Make` + `Model` -> `make_model`); each
+side's own snake_cased name + `_id` for its own pivot column. This is
+exactly what `$this->belongsToMany( \Model::class )` (no explicit
+table/key arguments -- `Model_Builder::relationship_method()` never adds
+any) resolves to on its own, so the generated relationship method
+doesn't need to know this table even exists. Idempotent: declaring the
+same `belongsToMany` a second time (e.g. from the opposite direction,
+`Model` `belongsToMany` `Make` after `Make` `belongsToMany` `Model`
+already created the table) reuses the existing table rather than
+erroring or trying to create it twice. `remove()` deliberately never
+drops it -- another relationship (from either model, either direction)
+could still depend on the exact same table, and Eloquent's own naming
+convention gives no way to tell whether it's actually safe to drop.
+
+This runs as a real, generated-and-run migration -- a file under
+`wp-content/gateway/migrations`, registered with `Migration_Registry`,
+executed via `Migration_Runner::run()`, the identical mechanism
+`Model_Fields::add()`/`update()`/`remove()` already use for a column
+change -- not a bare inline `Schema::create()` call. **A real bug here,
+fixed**: an earlier version of this method made exactly that inline
+call, and its own caller didn't check whether it had even succeeded
+before recording the relationship -- together, a failure of any kind
+left a relationship that looked fully configured pointing at a pivot
+table that was never actually created (reported as a live
+`Base table or view not found` error the first time the relationship
+was queried, well after the fact). `add()` now checks `ensure_pivot_table()`'s
+own result and aborts (returning its `\WP_Error` instead of recording
+the relationship) if the migration failed for any reason.
 
 **Method names are never typed in -- always derived automatically,
 by design.** Relating a model to another via `belongsTo` or `hasOne`
