@@ -1766,46 +1766,53 @@ All of this lives in the new `Data_Cards_Renderer` service class
 reused by both the initial page's SSR (see "One query, three siblings")
 and every later page `Data_Cards_REST_Controller` serves.
 
-### Swapping the card template on a Source switch
+### Swapping the card template on a Source (or Collection) switch
 
 The default starter template -- Featured Image + Title + Excerpt -- is
 built entirely from core WordPress blocks that only know how to read a
 real post; switching the parent `gateway/data-cards`'s Source to
 Collection leaves it pointed at content that renders nothing at all for
-a model record. Rather than requiring a site owner to manually delete
-three post blocks and hand-insert field ones every time they switch,
-`edit.js` does it for them: two `useEffect`s, keyed off a `useRef`
-tracking the *previous* `sourceType`, detect an actual transition (never
-firing just from loading an already-configured instance -- the ref's
-initial value always matches the current `sourceType`, so a merely
--opened block's own deliberately-authored template is never touched) and
-call `replaceInnerBlocks()`:
+a model record. And once in Collection mode, switching to a *different*
+Collection can leave the template with more `gateway/card-field-text`
+blocks than the new model has fields for (a template built for a
+3-field model, pointed at one with only 1), each extra one now
+referencing a `fieldKey` that doesn't exist at all. Rather than
+requiring a site owner to manually fix the template by hand every time
+either happens, `edit.js` does it for them via `replaceInnerBlocks()` --
+a full reset each time, discarding whatever was there before, never a
+merge: the whole point is to never leave behind blocks the current
+selection can't back up.
+
+Two `useEffect`s drive this. The first watches both `sourceType` AND
+`collection` (via two `useRef`s tracking their *previous* values) and
+detects either kind of real change -- never firing just from loading an
+already-configured instance, since both refs' initial values always
+match the current attributes, so a merely-opened block's own
+deliberately-authored template is never touched:
 
 - **Collection → Post Type**: back to `TEMPLATE` itself (the same
   Featured Image/Title/Excerpt starter a brand-new block gets).
-- **Post Type → Collection**: the first three of the newly-chosen
-  Collection's own available fields (`COLLECTION_FIELD_COUNT`, using
-  the same `useAvailableColumns( '', { sourceType: 'collection',
-  collection } )` call every other field-picker in this plugin already
-  uses) become three `gateway/card-field-text` blocks, one per field, via
-  `createBlock( 'gateway/card-field-text', { fieldKey } )`. Fewer than
-  three if the Collection doesn't have that many -- always at least one,
-  since `get_columns_for_collection()`'s own leading synthetic `id`
-  column means there's never genuinely nothing to offer. If no Collection
-  is chosen yet (or its fields are still loading), the swap is deferred
-  -- a second effect, watching `collectionFields`/`isLoadingCollectionFields`,
-  performs it once a real field list actually arrives, rather than
-  replacing the template with an empty one the moment Source flips before
-  a model has even been picked.
+- **Post Type → Collection, OR Collection → a *different* Collection**:
+  queues a rebuild (`isCollectionSwapPending`), performed by the second
+  effect once that Collection's own fields are actually known.
 
-This only ever touches the SOURCE TYPE transition itself -- switching
-which specific Collection is selected while already in Collection mode
-does *not* re-trigger it (an already-placed `gateway/card-field-text`
-block keeps whatever `fieldKey` it has; if that key doesn't exist on the
-newly-chosen model, its own Inspector already surfaces a "no longer
-exists" warning -- see that block's own section above -- and its
-`render.php` already renders nothing for an invalid key, so this degrades
-safely rather than requiring a second auto-swap layer).
+The second effect -- watching `collectionFields`/`isLoadingCollectionFields`
+(`useAvailableColumns( '', { sourceType: 'collection', collection } )`,
+the same call every other field-picker in this plugin already uses) --
+performs the queued rebuild once the fetch resolves: the first
+`COLLECTION_FIELD_COUNT` (3) of the *current* Collection's own available
+fields become that many `gateway/card-field-text` blocks, one per field,
+via `createBlock( 'gateway/card-field-text', { fieldKey } )`. Fewer than
+three if the Collection doesn't have that many -- always at least one,
+since `get_columns_for_collection()`'s own leading synthetic `id` column
+means there's never genuinely nothing to offer -- and *exactly* however
+many the current model actually has, sliced fresh from its own field
+list every time a rebuild runs, so switching to a smaller model never
+leaves the larger model's extra blocks behind. If no Collection is
+chosen yet (or its fields are still loading when the queue is set), the
+rebuild simply waits -- re-evaluated whenever `collectionFields`/
+`isLoadingCollectionFields` next change -- rather than replacing the
+template with an empty one before a model has even been picked.
 
 ### One query, three siblings
 

@@ -144,46 +144,65 @@ export default function Edit( {
 		collection: isCollection ? collection : '',
 	} );
 
-	// Switching the parent's Source between Post Type and Collection
-	// leaves this card's own authored content pointed at blocks that make
-	// no sense for the new source (Post Title/Featured Image/Excerpt all
-	// need a real WP post; gateway/card-field-text needs a Collection
-	// record) -- these two effects replace it on that transition: back to
-	// TEMPLATE's own default shape for Post Type, or the first
-	// COLLECTION_FIELD_COUNT of the newly-chosen Collection's own fields
-	// (fewer if it doesn't have that many) for Collection.
+	// Two things leave this card's own authored content pointed at blocks
+	// that no longer make sense: switching the parent's Source between
+	// Post Type and Collection (Post Title/Featured Image/Excerpt all need
+	// a real WP post; gateway/card-field-text needs a Collection record),
+	// and -- while already in Collection mode -- switching which
+	// Collection is selected (a `fieldKey` valid on the old model may not
+	// exist at all on the new one, and a template built for a 3-field
+	// model would leave stale extra blocks behind against a model with
+	// only 1). Either kind of change queues the same rebuild: back to
+	// TEMPLATE's own default shape for Post Type, or a fresh
+	// COLLECTION_FIELD_COUNT-block (fewer if the model doesn't have that
+	// many) template built from the *current* Collection's own fields.
+	// Always a full `replaceInnerBlocks()`, discarding whatever was there
+	// before -- a deliberate reset, not a merge, since the whole point is
+	// never leaving behind blocks the new selection can't back up.
 	//
-	// Keyed off a ref, not state, specifically so this only ever fires on
-	// a REAL, editor-observed change of `sourceType` during THIS editing
-	// session -- never retroactively just from loading an already
-	// -configured instance (the ref's initial value always matches the
-	// current `sourceType`, so the "did it actually change" check below
-	// is trivially false on mount, and content already saved with a
+	// Keyed off refs, not state, specifically so this only ever fires on
+	// a REAL, editor-observed change during THIS editing session -- never
+	// retroactively just from loading an already-configured instance
+	// (both refs' initial values always match the current sourceType/
+	// collection, so the "did either actually change" check below is
+	// trivially false on mount, and content already saved with a
 	// deliberately-authored template is never touched just by opening it).
 	const previousSourceTypeRef = useRef( sourceType );
+	const previousCollectionRef = useRef( collection );
 	const [ isCollectionSwapPending, setIsCollectionSwapPending ] = useState( false );
 
 	useEffect( () => {
 		const previousSourceType = previousSourceTypeRef.current;
+		const previousCollection = previousCollectionRef.current;
 		previousSourceTypeRef.current = sourceType;
+		previousCollectionRef.current = collection;
 
-		if ( previousSourceType === sourceType ) {
+		const sourceTypeChanged = previousSourceType !== sourceType;
+		const collectionChanged = previousCollection !== collection;
+
+		if ( ! sourceTypeChanged && ! collectionChanged ) {
 			return;
 		}
 
 		if ( 'collection' === sourceType ) {
-			// The Collection's own fields may still be loading, or a
-			// Collection may not even be chosen yet -- deferred to the
-			// effect below, which watches for that to resolve.
+			// Whether this is a fresh switch INTO Collection or a
+			// different Collection chosen while already here, either way
+			// the template needs rebuilding against whichever fields are
+			// actually available now -- deferred to the effect below,
+			// which waits for that to resolve.
 			setIsCollectionSwapPending( true );
-		} else {
+		} else if ( sourceTypeChanged ) {
+			// Only restore the Post Type template on an actual mode
+			// switch -- `collection` has no bearing once sourceType is
+			// back to 'postType', so a lingering change to it (e.g. from
+			// before switching away) must never re-trigger this.
 			replaceInnerBlocks(
 				clientId,
 				TEMPLATE.map( ( [ name, attrs ] ) => createBlock( name, attrs || {} ) ),
 				false
 			);
 		}
-	}, [ sourceType, clientId, replaceInnerBlocks ] );
+	}, [ sourceType, collection, clientId, replaceInnerBlocks ] );
 
 	useEffect( () => {
 		if ( ! isCollectionSwapPending || ! collection || isLoadingCollectionFields ) {
@@ -193,7 +212,10 @@ export default function Edit( {
 		// Always led by the synthetic `id` column (Column_Registry::
 		// get_columns_for_collection()), so a Collection with zero of its
 		// own user-defined fields still gets at least one -- `id` -- rather
-		// than an empty template.
+		// than an empty template. Sliced fresh from *this* Collection's
+		// own current field list every time, so a rebuild triggered by
+		// switching models never carries over more blocks than the new
+		// one actually has fields for.
 		const fieldKeys = collectionFields
 			.slice( 0, COLLECTION_FIELD_COUNT )
 			.map( ( column ) => column.key );
