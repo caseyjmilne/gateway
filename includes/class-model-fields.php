@@ -38,8 +38,8 @@
  * of field arrays -- deliberately never split into parallel arrays keyed
  * by property (no {names: [...], types: [...]} shape): two fields simply
  * sit as neighbors in the same array, each one a plain {name, label,
- * type}. This is also exactly the shape a model's own getFillable()
- * override needs: array_column( getFields(), 'name' ).
+ * type, position}. This is also exactly the shape a model's own
+ * getFillable() override needs: array_column( getFields(), 'name' ).
  *
  * `label` is purely a display string -- unlike name/type, changing it
  * never touches the schema (no column to rename, nothing to migrate):
@@ -50,6 +50,14 @@
  * (Illuminate\Support\Str::headline() -- "first_name" becomes "First
  * Name"), including for a row recorded before this column existed (see
  * all()'s own fallback for that).
+ *
+ * `position` orders the array -- all() always queries ORDER BY position
+ * (id as a tiebreak, so a table full of legacy rows that all share
+ * position 0 still sorts by insertion order, same as before this column
+ * existed). A new field is appended (current max position + 1); nothing
+ * else ever changes another field's position except reorder(), which
+ * exists for exactly that: a straight metadata write, no migration,
+ * whatever order the Field Editor's own sortable list says.
  *
  * @package Gateway
  */
@@ -102,6 +110,9 @@ class Model_Fields {
 					// existing rows.
 					$table->string( 'label' )->nullable();
 					$table->string( 'type' );  // One of Field_Type_Registry::keys().
+					// Sort order for the Field Editor's own sortable list --
+					// see this class's own docblock and reorder().
+					$table->unsignedInteger( 'position' )->default( 0 );
 					$table->timestamps();
 
 					// Belt-and-suspenders alongside validate()'s own uniqueness
@@ -128,6 +139,18 @@ class Model_Fields {
 				}
 			);
 		}
+
+		// Same idea for position -- every existing row defaults to 0 (its
+		// DEFAULT), so they all tie and fall back to id (insertion order)
+		// in all()'s own ORDER BY, exactly the order they were already in.
+		if ( ! $schema->hasColumn( self::TABLE, 'position' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->unsignedInteger( 'position' )->default( 0 );
+				}
+			);
+		}
 	}
 
 	/**
@@ -142,28 +165,32 @@ class Model_Fields {
 
 	/**
 	 * Reads a model's fields straight from the gateway_fields table --
-	 * the one source of truth (see this class's own docblock). Ordered
-	 * by id (insertion order), matching the flat-array shape a model's
-	 * own generated getFields() prints fields in.
+	 * the one source of truth (see this class's own docblock). Ordered by
+	 * position (id as a tiebreak -- see this class's own docblock for
+	 * why), so the array's own order always matches the Field Editor's
+	 * own sortable list, and that's what a model's own generated
+	 * getFields() prints fields in.
 	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{name:string,label:string,type:string}>
+	 * @return array<int,array{name:string,label:string,type:string,position:int}>
 	 */
 	public static function all( $class_name ) {
 		return self::table()
 			->where( 'model', $class_name )
+			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'name', 'label', 'type' ) )
+			->get( array( 'name', 'label', 'type', 'position' ) )
 			->map(
 				function ( $row ) {
 					return array(
-						'name'  => $row->name,
+						'name'     => $row->name,
 						// A row recorded before the label column existed
 						// (or saved with one left blank) has no label of
 						// its own yet -- fall back to the same
 						// auto-derived default validate() would give it.
-						'label' => ! empty( $row->label ) ? $row->label : self::default_label( $row->name ),
-						'type'  => $row->type,
+						'label'    => ! empty( $row->label ) ? $row->label : self::default_label( $row->name ),
+						'type'     => $row->type,
+						'position' => (int) $row->position,
 					);
 				}
 			)
@@ -214,8 +241,9 @@ class Model_Fields {
 	 * @param string $label      Display label; blank defaults to a
 	 *                            title-cased version of the (sanitized)
 	 *                            name -- see this class's own docblock.
-	 * @return array{name:string,label:string,type:string}|\WP_Error The
-	 *              added field (with its sanitized name) on success.
+	 * @return array{name:string,label:string,type:string,position:int}|\WP_Error
+	 *              The added field (with its sanitized name) on success --
+	 *              always appended after every existing field.
 	 */
 	public static function add( $class_name, $name, $type, $label = '' ) {
 		$model = self::require_model( $class_name );
@@ -247,12 +275,19 @@ class Model_Fields {
 			return $migration_result;
 		}
 
+		// Always appended after every existing field -- max() returns null
+		// when this is the model's first field, which is exactly position
+		// 0, not "null + 1".
+		$max_position       = self::table()->where( 'model', $class_name )->max( 'position' );
+		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
+
 		self::table()->insert(
 			array(
 				'model'      => $class_name,
 				'name'       => $field['name'],
 				'label'      => $field['label'],
 				'type'       => $field['type'],
+				'position'   => $field['position'],
 				'created_at' => current_time( 'mysql' ),
 				'updated_at' => current_time( 'mysql' ),
 			)
@@ -288,7 +323,7 @@ class Model_Fields {
 	 * @param string $label        New display label; blank defaults to a
 	 *                              title-cased version of the (sanitized)
 	 *                              name -- see this class's own docblock.
-	 * @return array{name:string,label:string,type:string}|\WP_Error
+	 * @return array{name:string,label:string,type:string,position:int}|\WP_Error
 	 */
 	public static function update( $class_name, $current_name, $name, $type, $label = '' ) {
 		$model = self::require_model( $class_name );
@@ -310,6 +345,10 @@ class Model_Fields {
 		if ( is_wp_error( $new_field ) ) {
 			return $new_field;
 		}
+
+		// update() never itself reorders a field -- see reorder() for
+		// that -- so the position simply carries over unchanged.
+		$new_field['position'] = $old_field['position'];
 
 		$name_changed  = $old_field['name'] !== $new_field['name'];
 		$type_changed  = $old_field['type'] !== $new_field['type'];
@@ -494,6 +533,70 @@ class Model_Fields {
 		}
 
 		return Model_Builder::rewrite_model_file( $class_name, $model->getTable(), self::all( $class_name ) );
+	}
+
+	/**
+	 * Reorders every one of a model's fields at once, driven by the Field
+	 * Editor's own sortable list -- a pure metadata write (there's no
+	 * column to move, nothing to migrate), the same "no schema
+	 * consequence" territory a label-only update() already occupies.
+	 *
+	 * @param string   $class_name Model class name.
+	 * @param string[] $names      Every one of the model's field names, in
+	 *                              the desired new order -- must be an
+	 *                              exact permutation of its current
+	 *                              fields, no more and no fewer.
+	 * @return array<int,array{name:string,label:string,type:string,position:int}>|\WP_Error
+	 *              The fields in their new order.
+	 */
+	public static function reorder( $class_name, array $names ) {
+		$model = self::require_model( $class_name );
+
+		if ( is_wp_error( $model ) ) {
+			return $model;
+		}
+
+		$existing = array_column( self::all( $class_name ), 'name' );
+
+		$sorted_existing = $existing;
+		$sorted_new      = array_values( $names );
+		sort( $sorted_existing );
+		sort( $sorted_new );
+
+		if ( $sorted_existing !== $sorted_new ) {
+			return new \WP_Error(
+				'gateway_field_order_mismatch',
+				__( 'The new order must include exactly this model\'s existing fields, no more and no fewer.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! Database_Connection::is_healthy() ) {
+			return self::unavailable_error();
+		}
+
+		foreach ( array_values( $names ) as $position => $name ) {
+			self::table()
+				->where( 'model', $class_name )
+				->where( 'name', $name )
+				->update(
+					array(
+						'position'   => $position,
+						'updated_at' => current_time( 'mysql' ),
+					)
+				);
+		}
+
+		$reordered = self::all( $class_name );
+
+		// Not surfaced as a warning here (same reasoning as remove()) --
+		// the reorder itself already succeeded regardless, and a stale
+		// file here is purely cosmetic (getFields()'s *order*, not its
+		// contents) until the next field change or an explicit resync()
+		// heals it.
+		Model_Builder::rewrite_model_file( $class_name, $model->getTable(), $reordered );
+
+		return $reordered;
 	}
 
 	/**

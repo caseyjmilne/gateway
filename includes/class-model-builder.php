@@ -590,13 +590,16 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	 * Gateway\\Model_Fields, which also generates and runs the migration
 	 * for each field's own real column. Printed here as a literal array
 	 * (not a reference back into Model_Fields) every time a field is
-	 * added, edited, or removed, so this is always the actual, current,
-	 * inspectable list. A flat array of field arrays (never separated
-	 * into parallel {names: [...], types: [...]} arrays) -- two fields
-	 * simply sit as neighbors in the same array. `label` is a display
-	 * string only -- it never affects the real column.
+	 * added, edited, removed, or reordered, so this is always the actual,
+	 * current, inspectable list, in the same order the Field Editor's own
+	 * sortable list has them in. A flat array of field arrays (never
+	 * separated into parallel {names: [...], types: [...]} arrays) -- two
+	 * fields simply sit as neighbors in the same array. `label` is a
+	 * display string only -- it never affects the real column; `position`
+	 * is what determined this array's own order, kept here only for
+	 * reference (the order itself is what actually matters).
 	 *
-	 * @return array<int,array{name:string,label:string,type:string}>
+	 * @return array<int,array{name:string,label:string,type:string,position:int}>
 	 */
 	public static function getFields() {
 		return {$fields_literal};
@@ -621,12 +624,17 @@ PHP;
 	/**
 	 * Renders a flat field array as PHP source -- e.g.
 	 * "array(\n\t\t\tarray( 'name' => 'title', 'label' => 'Title', 'type'
-	 * => 'text' ),\n\t\t)" -- for printing directly into getFields()'s own
-	 * return statement in model_template(). Each name/label/type goes
-	 * through var_export() so a value containing a quote or backslash
-	 * still produces valid, safely-escaped PHP source.
+	 * => 'text', 'position' => 0 ),\n\t\t)" -- for printing directly into
+	 * getFields()'s own return statement in model_template(). The array's
+	 * own element order (not the 'position' value printed alongside each
+	 * one) is what getFields() -- and everything reading it -- actually
+	 * treats as the order; $fields is expected to already be sorted
+	 * (Model_Fields::all() always returns it that way). Each name/label/
+	 * type goes through var_export() so a value containing a quote or
+	 * backslash still produces valid, safely-escaped PHP source.
 	 *
-	 * @param array $fields Flat array of {name, label, type} field arrays.
+	 * @param array $fields Flat array of {name, label, type, position}
+	 *                       field arrays, already in display order.
 	 * @return string PHP source for the array literal (no trailing
 	 *                 semicolon -- the caller's own "return ...;" adds it).
 	 */
@@ -638,7 +646,7 @@ PHP;
 		$lines = array();
 
 		foreach ( $fields as $field ) {
-			$lines[] = "\t\t\tarray( 'name' => " . var_export( $field['name'], true ) . ", 'label' => " . var_export( $field['label'], true ) . ", 'type' => " . var_export( $field['type'], true ) . ' ),';
+			$lines[] = "\t\t\tarray( 'name' => " . var_export( $field['name'], true ) . ", 'label' => " . var_export( $field['label'], true ) . ", 'type' => " . var_export( $field['type'], true ) . ", 'position' => " . var_export( $field['position'], true ) . ' ),';
 		}
 
 		return "array(\n" . implode( "\n", $lines ) . "\n\t\t)";

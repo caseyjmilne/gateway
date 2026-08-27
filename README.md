@@ -2369,19 +2369,21 @@ add/rename/change-type/drop all worked with no `doctrine/dbal` involved),
 unlike older Laravel versions that needed it for column modification.
 
 **Storage: a real `gateway_fields` table, not an option.** Every field
-is a row (`model`, `name`, `label`, `type`, unique on `model`+`name`) in
-its own table -- created by `Model_Fields::ensure_table()`, called once
-on plugin activation and defensively before every read/write in that
-class too (covers a site upgrading from a version of this plugin that
-predates the table, since WordPress never re-fires the activation hook
-on its own; also handles a table that exists but predates the `label`
-column specifically, adding it via `ALTER TABLE`). This table, not
-anything cached in memory or baked into a model's own code, is the one
-source of truth: `Model_Fields::all( $class_name )` always queries it
-fresh, ordered by `id` (insertion order) into the same flat array of
-`{name, label, type}` field arrays a model's own `getFillable()` needs --
-deliberately never split into parallel `{names: [...], types: [...]}`
-arrays; two fields simply sit as neighbors in the same array.
+is a row (`model`, `name`, `label`, `type`, `position`, unique on
+`model`+`name`) in its own table -- created by `Model_Fields::ensure_table()`,
+called once on plugin activation and defensively before every read/write
+in that class too (covers a site upgrading from a version of this
+plugin that predates the table, since WordPress never re-fires the
+activation hook on its own; also handles a table that exists but
+predates the `label`/`position` columns specifically, adding each via
+`ALTER TABLE`). This table, not anything cached in memory or baked into
+a model's own code, is the one source of truth: `Model_Fields::all(
+$class_name )` always queries it fresh, ordered by `position` (`id` as a
+tiebreak -- see "Fields are a sortable list" below) into the same flat
+array of `{name, label, type, position}` field arrays a model's own
+`getFillable()` needs -- deliberately never split into parallel
+`{names: [...], types: [...]}` arrays; two fields simply sit as
+neighbors in the same array.
 
 **`getFillable()`, overridden -- not a `$fillable` property, and not a
 live reference either.** Per the request that shaped this: rather than
@@ -2398,8 +2400,8 @@ fresh from the `gateway_fields` table every time `add()`/`update()`/
 ```php
 public static function getFields() {
 	return array(
-		array( 'name' => 'subject', 'label' => 'Subject', 'type' => 'text' ),
-		array( 'name' => 'priority', 'label' => 'Priority', 'type' => 'number' ),
+		array( 'name' => 'subject', 'label' => 'Subject', 'type' => 'text', 'position' => 0 ),
+		array( 'name' => 'priority', 'label' => 'Priority', 'type' => 'number', 'position' => 1 ),
 	);
 }
 
@@ -2477,15 +2479,40 @@ Title's cousin (the table itself) isn't preserved -- a rename starting
 completely fresh, rather than a rename silently generating a whole
 cascade of new field migrations on the new table on your behalf.
 
+**Fields are a sortable list, via a `position` column -- also never a
+schema change.** Every row also has a `position`; `all()` always queries
+`ORDER BY position` (`id` as a tiebreak, so a table full of rows from
+before this column existed -- which all default to `0` -- still sorts by
+insertion order, exactly as before). A new field is appended (current
+max `position` + 1); nothing else changes another field's `position`
+except the new `Model_Fields::reorder( $class_name, $names )`, which
+takes every one of a model's field names in the desired new order,
+rejects anything that isn't an exact permutation of the model's current
+fields (`gateway_field_order_mismatch`), and -- like a label-only edit --
+writes straight to `gateway_fields` and rewrites the model file with no
+migration at all. `position` rides along in the field shape everywhere
+(`{name, label, type, position}`, including the literal array printed
+into a model's own `getFields()`), but it's the *array's own element
+order* that everything downstream (`getFillable()`, the Field Editor,
+`RecordForm`/`RecordsCrud`) actually treats as meaningful.
+
 `Model_Field_REST_Controller`: `GET`/`POST /gateway/v1/models/<class>/fields`,
-`PUT`/`DELETE /gateway/v1/models/<class>/fields/<field_name>` -- the URL
-segment is named `field_name`, not `name`, specifically so it never
-collides with the request body's own `name` (the field's *current* name,
-from the URL, versus the *new* name being saved, from the body).
-`admin-app/src/components/FieldEditor.jsx` is the UI: an editable table
-of existing fields (each row swaps to an inline edit form) plus an "Add
-Field" form below it, seeded from the model detail response's own
-`fields` array (`Model_REST_Controller::describe_model()`) so the page
+`PUT`/`DELETE /gateway/v1/models/<class>/fields/<field_name>`,
+`PUT /gateway/v1/models/<class>/fields-order` (body: `{ order: [...] }`) --
+the URL segment on the second route is named `field_name`, not `name`,
+specifically so it never collides with the request body's own `name`
+(the field's *current* name, from the URL, versus the *new* name being
+saved, from the body). `fields-order` is its own sibling route rather
+than nested under `fields` (e.g. not `/fields/order`) -- nesting it
+would put it in direct conflict with `/fields/<field_name>`, which would
+just as happily match the literal string "order" as a field name.
+`admin-app/src/components/FieldEditor.jsx` is the UI: an editable,
+drag-to-reorder table of existing fields (each row swaps to an inline
+edit form; dragging one anywhere on the row -- not just the "⠿" handle
+cell -- calls `fields-order` via native HTML5 drag-and-drop, no library)
+plus an "Add Field" form below it, seeded from the model detail
+response's own `fields` array (`Model_REST_Controller::describe_model()`)
+so the page
 doesn't need a second request just to show them.
 
 ### `Field_Type_Registry` -- one class per field type, controlling its own attributes

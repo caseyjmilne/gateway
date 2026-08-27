@@ -26,12 +26,19 @@ class Model_Field_REST_Controller {
 	 * POST   /gateway/v1/models/<class>/fields
 	 * PUT    /gateway/v1/models/<class>/fields/<field_name>
 	 * DELETE /gateway/v1/models/<class>/fields/<field_name>
+	 * PUT    /gateway/v1/models/<class>/fields-order
 	 *
 	 * The URL segment is named `field_name`, not `name`, specifically so
 	 * it never collides with the request body's own `name` param on the
 	 * PUT route (the field's *current* name, from the URL, versus the
 	 * *new* name being saved, from the body -- get_param() would return
 	 * whichever one wins if both used the same key).
+	 *
+	 * `fields-order` is its own route, a sibling of `fields` rather than
+	 * nested under it (e.g. not `/fields/order`) -- nesting it would put
+	 * it in direct conflict with `/fields/(?P<field_name>...)` above,
+	 * which would just as happily match the literal string "order" as a
+	 * field name.
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -66,6 +73,25 @@ class Model_Field_REST_Controller {
 					'methods'             => \WP_REST_Server::DELETABLE,
 					'callback'            => array( __CLASS__, 'remove_field' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/models/(?P<class>[A-Za-z0-9_]+)/fields-order',
+			array(
+				array(
+					'methods'             => \WP_REST_Server::EDITABLE,
+					'callback'            => array( __CLASS__, 'reorder_fields' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+					'args'                => array(
+						'order' => array(
+							'required' => true,
+							'type'     => 'array',
+							'items'    => array( 'type' => 'string' ),
+						),
+					),
 				),
 			)
 		);
@@ -174,5 +200,22 @@ class Model_Field_REST_Controller {
 		}
 
 		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/**
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function reorder_fields( \WP_REST_Request $request ) {
+		$result = Model_Fields::reorder(
+			$request->get_param( 'class' ),
+			(array) $request->get_param( 'order' )
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( $result );
 	}
 }

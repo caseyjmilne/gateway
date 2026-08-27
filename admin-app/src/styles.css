@@ -30,6 +30,17 @@
 	margin-left: 6px;
 }
 
+.gateway-admin-app .gateway-field-editor-drag-col {
+	width: 1%;
+	cursor: grab;
+	color: #787c82;
+	text-align: center;
+}
+
+.gateway-admin-app .gateway-field-editor-row-dragging {
+	opacity: 0.5;
+}
+
 .gateway-admin-app .gateway-records-crud table td:last-child {
 	white-space: nowrap;
 	width: 1%;

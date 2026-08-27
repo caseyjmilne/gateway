@@ -19,6 +19,15 @@ import useFieldTypes from '../hooks/useFieldTypes.js';
  * it alone never runs a migration. Left blank, the server derives one
  * from the name automatically (e.g. "first_name" -> "First Name").
  *
+ * Fields are a sortable list -- drag a row (anywhere on it, not just the
+ * "⠿" handle cell) to reorder it, via native HTML5 drag-and-drop rather
+ * than a library, and the same "reorder is metadata-only" reasoning as
+ * label: PUT .../fields-order takes the whole new name order and never
+ * runs a migration either (Gateway\Model_Fields::reorder()). The drop
+ * updates local state immediately (so the list doesn't visually snap
+ * back while the request is in flight) and reverts it if the request
+ * fails.
+ *
  * The type dropdown is built from useFieldTypes() (Gateway\Field_Type_Registry,
  * via GET /field-types) rather than a hardcoded list here, so a future
  * field type shows up automatically.
@@ -44,7 +53,11 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 
 	const [ deletingName, setDeletingName ] = useState( null );
 
+	const [ draggedName, setDraggedName ] = useState( null );
+	const [ reordering, setReordering ] = useState( false );
+
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/fields`;
+	const dragEnabled = null === editingName && null === deletingName;
 
 	const handleAdd = async ( event ) => {
 		event.preventDefault();
@@ -129,6 +142,64 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 		}
 	};
 
+	const handleDragStart = ( name ) => ( event ) => {
+		setDraggedName( name );
+		event.dataTransfer.effectAllowed = 'move';
+	};
+
+	const handleDragOver = ( event ) => {
+		// A drop target must cancel dragover for onDrop to ever fire --
+		// standard (if easy to forget) HTML5 drag-and-drop requirement.
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+	};
+
+	const handleDrop = ( targetName ) => async ( event ) => {
+		event.preventDefault();
+
+		const fromName = draggedName;
+		setDraggedName( null );
+
+		if ( ! fromName || fromName === targetName ) {
+			return;
+		}
+
+		const previousFields = fields;
+		const fromIndex = previousFields.findIndex(
+			( field ) => field.name === fromName
+		);
+		const toIndex = previousFields.findIndex(
+			( field ) => field.name === targetName
+		);
+
+		if ( -1 === fromIndex || -1 === toIndex ) {
+			return;
+		}
+
+		const reorderedFields = [ ...previousFields ];
+		const [ moved ] = reorderedFields.splice( fromIndex, 1 );
+		reorderedFields.splice( toIndex, 0, moved );
+
+		setError( '' );
+		setReordering( true );
+		setFields( reorderedFields ); // optimistic -- reverted below on failure
+
+		try {
+			const saved = await apiFetch( `${ basePath }-order`, {
+				method: 'PUT',
+				body: JSON.stringify( {
+					order: reorderedFields.map( ( field ) => field.name ),
+				} ),
+			} );
+			setFields( saved );
+		} catch ( err ) {
+			setFields( previousFields );
+			setError( err.message );
+		} finally {
+			setReordering( false );
+		}
+	};
+
 	return (
 		<div className="gateway-field-editor">
 			<h3>Fields</h3>
@@ -136,7 +207,8 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 				Fields become this model&rsquo;s mass-assignable attributes
 				-- each one is a real column on <code>{ modelClass }</code>
 				&rsquo;s own table. Adding, editing, or removing one runs a
-				migration right away.
+				migration right away; dragging a row to reorder it
+				doesn&rsquo;t.
 			</p>
 
 			{ error && (
@@ -148,9 +220,10 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 			{ fields.length === 0 ? (
 				<p className="description">No fields yet.</p>
 			) : (
-				<table className="widefat striped">
+				<table className="widefat striped gateway-field-editor-table">
 					<thead>
 						<tr>
+							<th className="gateway-field-editor-drag-col"></th>
 							<th>Name</th>
 							<th>Label</th>
 							<th>Type</th>
@@ -161,7 +234,7 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 						{ fields.map( ( field ) =>
 							editingName === field.name ? (
 								<tr key={ field.name }>
-									<td colSpan={ 4 }>
+									<td colSpan={ 5 }>
 										<form
 											onSubmit={ handleSaveEdit }
 											className="gateway-field-editor-row"
@@ -229,7 +302,30 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 									</td>
 								</tr>
 							) : (
-								<tr key={ field.name }>
+								<tr
+									key={ field.name }
+									draggable={ dragEnabled }
+									onDragStart={ handleDragStart(
+										field.name
+									) }
+									onDragOver={ dragEnabled ? handleDragOver : undefined }
+									onDrop={
+										dragEnabled
+											? handleDrop( field.name )
+											: undefined
+									}
+									className={
+										draggedName === field.name
+											? 'gateway-field-editor-row-dragging'
+											: ''
+									}
+								>
+									<td
+										className="gateway-field-editor-drag-col"
+										title="Drag to reorder"
+									>
+										⠿
+									</td>
 									<td>
 										<code>{ field.name }</code>
 									</td>
@@ -245,7 +341,8 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 											className="button"
 											onClick={ () => startEdit( field ) }
 											disabled={
-												null !== deletingName
+												null !== deletingName ||
+												reordering
 											}
 										>
 											Edit
@@ -257,7 +354,8 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 												handleDelete( field.name )
 											}
 											disabled={
-												deletingName === field.name
+												deletingName === field.name ||
+												reordering
 											}
 										>
 											{ deletingName === field.name
