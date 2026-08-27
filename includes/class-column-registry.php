@@ -162,6 +162,61 @@ class Column_Registry {
 	}
 
 	/**
+	 * The `get_columns()` counterpart for a Collection (Gateway model)
+	 * data source, in the same `{key, label, type, isFilterable,
+	 * facetType}` shape -- so `gateway/datatable`'s own column-validation
+	 * logic (render.php) and its Columns/Facets panels can treat a model's
+	 * fields as just another kind of column, without needing to know
+	 * where they actually came from.
+	 *
+	 * Always leads with a synthetic `id` column (every generated model has
+	 * a real `id` primary key, but it's never one of Model_Fields' own
+	 * user-defined fields -- `id` is reserved, see Model_Fields::
+	 * RESERVED_NAMES), the same way `get_columns()` always leads with a
+	 * post type's own `ID`.
+	 *
+	 * No facet support yet for any of these (`isFilterable` is always
+	 * `false`): `Facet_Query` -- what actually applies a facet to a query
+	 * -- is built entirely around `WP_Query` (post meta, taxonomies, core
+	 * post columns); wiring an equivalent for Eloquent queries is real,
+	 * separate work, not yet done. `gateway/datatable`'s own Facets panel
+	 * already only offers `isFilterable` columns, so this alone is enough
+	 * to keep it from offering anything broken for a Collection -- no
+	 * caller needs its own extra check for source type.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array[] Column definitions, or [] if $class_name isn't a
+	 *                  real, registered model.
+	 */
+	public static function get_columns_for_collection( $class_name ) {
+		if ( ! Model_Registry::has( $class_name ) || ! class_exists( $class_name ) ) {
+			return array();
+		}
+
+		$columns = array(
+			array(
+				'key'          => 'id',
+				'label'        => __( 'ID', 'gateway' ),
+				'type'         => 'model_id',
+				'isFilterable' => false,
+				'facetType'    => array(),
+			),
+		);
+
+		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			$columns[] = array(
+				'key'          => $field['name'],
+				'label'        => $field['label'],
+				'type'         => 'model_field',
+				'isFilterable' => false,
+				'facetType'    => array(),
+			);
+		}
+
+		return $columns;
+	}
+
+	/**
 	 * Clear the cached column list for a post type (e.g. after registering
 	 * new meta at runtime and wanting it to show up immediately).
 	 *

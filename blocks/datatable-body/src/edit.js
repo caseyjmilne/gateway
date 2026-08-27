@@ -55,7 +55,9 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const { __unstableMarkNextChangeAsNotPersistent } =
 		useDispatch( blockEditorStore );
 
+	const sourceType = context[ 'gateway/datatable/sourceType' ] || 'postType';
 	const postType = context[ 'gateway/datatable/postType' ] || 'post';
+	const collection = context[ 'gateway/datatable/collection' ] || '';
 	const limit = context[ 'gateway/datatable/limit' ] || 0;
 	const pageSize = context[ 'gateway/datatable/pageSize' ] || 10;
 	const columns = context[ 'gateway/datatable/columns' ] || [];
@@ -65,14 +67,16 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	// above. Memoized so it only changes (and only triggers a refetch)
 	// when the underlying values genuinely do, not on every render.
 	const previewAttributes = useMemo(
-		() => ( { postType, limit, pageSize, columns, facets } ),
+		() => ( { sourceType, postType, collection, limit, pageSize, columns, facets } ),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[ postType, limit, pageSize, JSON.stringify( columns ), JSON.stringify( facets ) ]
+		[ sourceType, postType, collection, limit, pageSize, JSON.stringify( columns ), JSON.stringify( facets ) ]
 	);
 
 	useEffect( () => {
 		const isSynced =
+			attributes.sourceType === sourceType &&
 			attributes.postType === postType &&
+			attributes.collection === collection &&
 			attributes.limit === limit &&
 			attributes.pageSize === pageSize &&
 			JSON.stringify( attributes.columns ) === JSON.stringify( columns ) &&
@@ -87,11 +91,13 @@ export default function Edit( { attributes, setAttributes, context } ) {
 			// state of -- the real, undoable source of truth is the parent's
 			// own attributes, unaffected by this).
 			__unstableMarkNextChangeAsNotPersistent( { history: 'ignore' } );
-			setAttributes( { postType, limit, pageSize, columns, facets } );
+			setAttributes( { sourceType, postType, collection, limit, pageSize, columns, facets } );
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
+		sourceType,
 		postType,
+		collection,
 		limit,
 		pageSize,
 		JSON.stringify( columns ),
@@ -100,7 +106,9 @@ export default function Edit( { attributes, setAttributes, context } ) {
 
 	// Re-run whenever the rendered preview could change shape/content.
 	useDataTableInit( previewRef, [
+		sourceType,
 		postType,
+		collection,
 		limit,
 		pageSize,
 		JSON.stringify( columns ),

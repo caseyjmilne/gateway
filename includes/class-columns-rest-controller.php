@@ -28,6 +28,14 @@ class Columns_REST_Controller {
 
 	/**
 	 * GET /gateway/v1/columns/<post_type>
+	 * GET /gateway/v1/columns-for-collection/<class>
+	 *
+	 * Two separate routes, not one with a type param, because they can't
+	 * share a `sanitize_callback`: `sanitize_key()` (needed for a post
+	 * type slug) lowercases everything, which would silently corrupt a
+	 * model's real, case-sensitive class name (e.g. "BlogPost" ->
+	 * "blogpost", not a real registered class) before it ever reached
+	 * Column_Registry.
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -44,6 +52,16 @@ class Columns_REST_Controller {
 						'sanitize_callback' => 'sanitize_key',
 					),
 				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/columns-for-collection/(?P<class>[A-Za-z0-9_]+)',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'get_columns_for_collection' ),
+				'permission_callback' => array( __CLASS__, 'collection_permissions_check' ),
 			)
 		);
 	}
@@ -96,5 +114,43 @@ class Columns_REST_Controller {
 		}
 
 		return rest_ensure_response( Column_Registry::get_columns( $post_type ) );
+	}
+
+	/**
+	 * Models are an admin-only concept throughout this plugin (every other
+	 * Models/Fields/Relationships route gates on manage_options) -- same
+	 * gate here, rather than the post-type route's own per-post-type
+	 * edit_posts capability, which has no real model-specific equivalent.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public static function collection_permissions_check() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return new \WP_Error(
+				'gateway_forbidden',
+				__( 'You are not allowed to view columns for this model.', 'gateway' ),
+				array( 'status' => rest_authorization_required_code() )
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function get_columns_for_collection( \WP_REST_Request $request ) {
+		$class_name = $request->get_param( 'class' );
+
+		if ( ! Model_Registry::has( $class_name ) || ! class_exists( $class_name ) ) {
+			return new \WP_Error(
+				'gateway_model_not_found',
+				__( 'Model not found.', 'gateway' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		return rest_ensure_response( Column_Registry::get_columns_for_collection( $class_name ) );
 	}
 }

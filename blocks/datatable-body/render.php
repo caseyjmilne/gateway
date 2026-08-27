@@ -13,21 +13,38 @@
  * InnerBlocks list itself is Header, Body, Footer, in that order, matching
  * the front end exactly, by construction.
  *
- * Settings (postType/limit/pageSize/columns/facets) come from
- * gateway/datatable's context on every *real* render -- front end or a full
- * page load -- since context resolves normally there. The one place it
- * doesn't is this block's own editor preview: <ServerSideRender> only ever
- * sends a block's own top-level *attributes* to the block-renderer REST
- * endpoint, never inherited context, so `$block->context` is empty in that
- * specific case. `src/edit.js` works around exactly that gap by mirroring
- * context into this block's own (otherwise-unused) attributes whenever it
- * changes, so there's always a same-shaped fallback to read from. Real
- * renders always prefer context -- the mirrored attributes could only ever
- * be stale copies of it.
+ * Settings (sourceType/postType/collection/limit/pageSize/columns/facets)
+ * come from gateway/datatable's context on every *real* render -- front end
+ * or a full page load -- since context resolves normally there. The one
+ * place it doesn't is this block's own editor preview: <ServerSideRender>
+ * only ever sends a block's own top-level *attributes* to the
+ * block-renderer REST endpoint, never inherited context, so `$block->context`
+ * is empty in that specific case. `src/edit.js` works around exactly that
+ * gap by mirroring context into this block's own (otherwise-unused)
+ * attributes whenever it changes, so there's always a same-shaped fallback
+ * to read from. Real renders always prefer context -- the mirrored
+ * attributes could only ever be stale copies of it.
+ *
+ * `sourceType` ('postType' or 'collection') branches this file into two
+ * genuinely different data paths below: WP_Query + Column_Registry for
+ * 'postType' (unchanged from before Collections existed), or a real
+ * Eloquent query + Column_Registry::get_columns_for_collection() for
+ * 'collection'. Deliberately two full branches rather than one unified
+ * path with source-specific bits threaded through -- a WP_Query and an
+ * Eloquent Builder don't share enough (pagination semantics, how a "cell
+ * value" is even fetched) to make a merged version actually simpler. Only
+ * the column *header* markup (same {key, label, sortable} shape either
+ * way) and the outer <table>/no-results structure are shared.
+ *
+ * No facet support yet for a Collection -- see Column_Registry::
+ * get_columns_for_collection()'s own docblock (every one of its columns
+ * has isFilterable => false, so the Facets panel already can't offer
+ * anything broken; $facets is simply never resolved/applied in that
+ * branch at all).
  *
  * @package Gateway
  *
- * @var array    $attributes Mirrored postType/limit/pageSize/columns/facets -- SSR-preview fallback only, see above.
+ * @var array    $attributes Mirrored sourceType/postType/collection/limit/pageSize/columns/facets -- SSR-preview fallback only, see above.
  * @var string   $content    Inner block content (unused -- this is a leaf block).
  * @var WP_Block $block      Block instance, with context from the parent gateway/datatable.
  */
@@ -36,14 +53,8 @@ defined( 'ABSPATH' ) || exit;
 
 $context = $block->context;
 
-$post_type = isset( $context['gateway/datatable/postType'] )
-	? $context['gateway/datatable/postType']
-	: ( $attributes['postType'] ?? 'post' );
-$post_type = sanitize_key( $post_type );
-
-if ( ! post_type_exists( $post_type ) ) {
-	$post_type = 'post';
-}
+$source_type = $context['gateway/datatable/sourceType'] ?? ( $attributes['sourceType'] ?? 'postType' );
+$source_type = 'collection' === $source_type ? 'collection' : 'postType';
 
 $raw_limit = $context['gateway/datatable/limit'] ?? ( $attributes['limit'] ?? 0 );
 // 0 (or anything not a positive integer) means "no limit".
@@ -57,6 +68,151 @@ $page_size = absint( $raw_page_size );
 
 $raw_columns = $context['gateway/datatable/columns'] ?? ( $attributes['columns'] ?? array() );
 $raw_facets  = $context['gateway/datatable/facets'] ?? ( $attributes['facets'] ?? array() );
+
+$table_id = 'gateway-datatable-' . wp_unique_id();
+
+if ( 'collection' === $source_type ) :
+	$collection = $context['gateway/datatable/collection'] ?? ( $attributes['collection'] ?? '' );
+
+	if ( ! \Gateway\Model_Registry::has( $collection ) || ! class_exists( $collection ) ) {
+		// A stale/blank selection (no model chosen yet, or one since
+		// renamed/removed) -- nothing sensible to query at all.
+		?>
+		<p><?php esc_html_e( 'Choose a Collection in this block\'s settings.', 'gateway' ); ?></p>
+		<?php
+		return;
+	}
+
+	// Resolve the requested columns against Column_Registry -- same
+	// validation step as the postType branch below (a column key that
+	// isn't real for this model is dropped, never trusted), just against
+	// a model's fields instead of a post type's fields/meta/taxonomies.
+	$available_columns = array();
+
+	foreach ( \Gateway\Column_Registry::get_columns_for_collection( $collection ) as $available_column ) {
+		$available_columns[ $available_column['key'] ] = $available_column;
+	}
+
+	$columns = array();
+
+	if ( ! empty( $raw_columns ) && is_array( $raw_columns ) ) {
+		foreach ( $raw_columns as $requested_column ) {
+			if ( empty( $requested_column['key'] ) ) {
+				continue;
+			}
+
+			$key = is_string( $requested_column['key'] ) ? trim( $requested_column['key'] ) : '';
+
+			if ( '' === $key || ! isset( $available_columns[ $key ] ) || isset( $columns[ $key ] ) ) {
+				continue;
+			}
+
+			// Same rest_sanitize_boolean() reasoning as the postType
+			// branch below -- this block's own editor preview arrives via
+			// <ServerSideRender>'s query-string GET, where a real `false`
+			// becomes the literal text "false".
+			$columns[ $key ] = array_merge(
+				$available_columns[ $key ],
+				array( 'sortable' => rest_sanitize_boolean( $requested_column['sortable'] ?? false ) )
+			);
+		}
+	}
+
+	// Every configured column turned out to be invalid for this model (or
+	// none were configured) -- fall back to its `id` column plus its
+	// first real field (if it has one), so the grid never renders with
+	// zero columns. Unlike the postType branch's fixed ID/post_title
+	// fallback, this is computed generically from whatever
+	// get_columns_for_collection() actually returned, since a model's
+	// field names are never known in advance.
+	if ( empty( $columns ) ) {
+		foreach ( array_slice( array_keys( $available_columns ), 0, 2 ) as $key ) {
+			$columns[ $key ] = array_merge( $available_columns[ $key ], array( 'sortable' => true ) );
+		}
+	}
+
+	$columns = array_values( $columns );
+
+	$query = $collection::query()->orderBy( 'id', 'desc' );
+
+	if ( $limit > 0 ) {
+		$query->limit( $limit );
+	}
+
+	/**
+	 * Filters the Eloquent query builder used to populate the datatable
+	 * block's body when its data source is a Collection. Same purpose as
+	 * `gateway_datatable_query_args` below has for the postType branch --
+	 * DataTables handles paging/sorting/filtering client-side, so by
+	 * default (or when the block's Limit setting is 0) every record is
+	 * fetched; a site with a very large collection can use this to cap or
+	 * otherwise narrow the query.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Builder $query      Query builder.
+	 * @param string                                 $collection Model class name.
+	 * @param array                                  $attributes Block attributes.
+	 * @param WP_Block                               $block      Block instance.
+	 */
+	$query = apply_filters( 'gateway_datatable_collection_query', $query, $collection, $attributes, $block );
+
+	$records = $query->get();
+	?>
+	<?php if ( $records->count() > 0 ) : ?>
+		<table
+			id="<?php echo esc_attr( $table_id ); ?>"
+			class="gateway-datatable display"
+			data-collection="<?php echo esc_attr( $collection ); ?>"
+			data-page-size="<?php echo esc_attr( $page_size ); ?>"
+			style="width:100%"
+		>
+			<thead>
+				<tr>
+					<?php foreach ( $columns as $column ) : ?>
+						<th
+							data-orderable="<?php echo $column['sortable'] ? 'true' : 'false'; ?>"
+							data-column-key="<?php echo esc_attr( $column['key'] ); ?>"
+						>
+							<?php echo esc_html( $column['label'] ); ?>
+						</th>
+					<?php endforeach; ?>
+				</tr>
+			</thead>
+			<tbody>
+				<?php foreach ( $records as $record ) : ?>
+					<tr>
+						<?php foreach ( $columns as $column ) : ?>
+							<?php $value = (string) ( $record->{ $column['key'] } ?? '' ); ?>
+							<td data-filter="<?php echo esc_attr( $value ); ?>">
+								<?php echo esc_html( $value ); ?>
+							</td>
+						<?php endforeach; ?>
+					</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+	<?php else : ?>
+		<p>
+			<?php
+			$collection_label = \Gateway\Model_Builder::get_plural_title( $collection );
+			$collection_label = '' !== $collection_label ? $collection_label : $collection;
+			printf(
+				/* translators: %s: collection (model) label. */
+				esc_html__( 'No %s found.', 'gateway' ),
+				esc_html( $collection_label )
+			);
+			?>
+		</p>
+	<?php endif; ?>
+	<?php
+	return;
+endif;
+
+$post_type = $context['gateway/datatable/postType'] ?? ( $attributes['postType'] ?? 'post' );
+$post_type = sanitize_key( $post_type );
+
+if ( ! post_type_exists( $post_type ) ) {
+	$post_type = 'post';
+}
 
 // Resolve the requested columns against Column_Registry -- this is the
 // validation step: a column key that isn't a real, known column for this
@@ -165,8 +321,6 @@ $query_args = \Gateway\Facet_Query::apply_facets( $query_args, $facets );
 $query_args = apply_filters( 'gateway_datatable_query_args', $query_args, $attributes, $block );
 
 $query = new WP_Query( $query_args );
-
-$table_id = 'gateway-datatable-' . wp_unique_id();
 ?>
 <?php if ( $query->have_posts() ) : ?>
 	<table

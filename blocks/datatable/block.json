@@ -10,9 +10,17 @@
 	"version": "0.1.0",
 	"textdomain": "gateway",
 	"attributes": {
+		"sourceType": {
+			"type": "string",
+			"default": "postType"
+		},
 		"postType": {
 			"type": "string",
 			"default": "post"
+		},
+		"collection": {
+			"type": "string",
+			"default": ""
 		},
 		"limit": {
 			"type": "number",
@@ -41,7 +49,9 @@
 		}
 	},
 	"providesContext": {
+		"gateway/datatable/sourceType": "sourceType",
 		"gateway/datatable/postType": "postType",
+		"gateway/datatable/collection": "collection",
 		"gateway/datatable/limit": "limit",
 		"gateway/datatable/pageSize": "pageSize",
 		"gateway/datatable/columns": "columns",

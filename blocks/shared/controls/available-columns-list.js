@@ -20,9 +20,17 @@ export default function AvailableColumnsList( { columns, selectedKeys, onToggle 
 	// alongside Title/Status/Date/etc -- it reads as a normal post-level
 	// field to a site owner picking columns, even though its own `type`
 	// is deliberately distinct from `'core'` for cell-rendering purposes
-	// (see Column_Registry::get_thumbnail_column()).
+	// (see Column_Registry::get_thumbnail_column()). A Collection's own
+	// `model_id`/`model_field` columns (Column_Registry::
+	// get_columns_for_collection()) group here too, for the same reason
+	// -- there's no separate taxonomy/meta concept for a model, so
+	// everything it has just reads as "Fields".
 	const core = columns.filter(
-		( column ) => 'core' === column.type || 'thumbnail' === column.type
+		( column ) =>
+			'core' === column.type ||
+			'thumbnail' === column.type ||
+			'model_id' === column.type ||
+			'model_field' === column.type
 	);
 	const taxonomy = columns.filter( ( column ) => 'taxonomy' === column.type );
 	const meta = columns.filter( ( column ) => 'meta' === column.type );

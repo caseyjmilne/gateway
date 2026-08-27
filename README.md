@@ -267,6 +267,81 @@ This is the part worth calling out explicitly, since it's easy to get wrong:
    `useRequiredInnerBlocks()`/`template` already make: every real
    `gateway/datatable` instance always has all four.
 
+### Source: Post Type vs Collection
+
+The very first setting is **Source** (`sourceType` attribute, default
+`postType`; `controls/source-type-control.js`) -- a plain two-option
+`SelectControl`, "Post Type" or "Collection" (Gateway's own term for a
+Laravel model's data, see "Laravel Models" below). It decides which of
+the next two controls shows: `postType` + `PostTypeControl` for "Post
+Type" (unchanged from before Collections existed), or `collection` +
+`CollectionControl` for "Collection" -- both stored as separate
+attributes (never overwriting one another when you switch back and
+forth), and both provided down to child blocks via context the same way
+`postType` already was.
+
+**`CollectionControl`** (`shared/controls/collection-control.js`) lists
+every registered model (`GET /gateway/v1/models`, the same endpoint the
+admin app's own Models/Records screens use), labeled by each one's
+stored Plural Title (falling back to its class name).
+
+**Columns become a model's fields.** `useAvailableColumns()` (`shared/
+use-available-columns.js`) now takes an optional second argument,
+`{ sourceType, collection }` -- when `sourceType` is `'collection'`, it
+fetches `GET /gateway/v1/columns-for-collection/<class>`
+(`Columns_REST_Controller::get_columns_for_collection()`, backed by
+`Column_Registry::get_columns_for_collection()`, itself just
+`Model_Fields::all( $class )` mapped into the same `{key, label, type,
+isFilterable, facetType}` shape `get_columns()` already returns for post
+types, plus a synthetic leading `id` column -- every model has a real
+`id` primary key, but it's never one of `Model_Fields`' own user-defined
+fields) instead of `GET /gateway/v1/columns/<post_type>`. Two genuinely
+separate REST routes, not one with a type param: `sanitize_key()`
+(needed for a post type slug) lowercases everything, which would corrupt
+a model's real, case-sensitive class name before it ever reached
+`Column_Registry`. Every other caller of `useAvailableColumns()`
+(`gateway/facet`, `gateway/card-facet`, `gateway/data-cards`) still calls
+it with just a post type string, unaffected.
+
+Because the returned shape is identical either way, the existing Columns
+panel, `AvailableColumnsList` (its "Fields" group now also matches
+`model_id`/`model_field`, the same way it already folds `thumbnail` in
+there), and `ColumnConfigTable` all work against a Collection's fields
+with no changes of their own. The one thing that's genuinely different
+is the *default* selection when nothing valid is configured: a post type
+always falls back to its fixed `ID`+`post_title` default, but a model's
+own field names aren't known in advance, so a Collection instead falls
+back to its `id` column plus whichever field happens to be first --
+computed fresh from `availableColumns` itself, both in `edit.js` (for
+`useReconcileFieldList()`'s own fallback) and in `render.php` (for the
+front end).
+
+**No facet support yet for a Collection.** Every column
+`get_columns_for_collection()` returns has `isFilterable: false` --
+`Facet_Query` (what actually applies a facet to a query) is built
+entirely around `WP_Query` semantics (post meta, taxonomies, core post
+columns); wiring an Eloquent equivalent is real, separate work not done
+here. Because the Facets panel already only offers `isFilterable`
+columns, this alone keeps it from offering anything broken for a
+Collection, with no extra check needed anywhere else.
+
+**Rendering a Collection's rows** (`gateway/datatable-body/render.php`)
+is a genuinely separate code path from the post type one -- a real
+Eloquent query (`$collection::query()->orderBy( 'id', 'desc' )`, capped
+by Limit the same way `posts_per_page` is, filterable via a new
+`gateway_datatable_collection_query` PHP filter mirroring
+`gateway_datatable_query_args`) in place of `WP_Query`, and a cell's
+value read directly off the Eloquent record's own attribute
+(`$record->{$column['key']}`) rather than through `Column_Registry::
+get_cell_value()` (which is fundamentally post-shaped: `get_post_meta()`,
+`get_the_title()`, etc.). Everything downstream of the rendered
+`<table>` -- DataTables' own client-side sorting, searching, and
+pagination, Page Size, Results text -- needs no changes at all: none of
+it has ever cared where the table's rows actually came from, only that
+they exist in the DOM already sorted/paginated/filtered client-side (see
+`gateway/datatable-body/render.php`'s own docblock -- this plugin has
+never done server-side DataTables processing).
+
 ### Settings
 
 - **Post Type** (`postType` attribute, default `post`): a `SelectControl`

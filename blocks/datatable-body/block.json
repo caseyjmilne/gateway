@@ -11,16 +11,26 @@
 	"textdomain": "gateway",
 	"parent": [ "gateway/datatable" ],
 	"usesContext": [
+		"gateway/datatable/sourceType",
 		"gateway/datatable/postType",
+		"gateway/datatable/collection",
 		"gateway/datatable/limit",
 		"gateway/datatable/pageSize",
 		"gateway/datatable/columns",
 		"gateway/datatable/facets"
 	],
 	"attributes": {
+		"sourceType": {
+			"type": "string",
+			"default": "postType"
+		},
 		"postType": {
 			"type": "string",
 			"default": "post"
+		},
+		"collection": {
+			"type": "string",
+			"default": ""
 		},
 		"limit": {
 			"type": "number",

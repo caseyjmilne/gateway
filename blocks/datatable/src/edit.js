@@ -3,7 +3,9 @@ import { PanelBody } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { createBlock } from '@wordpress/blocks';
 
+import SourceTypeControl from '../../shared/controls/source-type-control';
 import PostTypeControl from '../../shared/controls/post-type-control';
+import CollectionControl from '../../shared/controls/collection-control';
 import LimitControl from '../../shared/controls/limit-control';
 import PageSizeControl from '../../shared/controls/page-size-control';
 import ColumnsPanel from './controls/columns-panel';
@@ -59,7 +61,7 @@ function buildRequiredBlock( name ) {
 }
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
-	const { postType, columns, facets } = attributes;
+	const { sourceType, postType, collection, columns, facets } = attributes;
 	// `className: 'gateway-datatable-block'` -- matching render.php's own
 	// `get_block_wrapper_attributes()` call -- so this element is findable
 	// by that class in the editor too, not just the front end: several
@@ -113,22 +115,36 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		templateLock: false,
 	} );
 
-	// Fetched once per post type and shared by both panels below: "what
-	// fields are available" is the same question for columns (what to
-	// display) and facets (what to filter by).
+	// Fetched once per post type/model and shared by both panels below:
+	// "what fields are available" is the same question for columns (what
+	// to display) and facets (what to filter by) -- regardless of which
+	// Source is selected, see useAvailableColumns()'s own docblock.
 	const {
 		availableColumns,
 		isLoading: isLoadingColumns,
 		error: columnsError,
-	} = useAvailableColumns( postType );
+	} = useAvailableColumns( postType, { sourceType, collection } );
 
-	// Drop selections that don't exist for the (possibly new) post type,
-	// e.g. meta fields specific to a previously selected one. Columns falls
-	// back to the ID/Title default if that empties it; an empty facet
-	// selection (no filtering) is a perfectly normal state, so it has no
-	// such fallback.
+	// A Collection's field names aren't known ahead of time the way
+	// "ID"/"post_title" always are for a post type, so its own default
+	// selection (its `id` column plus its first real field, if it has
+	// one) is computed from whatever's actually available -- still
+	// filtered against availableKeys the same way DEFAULT_COLUMNS is,
+	// inside useReconcileFieldList() itself.
+	const defaultColumns =
+		'collection' === sourceType
+			? availableColumns
+					.slice( 0, 2 )
+					.map( ( column ) => ( { key: column.key, sortable: true } ) )
+			: DEFAULT_COLUMNS;
+
+	// Drop selections that don't exist for the (possibly new) post type or
+	// model, e.g. meta fields specific to a previously selected post type,
+	// or every field from a previously selected model. Columns falls back
+	// to defaultColumns if that empties it; an empty facet selection (no
+	// filtering) is a perfectly normal state, so it has no such fallback.
 	useReconcileFieldList( availableColumns, columns, ( value ) =>
-		setAttributes( { columns: value } ), DEFAULT_COLUMNS
+		setAttributes( { columns: value } ), defaultColumns
 	);
 	// Facets are reconciled against the *displayed* columns, not every
 	// available field: a facet only has something to hook into once its
@@ -153,10 +169,25 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		<>
 			<InspectorControls>
 				<PanelBody title={ __( 'Data Table Settings', 'gateway' ) }>
-					<PostTypeControl
-						value={ postType }
-						onChange={ ( value ) => setAttributes( { postType: value } ) }
+					<SourceTypeControl
+						value={ sourceType }
+						onChange={ ( value ) =>
+							setAttributes( { sourceType: value } )
+						}
 					/>
+					{ 'collection' === sourceType ? (
+						<CollectionControl
+							value={ collection }
+							onChange={ ( value ) =>
+								setAttributes( { collection: value } )
+							}
+						/>
+					) : (
+						<PostTypeControl
+							value={ postType }
+							onChange={ ( value ) => setAttributes( { postType: value } ) }
+						/>
+					) }
 					<LimitControl
 						value={ attributes.limit }
 						onChange={ ( value ) => setAttributes( { limit: value } ) }
