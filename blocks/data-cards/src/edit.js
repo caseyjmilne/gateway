@@ -102,11 +102,11 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// isFilterable -- gateway/data-cards has no "displayed columns" step
 	// (no columns concept at all), so unlike gateway/datatable's own
 	// Facets panel, this is the *only* narrowing this block's own picker
-	// needs. Every Collection column comes back with isFilterable => false
-	// (see Column_Registry::get_columns_for_collection()'s own docblock --
-	// no Facet_Query equivalent exists yet for Eloquent), so switching to
-	// Collection naturally empties the Facets panel below rather than
-	// needing its own separate check here.
+	// needs. A Collection's own fields are isFilterable too (see
+	// Column_Registry::get_columns_for_collection()'s own docblock --
+	// Facet_Query::apply_collection_facets() is the Eloquent counterpart
+	// that actually applies one), except a Password field (never
+	// filterable) or a TextArea field (free text only).
 	const {
 		availableColumns,
 		isLoading: isLoadingColumns,
@@ -161,6 +161,14 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						error={ columnsError }
 						facets={ facets }
 						onChange={ ( value ) => setAttributes( { facets: value } ) }
+						emptyMessage={
+							'collection' === sourceType
+								? __(
+										'No fields are available to use as facets for this Collection yet.',
+										'gateway'
+								  )
+								: undefined
+						}
 					/>
 				</PanelBody>
 			</InspectorControls>
