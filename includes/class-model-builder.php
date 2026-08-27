@@ -518,6 +518,39 @@ class Model_Builder {
 	}
 
 	/**
+	 * (Re)writes a model's own PHP file using the current template --
+	 * called by Model_Fields after every successful add()/update()/
+	 * remove(), so a model created before some later addition to
+	 * model_template() (getFields()/getFillable(), when those were
+	 * introduced, is the motivating example -- a model created earlier
+	 * had neither, so Eloquent fell back to its own empty default
+	 * $fillable and rejected every field as unfillable) "heals" itself
+	 * the next time any field on it actually changes, rather than staying
+	 * stuck on whatever template existed when it was first created.
+	 *
+	 * Overwrites the file unconditionally, same trade-off retable()
+	 * already accepts for its own model-file rewrite: a hand-edited model
+	 * file is only safe from this while nothing about its fields changes.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param string $table_name Table name.
+	 * @return true|\WP_Error
+	 */
+	public static function rewrite_model_file( $class_name, $table_name ) {
+		$model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $class_name . '.php';
+
+		if ( false === file_put_contents( $model_path, self::model_template( $class_name, $table_name ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			return new \WP_Error(
+				'gateway_model_write_failed',
+				__( 'Could not update the model file -- check that wp-content/gateway is writable.', 'gateway' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return true;
+	}
+
+	/**
 	 * @param string $class_name Model class name.
 	 * @param string $table_name Table name.
 	 * @return string PHP source for the model file.

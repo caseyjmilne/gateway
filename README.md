@@ -2393,10 +2393,34 @@ public function getFillable() {
 }
 ```
 
-Both are written into the model file once, at `create()` time, and never
-need to change again -- `getFillable()` always reflects whatever
-`getFields()` currently returns, and `getFields()` always reflects
-whatever's currently stored, live.
+Both are written into the model file at `create()` time, and don't need
+to change again for *that* model's own fields going forward --
+`getFillable()` always reflects whatever `getFields()` currently
+returns, and `getFields()` always reflects whatever's currently stored,
+live.
+
+**A real bug here, fixed**: that guarantee only ever covered models
+*created after* these two methods were added to `model_template()` --
+any model created earlier had neither, so it kept Eloquent's own default
+`$fillable = []`/`$guarded = ['*']`, and mass-assigning literally any
+attribute at all failed with `MassAssignmentException: Add [x] to
+fillable property...`, no matter how many fields the Field Editor added
+to it. Reproduced directly first (a hand-written model file in the old,
+override-less shape, loaded via `Directory_Loader`, then a field added
+to it) before fixing: `add()`/`update()`/`remove()` now each call a new
+`Model_Builder::rewrite_model_file()` right after saving field metadata,
+rewriting the model's `.php` file via the *current* template
+unconditionally -- the same "just regenerate it" trade-off `retable()`
+already accepts for its own model-file rewrite (a hand-edited model file
+is only safe from this while nothing about its fields changes). This
+"heals" a pre-existing model the next time any field on it changes,
+without needing to know in advance which models predate which template
+version. One real PHP limitation applies here too: the already-loaded
+class in the *same* request that triggered the rewrite can't pick up its
+own freshly-rewritten file (PHP can't redeclare a class mid-request) --
+verified end to end across two separate process invocations, matching
+how a real "add a field, then later add a record" sequence actually
+happens as two separate requests.
 
 **Field names are real column names**, so they go through the same
 sanitize-to-a-safe-identifier treatment a Title does (lowercase,

@@ -136,6 +136,17 @@ class Model_Fields {
 		$model_fields[] = $field;
 		self::save( $class_name, $model_fields );
 
+		// Rewrites the model file via the current template -- "heals" a
+		// model created before some earlier addition to it (getFields()/
+		// getFillable() themselves, the motivating case: a model created
+		// before those existed would otherwise keep rejecting every field
+		// as unfillable forever, no matter how many are added).
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table );
+
+		if ( is_wp_error( $rewrite_result ) ) {
+			$field['warnings'] = array( $rewrite_result->get_error_message() );
+		}
+
 		return $field;
 	}
 
@@ -222,6 +233,12 @@ class Model_Fields {
 		$model_fields[ $index ] = $new_field;
 		self::save( $class_name, $model_fields );
 
+		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table );
+
+		if ( is_wp_error( $rewrite_result ) ) {
+			$new_field['warnings'] = array( $rewrite_result->get_error_message() );
+		}
+
 		return $new_field;
 	}
 
@@ -268,6 +285,11 @@ class Model_Fields {
 
 		array_splice( $model_fields, $index, 1 );
 		self::save( $class_name, $model_fields );
+
+		// Not surfaced as a warning here (unlike add()/update()) -- removing
+		// a field succeeded regardless, and there's no freshly-added field
+		// whose immediate usability depends on this the way there is there.
+		Model_Builder::rewrite_model_file( $class_name, $table );
 
 		return true;
 	}
