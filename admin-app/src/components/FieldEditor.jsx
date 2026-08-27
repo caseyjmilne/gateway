@@ -371,11 +371,17 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 			) }
 
 			<h4>Add Field</h4>
+			<p className="description">
+				Name must be unique on this model and is always stored
+				lowercase (it becomes the real column name) --{ ' ' }
+				<code>First Name</code> is a <em>label</em>;{ ' ' }
+				<code>first_name</code> is a <em>name</em>.
+			</p>
 			<form onSubmit={ handleAdd } className="gateway-field-editor-row">
 				<input
 					type="text"
 					className="regular-text"
-					placeholder="e.g. First Name"
+					placeholder="e.g. first_name"
 					value={ newName }
 					onChange={ ( event ) => setNewName( event.target.value ) }
 				/>
