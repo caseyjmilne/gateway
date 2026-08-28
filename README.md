@@ -3431,17 +3431,22 @@ than nested under `fields` (e.g. not `/fields/order`) -- nesting it
 would put it in direct conflict with `/fields/<field_name>`, which would
 just as happily match the literal string "order" as a field name.
 `admin-app/src/components/FieldEditor.jsx` is the UI: an editable,
-drag-to-reorder table of existing fields (dragging a row anywhere on it
--- not just the "⠿" handle cell -- calls `fields-order` via native
-HTML5 drag-and-drop, no library, disabled the whole time any row is open
-for editing), seeded from the model detail response's own `fields` array
-(`Model_REST_Controller::describe_model()`) so the page doesn't need a
-second request just to show them.
+drag-to-reorder table of existing fields, columns in Type/Label/Name
+order (dragging a row anywhere on it -- not just its own leading chevron
+cell -- calls `fields-order` via native HTML5 drag-and-drop, no library,
+disabled the whole time any row is open for editing), seeded from the
+model detail response's own `fields` array (`Model_REST_Controller::
+describe_model()`) so the page doesn't need a second request just to
+show them. That leading cell always shows a chevron (`lucide-react`'s
+`ChevronRight`/`ChevronDown`, a new dependency for this plain-React admin
+app -- the same "just this one import, tree-shaken to the two icons
+actually used" reasoning as `react-hook-form` below) pointing right when
+a row is closed, down when it's the one currently open.
 
 **The row never disappears, and the whole row opens it -- no Edit
 button, no Save/Cancel.** Clicking a row opens its own edit panel right
 underneath it (a second `<tr>`, not a replacement for the first); the
-open row itself keeps showing its own Name/Label/Type, live-updating as
+open row itself keeps showing its own Type/Label/Name, live-updating as
 you type rather than freezing until a save round-trips. Clicking the
 already-open row again (or the panel's one remaining button, "Done")
 closes it; clicking a different row while one is open does nothing --

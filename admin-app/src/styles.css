@@ -55,7 +55,7 @@
 	box-shadow: inset 3px 0 0 #2271b1;
 }
 
-.gateway-admin-app .gateway-field-editor-row-active td:nth-child(2) {
+.gateway-admin-app .gateway-field-editor-row-active td:nth-child(3) {
 	font-weight: 600;
 	color: #2271b1;
 }

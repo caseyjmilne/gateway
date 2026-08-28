@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
@@ -73,10 +74,10 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
  * it alone never runs a migration. Left blank, the server derives one
  * from the name automatically (e.g. "first_name" -> "First Name").
  *
- * Fields are a sortable list -- drag a row (anywhere on it, not just the
- * "⠿" handle cell) to reorder it, via native HTML5 drag-and-drop rather
- * than a library, and the same "reorder is metadata-only" reasoning as
- * label: PUT .../fields-order takes the whole new name order and never
+ * Fields are a sortable list -- drag a row (anywhere on it, not just its
+ * leading chevron cell) to reorder it, via native HTML5 drag-and-drop
+ * rather than a library, and the same "reorder is metadata-only" reasoning
+ * as label: PUT .../fields-order takes the whole new name order and never
  * runs a migration either (Gateway\Model_Fields::reorder()). The drop
  * updates local state immediately (so the list doesn't visually snap
  * back while the request is in flight) and reverts it if the request
@@ -796,9 +797,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					<thead>
 						<tr>
 							<th className="gateway-field-editor-drag-col"></th>
-							<th>Name</th>
-							<th>Label</th>
 							<th>Type</th>
+							<th>Label</th>
+							<th>Name</th>
 							<th></th>
 						</tr>
 					</thead>
@@ -849,19 +850,23 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 										title={
 											isEditingThisRow
 												? 'Collapse'
-												: 'Drag to reorder'
+												: 'Expand (or drag the row to reorder)'
 										}
 									>
-										{ isEditingThisRow ? '⌃' : '⠿' }
+										{ isEditingThisRow ? (
+											<ChevronDown size={ 18 } aria-hidden="true" />
+										) : (
+											<ChevronRight size={ 18 } aria-hidden="true" />
+										) }
 									</td>
-									<td>
-										<code>{ rowName }</code>
-									</td>
-									<td>{ rowLabel }</td>
 									<td>
 										{ fieldTypes.find(
 											( type ) => type.key === rowType
 										)?.label || rowType }
+									</td>
+									<td>{ rowLabel }</td>
+									<td>
+										<code>{ rowName }</code>
 									</td>
 									<td>
 										<button
