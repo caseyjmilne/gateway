@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
@@ -19,20 +19,22 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
  * for real schema reasons (a duplicate or reserved name, an unsupported
  * type) and is reported inline via the same notice area other screens use.
  *
- * **Autosaves -- no Save/Cancel to manage.** The panel's own form state is
- * a single React Hook Form instance (`useForm`), `reset()` to a field's
- * current values (or a blank draft's) whenever editing starts. A `watch()`
- * subscription debounces every value change by `AUTOSAVE_DEBOUNCE_MS`
- * and, once the result actually differs from what's currently saved
- * (`lastSavedRef`) AND is valid enough to submit at all, fires the exact
- * same POST/PUT this used to wait for an explicit Save click to send --
- * so typing a Label, flipping Required, or reordering a choice just
- * takes effect shortly after you stop, the same way `label`-only edits
- * already ran no migration at all. The one button left is "Done", which
- * flushes any still-pending change immediately (so closing right after
- * typing never drops it) and then closes the panel -- removing the row
- * entirely if it's a draft that never actually reached a valid, saved
- * state.
+ * **Autosaves -- no Save/Cancel/Done to manage.** The panel's own form
+ * state is a single React Hook Form instance (`useForm`), `reset()` to a
+ * field's current values (or a blank draft's) whenever editing starts. A
+ * `watch()` subscription debounces every value change by
+ * `AUTOSAVE_DEBOUNCE_MS` and, once the result actually differs from
+ * what's currently saved (`lastSavedRef`) AND is valid enough to submit
+ * at all, fires the exact same POST/PUT this used to wait for an
+ * explicit Save click to send -- so typing a Label, flipping Required,
+ * or reordering a choice just takes effect shortly after you stop, the
+ * same way `label`-only edits already ran no migration at all. There is
+ * no button anywhere for this any more, not even a "Done": closing a row
+ * (clicking it again, or its own row-action "Edit" is never needed for
+ * that since it only opens) flushes any still-pending change immediately
+ * first, so closing right after typing never drops it, then removes the
+ * row entirely if it's a draft that never actually reached a valid,
+ * saved state.
  *
  * This does mean a field's Name going through several real RENAME COLUMN
  * migrations if someone pauses mid-word while typing it (each pause past
@@ -41,31 +43,46 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
  * to special-case away by treating Name differently from every other
  * input.
  *
- * **The row never disappears -- the panel opens right underneath it, and
- * the whole row (not a separate "Edit" button) is what opens/closes it.**
- * Clicking the row that's already open collapses it (same flush-then-close
- * as the panel's own "Done" button); clicking a different one while one
- * is open does nothing, the same "one editing surface at a time"
- * constraint a disabled Edit button used to enforce. The open row's own
- * cells show the LIVE, not-yet-necessarily-saved values (name/label/type)
- * rather than freezing at whatever was last actually saved, so renaming a
- * field is visible on its own row immediately, not up to
- * `AUTOSAVE_DEBOUNCE_MS` later once the request lands.
+ * **The row never disappears -- the panel opens right underneath it.**
+ * Clicking anywhere on a row (except its own grip handle or row-actions,
+ * below) opens its own edit panel in a second `<tr>`, not a replacement
+ * for the first; clicking the already-open row again collapses it
+ * (flushing first, as above); clicking a different row while one is open
+ * does nothing, the same "one editing surface at a time" constraint a
+ * disabled Edit button used to enforce. The open row's own cells show
+ * the LIVE, not-yet-necessarily-saved values (type/label/name) rather
+ * than freezing at whatever was last actually saved, so renaming a field
+ * is visible on its own row immediately, not up to `AUTOSAVE_DEBOUNCE_MS`
+ * later once the request lands.
+ *
+ * Each row's own leading cell holds two separate controls, both from
+ * `lucide-react`: a `GripVertical` handle, visible only on that row's own
+ * hover (`.gateway-field-editor-grip`, opacity `0` otherwise) and the
+ * ONLY thing `draggable`/reorder-triggering any more (a plain click
+ * anywhere else on the row opens/closes it instead, so dragging and
+ * opening can't be confused for each other) -- and a `ChevronRight`/
+ * `ChevronDown`, always visible, purely indicating open/closed state (it
+ * doesn't need its own click handler; the row's own `onClick` already
+ * covers the whole row). A small wp-admin-style row-actions menu ("Edit |
+ * Duplicate | Delete", plain text links, `.row-actions`) appears under
+ * the Label cell on the same row hover -- each one calls
+ * `event.stopPropagation()` so clicking it doesn't ALSO trigger the
+ * row's own open/close click underneath it.
  *
  * `editingIndex` (an index into `fields`, not a name -- a draft has no
  * name yet to key off of) tracks which single row is open; `isNewDraft`
  * is what actually differs between a brand new field and an existing one
- * (POST vs. PUT, and whether "Done" with nothing ever saved removes the
+ * (POST vs. PUT, and whether closing with nothing ever saved removes the
  * row). Because autosave can flip a draft into "saved" mid-session (the
  * moment its first valid save succeeds), `isNewDraftRef`/`editOriginalNameRef`
  * mirror that state into refs the autosave chain itself reads -- reading
  * the plain state variables there would risk seeing a stale value from
  * before React re-renders. Every autosave attempt (the debounce timer, or
- * "Done"/a row click flushing one immediately) is chained through
- * `saveChainRef` rather than fired independently, so two attempts arriving
- * close together (e.g. "Done" clicked right as a debounced save is still
- * in flight) run strictly one after another instead of racing -- the
- * second one always sees the first one's now-current `isNewDraftRef`/
+ * a row-close flushing one immediately) is chained through `saveChainRef`
+ * rather than fired independently, so two attempts arriving close
+ * together (e.g. closing a row right as a debounced save is still in
+ * flight) run strictly one after another instead of racing -- the second
+ * one always sees the first one's now-current `isNewDraftRef`/
  * `lastSavedRef`, never a stale snapshot from before it finished.
  *
  * Label is the one field-level thing here that *isn't* a schema change --
@@ -149,14 +166,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editOriginalNameRef = useRef( '' );
 	const lastSavedRef = useRef( null );
 	// Every autosave attempt -- whether from the debounce timer below or
-	// from finishEditing() flushing a last change on "Done" -- chains onto
-	// this instead of firing independently, so two attempts arriving close
-	// together run strictly one after another (each seeing the OTHER's
-	// now-current isNewDraftRef/lastSavedRef) rather than racing: without
-	// this, "Done" clicked right as a debounced save was still in flight
-	// could see stale isNewDraftRef.current, wrongly conclude a request
-	// that's actually about to succeed never happened, and delete the row
-	// out from under it.
+	// from finishEditing() flushing a last change when a row closes --
+	// chains onto this instead of firing independently, so two attempts
+	// arriving close together run strictly one after another (each seeing
+	// the OTHER's now-current isNewDraftRef/lastSavedRef) rather than
+	// racing: without this, closing a row right as a debounced save was
+	// still in flight could see stale isNewDraftRef.current, wrongly
+	// conclude a request that's actually about to succeed never happened,
+	// and delete the row out from under it.
 	const saveChainRef = useRef( Promise.resolve() );
 	const debounceTimerRef = useRef( null );
 	const savedFlashTimerRef = useRef( null );
@@ -476,12 +493,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		setEditTab( 'general' );
 	};
 
-	// The whole row is the "Edit" control now (see this component's own
-	// docblock) -- clicking the row that's already open collapses it
-	// (same flush-then-close as the panel's own "Done" button); clicking
-	// any OTHER row while one is open does nothing, the same "one editing
-	// surface at a time" constraint the old per-row Edit/Delete buttons'
-	// own `disabled` already enforced.
+	// The whole row is the "Edit" control (see this component's own
+	// docblock) -- clicking the row that's already open collapses it,
+	// flushing any still-pending change first (there's no separate
+	// "Done"/"Save" to click instead -- autosave already covers every
+	// change); clicking any OTHER row while one is open does nothing, the
+	// same
+	// "one editing surface at a time" constraint the old per-row Edit/
+	// Delete buttons' own `disabled` already enforced.
 	const handleRowClick = ( field, index ) => {
 		if ( null !== deletingName || reordering ) {
 			return;
@@ -497,6 +516,19 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		}
 
 		startEdit( field, index );
+	};
+
+	// The row-actions' own explicit "Edit" link (see this component's own
+	// docblock, and the wp-admin list-table row-actions convention it
+	// mirrors) -- unlike clicking the row itself, this never toggles an
+	// already-open row closed; it only ever opens.
+	const handleEditClick = ( field, index ) => ( event ) => {
+		event.preventDefault();
+		event.stopPropagation();
+
+		if ( null === editingIndex ) {
+			startEdit( field, index );
+		}
 	};
 
 	const finishEditing = async () => {
@@ -537,6 +569,50 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			setError( err.message );
 		} finally {
 			setDeletingName( null );
+		}
+	};
+
+	// A plain POST of a copy of $field's own current, already-saved data --
+	// same server-side validation/migration path as typing a brand new
+	// field into the "Add Field" flow, just pre-filled. "_copy" always
+	// wins any name collision with the original itself; a collision with
+	// some OTHER already-duplicated copy (a second Duplicate click) is
+	// still possible and simply surfaces the server's own
+	// gateway_field_name_exists error, same as typing a taken name by
+	// hand would. Relationship_Field_Type fields (whose real name is
+	// always derived from $field.relationship_method, never $name --
+	// see Model_Fields::derive_relationship_field_name()) can't be
+	// duplicated at all yet this way: the derived name is identical to
+	// the original's own, so the request always collides -- left to
+	// surface that same error rather than silently pretending to
+	// support it.
+	const handleDuplicate = async ( field ) => {
+		setError( '' );
+
+		try {
+			const body = {
+				name: `${ field.name }_copy`,
+				label: field.label ? `${ field.label } (Copy)` : '',
+				type: field.type,
+				required: Boolean( field.required ),
+			};
+
+			if ( relationshipTypeFor( field.type ) ) {
+				body.relationship_method = field.relationship_method;
+			}
+
+			if ( hasChoicesFor( field.type ) ) {
+				body.choices = field.choices || [];
+			}
+
+			const saved = await apiFetch( basePath, {
+				method: 'POST',
+				body: JSON.stringify( body ),
+			} );
+
+			setFields( ( current ) => [ ...current, saved ] );
+		} catch ( err ) {
+			setError( err.message );
 		}
 	};
 
@@ -762,14 +838,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				<p className="description">Nothing here yet.</p>
 			</div>
 
-			<p className="gateway-field-editor-form-actions">
-				<span className="gateway-field-editor-save-status">
-					{ savingEdit ? 'Saving…' : justSaved ? 'Saved' : '' }
-				</span>{ ' ' }
-				<button type="button" className="button" onClick={ finishEditing }>
-					Done
-				</button>
-			</p>
+			{ ( savingEdit || justSaved ) && (
+				<p className="gateway-field-editor-save-status">
+					{ savingEdit ? 'Saving…' : 'Saved' }
+				</p>
+			) }
 		</div>
 	);
 
@@ -800,7 +873,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							<th>Type</th>
 							<th>Label</th>
 							<th>Name</th>
-							<th></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -825,8 +897,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							return [
 								<tr
 									key={ field.id ?? 'draft' }
-									draggable={ dragEnabled }
-									onDragStart={ handleDragStart( field.name ) }
 									onDragOver={
 										dragEnabled ? handleDragOver : undefined
 									}
@@ -845,52 +915,97 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											: '' )
 									}
 								>
-									<td
-										className="gateway-field-editor-drag-col"
-										title={
-											isEditingThisRow
-												? 'Collapse'
-												: 'Expand (or drag the row to reorder)'
-										}
-									>
-										{ isEditingThisRow ? (
-											<ChevronDown size={ 18 } aria-hidden="true" />
-										) : (
-											<ChevronRight size={ 18 } aria-hidden="true" />
-										) }
+									<td className="gateway-field-editor-drag-col">
+										<span className="gateway-field-editor-drag-col-inner">
+											<span
+												className={
+													'gateway-field-editor-grip' +
+													( dragEnabled
+														? ''
+														: ' gateway-field-editor-grip-disabled' )
+												}
+												draggable={ dragEnabled }
+												onDragStart={ handleDragStart( field.name ) }
+												onClick={ ( event ) =>
+													event.stopPropagation()
+												}
+												title="Drag to reorder"
+											>
+												<GripVertical
+													size={ 16 }
+													aria-hidden="true"
+												/>
+											</span>
+											{ isEditingThisRow ? (
+												<ChevronDown size={ 18 } aria-hidden="true" />
+											) : (
+												<ChevronRight size={ 18 } aria-hidden="true" />
+											) }
+										</span>
 									</td>
 									<td>
 										{ fieldTypes.find(
 											( type ) => type.key === rowType
 										)?.label || rowType }
 									</td>
-									<td>{ rowLabel }</td>
 									<td>
-										<code>{ rowName }</code>
+										{ rowLabel }
+										<div className="row-actions">
+											<span className="edit">
+												<a
+													href="#"
+													onClick={ handleEditClick(
+														field,
+														index
+													) }
+												>
+													Edit
+												</a>
+											</span>
+											{ ' | ' }
+											<span className="duplicate">
+												<a
+													href="#"
+													onClick={ ( event ) => {
+														event.stopPropagation();
+														event.preventDefault();
+														if ( null === editingIndex ) {
+															handleDuplicate( field );
+														}
+													} }
+												>
+													Duplicate
+												</a>
+											</span>
+											{ ' | ' }
+											<span className="delete">
+												<a
+													href="#"
+													onClick={ ( event ) => {
+														event.stopPropagation();
+														event.preventDefault();
+														if (
+															null === editingIndex &&
+															null === deletingName
+														) {
+															handleDelete( field.name );
+														}
+													} }
+												>
+													{ deletingName === field.name
+														? 'Deleting…'
+														: 'Delete' }
+												</a>
+											</span>
+										</div>
 									</td>
 									<td>
-										<button
-											type="button"
-											className="button"
-											onClick={ ( event ) => {
-												event.stopPropagation();
-												handleDelete( field.name );
-											} }
-											disabled={
-												null !== editingIndex ||
-												deletingName === field.name ||
-												reordering
-											}
-										>
-											{ deletingName === field.name
-												? 'Deleting…'
-												: 'Delete' }
-										</button>
+										<code>{ rowName }</code>
 									</td>
 								</tr>,
 								isEditingThisRow && (
 									<tr key={ `${ field.id ?? 'draft' }-panel` }>
-										<td colSpan={ 5 }>{ renderEditPanel() }</td>
+										<td colSpan={ 4 }>{ renderEditPanel() }</td>
 									</tr>
 								),
 							];

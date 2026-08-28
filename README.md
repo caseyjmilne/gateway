@@ -3430,32 +3430,52 @@ saved, from the body). `fields-order` is its own sibling route rather
 than nested under `fields` (e.g. not `/fields/order`) -- nesting it
 would put it in direct conflict with `/fields/<field_name>`, which would
 just as happily match the literal string "order" as a field name.
-`admin-app/src/components/FieldEditor.jsx` is the UI: an editable,
-drag-to-reorder table of existing fields, columns in Type/Label/Name
-order (dragging a row anywhere on it -- not just its own leading chevron
-cell -- calls `fields-order` via native HTML5 drag-and-drop, no library,
-disabled the whole time any row is open for editing), seeded from the
+`admin-app/src/components/FieldEditor.jsx` is the UI: an editable table
+of existing fields, columns in Type/Label/Name order, seeded from the
 model detail response's own `fields` array (`Model_REST_Controller::
 describe_model()`) so the page doesn't need a second request just to
-show them. That leading cell always shows a chevron (`lucide-react`'s
-`ChevronRight`/`ChevronDown`, a new dependency for this plain-React admin
-app -- the same "just this one import, tree-shaken to the two icons
-actually used" reasoning as `react-hook-form` below) pointing right when
-a row is closed, down when it's the one currently open.
+show them.
+
+**Reordering is a dedicated grip, visible only on hover, and nothing
+else drags.** Each row's own leading cell holds two `lucide-react` icons
+side by side (a new dependency for this plain-React admin app, "just
+these few imports, tree-shaken to the icons actually used" -- same
+reasoning as `react-hook-form` below): a `GripVertical` handle, opacity
+`0` until that row is hovered, and the ONLY element that's `draggable`/
+starts a reorder (`fields-order` via native HTML5 drag-and-drop, no
+library, disabled the whole time any row is open for editing) -- and a
+`ChevronRight`/`ChevronDown`, always visible, purely indicating whether
+that row is open, with no click handler of its own (the row's own click
+handler, below, already covers the whole row).
 
 **The row never disappears, and the whole row opens it -- no Edit
-button, no Save/Cancel.** Clicking a row opens its own edit panel right
-underneath it (a second `<tr>`, not a replacement for the first); the
-open row itself keeps showing its own Type/Label/Name, live-updating as
-you type rather than freezing until a save round-trips. Clicking the
-already-open row again (or the panel's one remaining button, "Done")
-closes it; clicking a different row while one is open does nothing --
-the same "one editing surface at a time" a disabled Edit button used to
-enforce. "+ Add Field" appends a draft row (`{ name: '', label: '',
-type: 'text', choices: [] }`, no id yet) straight into the table, open
-from the start, in the exact same panel -- there's no separate
-standalone "Add Field" form, and no POST-vs-PUT distinction visible to
-the site owner either.
+button, no Save/Cancel/Done.** Clicking a row opens its own edit panel
+right underneath it (a second `<tr>`, not a replacement for the first);
+the open row itself keeps showing its own Type/Label/Name, live-updating
+as you type rather than freezing until a save round-trips. Clicking the
+already-open row again closes it (flushing first, see below -- there's
+no separate button for this any more); clicking a different row while
+one is open does nothing -- the same "one editing surface at a time" a
+disabled Edit button used to enforce. "+ Add Field" appends a draft row
+(`{ name: '', label: '', type: 'text', choices: [] }`, no id yet)
+straight into the table, open from the start, in the exact same panel --
+there's no separate standalone "Add Field" form, and no POST-vs-PUT
+distinction visible to the site owner either.
+
+**A small wp-admin-style row-actions menu appears under the Label cell
+on row hover: "Edit | Duplicate | Delete"**, plain text links
+(`.row-actions`, hidden until hover, the same convention wp-admin's own
+post list table already uses) -- each stops the click from also
+bubbling up to the row's own open/close handler. "Edit" only ever opens
+(never toggles an already-open row closed, unlike clicking the row
+itself). "Duplicate" POSTs a copy of the field's own current, already-saved
+data (name suffixed `_copy`, label suffixed " (Copy)") through the exact
+same `/fields` route "Add Field" uses -- a Relationship_Field_Type field
+can't actually be duplicated this way yet (its real name is always
+derived from `relationship_method`, identical to the original's own, so
+the request collides on that name and the server's own error surfaces
+instead of silently pretending to succeed). "Delete" is the same
+DELETE call the old dedicated button made.
 
 **Every change autosaves -- there's nothing to manage.** The panel's own
 form state is one `react-hook-form` instance (`useForm`), reset to a
@@ -3464,21 +3484,20 @@ field's current values (or a blank draft's) whenever a row opens. A
 the result differs from what's actually saved and is valid enough to
 submit at all, fires the same POST/PUT this used to wait for an explicit
 Save click to send -- so typing a Label, flipping Required, or
-reordering a choice just takes effect shortly after you stop. "Done"
-(and closing the currently-open row by clicking it again) flushes any
-still-pending change immediately first, so closing right after typing
-never drops it; a draft that never reached a valid, saved state is
-removed from the list entirely instead. Every autosave attempt -- the
-debounce timer, or a flush from closing -- chains through one promise
-(`saveChainRef`) rather than firing independently, so two attempts
-arriving close together run strictly one after another instead of
-racing (a real risk otherwise: closing right as a debounced save is
-still in flight could see a stale "is this still a new, unsaved draft?"
-flag and wrongly delete a row that was actually about to be saved). This
-does mean a field's Name can go through several real RENAME COLUMN
-migrations if someone pauses mid-word while typing it -- an accepted
-trade-off for "changes just happen," not something specially worked
-around for Name alone.
+reordering a choice just takes effect shortly after you stop. Closing a
+row (clicking it again) flushes any still-pending change immediately
+first, so closing right after typing never drops it; a draft that never
+reached a valid, saved state is removed from the list entirely instead.
+Every autosave attempt -- the debounce timer, or a flush from closing --
+chains through one promise (`saveChainRef`) rather than firing
+independently, so two attempts arriving close together run strictly one
+after another instead of racing (a real risk otherwise: closing right as
+a debounced save is still in flight could see a stale "is this still a
+new, unsaved draft?" flag and wrongly delete a row that was actually
+about to be saved). This does mean a field's Name can go through several
+real RENAME COLUMN migrations if someone pauses mid-word while typing it
+-- an accepted trade-off for "changes just happen," not something
+specially worked around for Name alone.
 
 See "Choice field types" below for the panel's own General/Validation/
 Presentation/Conditional Logic tabs (the latter two currently empty

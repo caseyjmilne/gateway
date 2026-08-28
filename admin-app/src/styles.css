@@ -21,20 +21,37 @@
 	margin: 1em 0;
 }
 
-.gateway-admin-app .gateway-field-editor table td:last-child {
-	white-space: nowrap;
-	width: 1%;
-}
-
-.gateway-admin-app .gateway-field-editor table td:last-child .button + .button {
-	margin-left: 6px;
-}
-
 .gateway-admin-app .gateway-field-editor-drag-col {
 	width: 1%;
-	cursor: grab;
+	white-space: nowrap;
 	color: #787c82;
 	text-align: center;
+}
+
+.gateway-admin-app .gateway-field-editor-drag-col-inner {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.gateway-admin-app .gateway-field-editor-grip {
+	display: inline-flex;
+	cursor: grab;
+	opacity: 0;
+	transition: opacity 0.1s ease-in-out;
+}
+
+.gateway-admin-app .gateway-field-editor-table tbody tr:hover .gateway-field-editor-grip {
+	opacity: 1;
+}
+
+.gateway-admin-app .gateway-field-editor-grip-disabled {
+	cursor: default;
+	pointer-events: none;
+}
+
+.gateway-admin-app .gateway-field-editor-table tbody tr:hover .gateway-field-editor-grip-disabled {
+	opacity: 0;
 }
 
 .gateway-admin-app .gateway-field-editor-row-dragging {
@@ -47,6 +64,29 @@
 
 .gateway-admin-app .gateway-field-editor-table tbody tr:hover {
 	background: #f6f7f7;
+}
+
+.gateway-admin-app .gateway-field-editor-table .row-actions {
+	visibility: hidden;
+	color: #646970;
+	font-size: 13px;
+}
+
+.gateway-admin-app .gateway-field-editor-table tbody tr:hover .row-actions {
+	visibility: visible;
+}
+
+.gateway-admin-app .gateway-field-editor-table .row-actions a {
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.gateway-admin-app .gateway-field-editor-table .row-actions a:hover {
+	text-decoration: underline;
+}
+
+.gateway-admin-app .gateway-field-editor-table .row-actions .delete a {
+	color: #b32d2e;
 }
 
 .gateway-admin-app .gateway-field-editor-row-active,
@@ -165,7 +205,7 @@
 	font-weight: normal;
 }
 
-.gateway-admin-app .gateway-field-editor-form-actions {
+.gateway-admin-app .gateway-field-editor-save-status {
 	margin: 1.5em 0 0;
 }
 
