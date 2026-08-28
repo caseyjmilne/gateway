@@ -150,6 +150,23 @@ if ( 'collection' === $source_type ) :
 		$query->limit( $limit );
 	}
 
+	// Eager-load every relationship a selected related field (Column_Registry::
+	// get_related_columns_for_collection()'s own "relationship.field" keys)
+	// actually needs -- one extra query per relationship, not per row, and
+	// avoids resolve_collection_value() below silently lazy-loading (an
+	// N+1 query per record) instead.
+	$related_relationships = array_values(
+		array_unique(
+			array_filter(
+				array_column( $columns, 'relationship_method' )
+			)
+		)
+	);
+
+	if ( ! empty( $related_relationships ) ) {
+		$query->with( $related_relationships );
+	}
+
 	/**
 	 * Filters the Eloquent query builder used to populate the datatable
 	 * block's body when its data source is a Collection. Same purpose as
@@ -193,7 +210,7 @@ if ( 'collection' === $source_type ) :
 				<?php foreach ( $records as $record ) : ?>
 					<tr>
 						<?php foreach ( $columns as $column ) : ?>
-							<?php $value = (string) ( $record->{ $column['key'] } ?? '' ); ?>
+							<?php $value = (string) ( \Gateway\Column_Registry::resolve_collection_value( $record, $column['key'] ) ?? '' ); ?>
 							<td data-filter="<?php echo esc_attr( $value ); ?>">
 								<?php echo esc_html( $value ); ?>
 							</td>

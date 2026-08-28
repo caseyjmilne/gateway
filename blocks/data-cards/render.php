@@ -104,7 +104,7 @@ if ( 'collection' === $source_type ) {
 		// are fetched by the front end via Data_Cards_REST_Controller's
 		// own Collection route. No search yet -- see
 		// Data_Cards_Renderer::get_collection_page()'s own docblock.
-		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets );
+		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets, $template_blocks );
 		$html        = \Gateway\Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 		$pager_meta  = $page_result['pager_meta'];
 		$rest_url    = rest_url( 'gateway/v1/data-cards-collection/' . $collection );

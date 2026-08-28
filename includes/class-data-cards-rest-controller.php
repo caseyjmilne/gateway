@@ -268,7 +268,7 @@ class Data_Cards_REST_Controller {
 
 		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
-		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets );
+		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets, $template_blocks );
 		$html        = Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 
 		return rest_ensure_response( array_merge( array( 'html' => $html ), $page_result['pager_meta'] ) );

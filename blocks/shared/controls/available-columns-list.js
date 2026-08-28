@@ -34,6 +34,12 @@ export default function AvailableColumnsList( { columns, selectedKeys, onToggle 
 	);
 	const taxonomy = columns.filter( ( column ) => 'taxonomy' === column.type );
 	const meta = columns.filter( ( column ) => 'meta' === column.type );
+	// A hasOne/belongsTo relationship's own fields (Column_Registry::
+	// get_related_columns_for_collection()) -- grouped apart from "Fields"
+	// even though they're technically just more Collection columns, so
+	// it's obvious at a glance that one of these comes from a *related*
+	// record, not this model's own row.
+	const related = columns.filter( ( column ) => 'model_related_field' === column.type );
 
 	return (
 		<div className="gateway-columns-available">
@@ -52,6 +58,12 @@ export default function AvailableColumnsList( { columns, selectedKeys, onToggle 
 			<ColumnGroup
 				title={ __( 'Custom Fields', 'gateway' ) }
 				columns={ meta }
+				selectedKeys={ selectedKeys }
+				onToggle={ onToggle }
+			/>
+			<ColumnGroup
+				title={ __( 'Related Fields', 'gateway' ) }
+				columns={ related }
 				selectedKeys={ selectedKeys }
 				onToggle={ onToggle }
 			/>

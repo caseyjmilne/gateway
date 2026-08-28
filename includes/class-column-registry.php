@@ -263,7 +263,126 @@ class Column_Registry {
 			);
 		}
 
+		foreach ( self::get_related_columns_for_collection( $class_name ) as $related_column ) {
+			$columns[] = $related_column;
+		}
+
 		return $columns;
+	}
+
+	/**
+	 * A model's own fields aren't the only thing worth showing in a Data
+	 * Table/Data Cards block -- if it `hasOne`/`belongsTo` another model,
+	 * that related record's own fields are just as renderable (e.g. a
+	 * Ticket `belongsTo` Event: showing the Event's own "venue_name" right
+	 * on the Ticket's row/card, no separate Event grid needed). Only
+	 * `hasOne`/`belongsTo` qualify -- both already treated as "a single
+	 * related record" elsewhere in this codebase (`Model_Relationships::
+	 * TYPES`' own `plural` flag is `false` for exactly these two); a
+	 * `hasMany`/`belongsToMany` relationship has no single record to pull
+	 * one column's worth of value from (that's what Relate to Many's own
+	 * `[{id,label}, ...]` shape is for, a fundamentally different display).
+	 *
+	 * One level deep only, by design: a related field that's itself a
+	 * Relate to One/Many field is skipped rather than followed to
+	 * `related_model`'s own related model -- multi-hop nesting is real,
+	 * separate complexity this pass doesn't take on. A related Password
+	 * field is skipped outright (`is_sensitive()`) -- never surfaced as
+	 * another model's own "readable" column.
+	 *
+	 * Deliberately `isFilterable => false` for every one of these, for
+	 * now: `Facet_Query::apply_collection_facets()`/`apply_facets()` only
+	 * ever filter `$class_name`'s own table -- teaching either one to
+	 * filter through a relationship (a JOIN, or a `whereHas()`) is real,
+	 * separate, undone work, so these never appear in a Facets panel yet,
+	 * only as plain display columns/fields.
+	 *
+	 * `key` is `"{$relationship_method}.{$related_field_name}"` (e.g.
+	 * `"event.venue_name"`) -- resolved back into an actual value by
+	 * `resolve_collection_value()`, and what a caller needs to eager-load
+	 * (`->with( $relationship_method )`) before that resolution can work
+	 * without an N+1 query per row.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array[] Column definitions -- [] if $class_name has no
+	 *                  qualifying relationships.
+	 */
+	public static function get_related_columns_for_collection( $class_name ) {
+		$columns = array();
+
+		foreach ( Model_Relationships::all( $class_name ) as $relationship ) {
+			if ( ! in_array( $relationship['type'], array( 'hasOne', 'belongsTo' ), true ) ) {
+				continue;
+			}
+
+			$related_model = $relationship['related_model'];
+
+			if ( ! Model_Registry::has( $related_model ) || ! class_exists( $related_model ) ) {
+				continue;
+			}
+
+			$related_label = Model_Builder::get_plural_title( $related_model );
+			$related_label = '' !== $related_label ? $related_label : $related_model;
+
+			foreach ( Model_Fields::all( $related_model ) as $related_field ) {
+				// One level deep only -- see this method's own docblock.
+				if ( null !== $related_field['relationship_method'] ) {
+					continue;
+				}
+
+				$related_type_class = Field_Type_Registry::get( $related_field['type'] );
+				$is_sensitive       = $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_sensitive();
+
+				if ( $is_sensitive ) {
+					continue;
+				}
+
+				$columns[] = array(
+					'key'                 => $relationship['method_name'] . '.' . $related_field['name'],
+					'label'               => $related_label . ': ' . $related_field['label'],
+					'type'                => 'model_related_field',
+					'isFilterable'        => false,
+					'facetType'           => array(),
+					'relationship_method' => $relationship['method_name'],
+				);
+			}
+		}
+
+		return $columns;
+	}
+
+	/**
+	 * Resolves one Collection column's actual value off a real Eloquent
+	 * record -- a plain `$record->{$key}` for one of the model's own
+	 * fields, or, for a related field (`get_related_columns_for_collection()`'s
+	 * own `"{$relationship_method}.{$related_field_name}"` key shape),
+	 * the related record's own field value instead. Used anywhere a
+	 * Collection's own column/field value is read for display
+	 * (`gateway/datatable-body`'s cell rendering, `gateway/card-field-text`'s
+	 * own value) so both share one definition of what a dotted key means,
+	 * rather than each re-deriving it.
+	 *
+	 * Returns `null` (never errors) if the relationship isn't actually
+	 * loaded/set for this record (e.g. a `belongsTo` whose FK is NULL) --
+	 * callers already treat a missing value as blank, same as any other
+	 * unset field.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Model $record A real Eloquent record.
+	 * @param string                                $key    Column key -- plain, or "relationship.field".
+	 * @return mixed
+	 */
+	public static function resolve_collection_value( \Illuminate\Database\Eloquent\Model $record, $key ) {
+		if ( false === strpos( $key, '.' ) ) {
+			return $record->{ $key } ?? null;
+		}
+
+		list( $relationship_method, $related_field_name ) = explode( '.', $key, 2 );
+
+		$related = $record->{ $relationship_method } ?? null;
+
+		return $related instanceof \Illuminate\Database\Eloquent\Model
+			? ( $related->{ $related_field_name } ?? null )
+			: null;
 	}
 
 	/**

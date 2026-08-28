@@ -339,10 +339,12 @@ Eloquent query (`$collection::query()->orderBy( 'id', 'desc' )`, capped
 by Limit the same way `posts_per_page` is, filterable via a new
 `gateway_datatable_collection_query` PHP filter mirroring
 `gateway_datatable_query_args`) in place of `WP_Query`, and a cell's
-value read directly off the Eloquent record's own attribute
-(`$record->{$column['key']}`) rather than through `Column_Registry::
-get_cell_value()` (which is fundamentally post-shaped: `get_post_meta()`,
-`get_the_title()`, etc.). Everything downstream of the rendered
+value read via `Column_Registry::resolve_collection_value( $record,
+$column['key'] )` -- a plain `$record->{$key}` for one of the model's
+own fields, or (see "Related Fields" below) a related record's own
+field value for a `"relationship.field"` key -- rather than through
+`Column_Registry::get_cell_value()` (which is fundamentally post-shaped:
+`get_post_meta()`, `get_the_title()`, etc.). Everything downstream of the rendered
 `<table>` -- DataTables' own client-side sorting, searching, and
 pagination, Page Size, Results text -- needs no changes at all: none of
 it has ever cared where the table's rows actually came from, only that
@@ -2505,11 +2507,107 @@ every other block in this plugin re-validates a configured key against
 its own current availability -- a stale field name must never surface
 whatever attribute happens to share its name on the Eloquent record
 instead (`id`, timestamps, anything else Eloquent exposes that isn't a
-real, user-defined field). The value itself is read straight off the
-record (`$record->{$field_key}`) and printed with `esc_html()`, no other
-formatting -- later field-display blocks (Number, Date, Image, ...) are
-expected to follow this same shape (one block per "how to render this
-field's value") with their own type-appropriate output instead.
+real, user-defined field). The value itself is read via
+`Column_Registry::resolve_collection_value( $record, $field_key )` (see
+"Related Fields" below for why this isn't just `$record->{$field_key}`
+anymore) and printed with `esc_html()`, no other formatting -- later
+field-display blocks (Number, Date, Image, ...) are expected to follow
+this same shape (one block per "how to render this field's value") with
+their own type-appropriate output instead.
+
+### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
+
+`gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)
+aren't limited to showing a Collection's own fields -- if it `hasOne` or
+`belongsTo` another model, that related record's own fields are just as
+choosable, right alongside this model's own ones (e.g. a `Ticket`
+`belongsTo` `Event`: showing the `Event`'s own "Venue Name" directly on
+the Ticket's own row/card, no separate Event grid needed). Configured
+per block instance -- there's no separate model-level "Related Fields"
+concept to manage on the model's own detail screen, just more entries in
+the same Columns panel / Field picker every block already has.
+
+**`Column_Registry::get_related_columns_for_collection( $class_name )`**
+is the new piece: for every one of `$class_name`'s own relationships
+where the type is `hasOne` or `belongsTo` -- both already treated as "a
+single related record" elsewhere in this codebase
+(`Model_Relationships::TYPES`' own `plural` flag is `false` for exactly
+these two) -- it walks that related model's own `Model_Fields::all()`
+and turns each one into another column:
+
+```php
+[
+	'key'                 => 'eventDetails.venue_name', // "{method_name}.{related field name}"
+	'label'               => 'Event Details: Venue Name', // "{related model's plural title}: {field label}"
+	'type'                => 'model_related_field',
+	'isFilterable'        => false,
+	'facetType'           => [],
+	'relationship_method' => 'eventDetails',
+]
+```
+
+A `hasMany`/`belongsToMany` relationship contributes nothing here -- it
+has no *single* related record to pull one column's worth of value from
+(that's what Relate to Many's own `[{id,label}, ...]` shape, elsewhere in
+this README, is for -- a fundamentally different display). **One level
+deep only, by design**: a related field that's itself a Relate to One/
+Many field is skipped rather than followed to its *own* related model --
+multi-hop nesting is real, separate complexity this pass doesn't take
+on. A related `Password` field is skipped outright
+(`is_sensitive()`) -- never surfaced as another model's own "readable"
+column. **Never filterable, for now** (`isFilterable` is always `false`):
+`Facet_Query::apply_collection_facets()`/`apply_facets()` only ever
+filter `$class_name`'s own table -- teaching either one to filter
+*through* a relationship (a JOIN, or a `whereHas()`) is real, separate,
+undone work, so a related field never appears in a Facets panel yet,
+only as a plain display column/field.
+`get_columns_for_collection()` appends these right after a model's own
+fields, so every existing caller (the Columns panel, `card-field-text`'s
+own field picker) sees them automatically, with zero changes of their
+own beyond grouping them visually apart from a model's own fields
+(`AvailableColumnsList`'s new "Related Fields" group for the Columns
+panel's clickable list; `card-field-text`'s own flat `SelectControl`
+puts them after a disabled `"── Related Fields ──"` heading option
+instead, since `SelectControl` has no real optgroup support).
+
+**`Column_Registry::resolve_collection_value( $record, $key )`** is the
+other new piece -- what actually reads one of these values off a real
+record, since a related field's dotted key (`"eventDetails.venue_name"`)
+isn't a real property name a plain `$record->{$key}` could ever resolve.
+A plain key still resolves exactly that way; a dotted one splits into
+`$relationship_method` + `$related_field_name`, resolves the loaded
+relation first, then that field on it -- returning `null` (never an
+error) if the relationship isn't actually loaded/set at all (e.g. a
+`belongsTo` whose FK is `NULL`). Both `gateway/datatable-body/render.php`'s
+cell rendering and `gateway/card-field-text/render.php`'s own value now
+go through this one definition of what a Collection column's key means,
+rather than each hand-rolling `$record->{$key}` independently.
+
+**Eager-loaded, not lazy-loaded -- an N+1 query per record would
+otherwise be unavoidable.** Reading `$record->eventDetails` on a record
+whose `eventDetails` relation was never eager-loaded triggers Eloquent's
+own lazy-loading: one extra query, *per record*, the first time that
+relation is touched -- exactly what a rendered table of 50 rows, or a
+Data Cards grid, must never do just to show one related column. Both
+call sites collect which relationship(s) are actually needed *before*
+running the query, and `->with()` them up front (one extra query per
+relationship, not per row, regardless of how many rows match):
+`gateway/datatable-body/render.php` does this directly, from
+`$columns`' own already-selected `relationship_method` values (no
+column selected means no relation loaded, either); `Data_Cards_Renderer::
+get_collection_page()` gained a new `$template_blocks` parameter for the
+same purpose, since a Data Cards grid doesn't have a flat `$columns`
+list to read from -- a new private `collect_related_field_relationships()`
+walks the card template's own parsed blocks (recursively, since a
+`gateway/card-field-text` block could sit inside a row/column layout,
+not just directly under `gateway/data-cards-body`) for every one of
+their `fieldKey` attributes, resolving each dotted one back to its
+relationship via `get_related_columns_for_collection()`. Both of
+`get_collection_page()`'s callers (`gateway/data-cards/render.php`'s own
+first-page render, `Data_Cards_REST_Controller::get_collection_items()`'s
+later-page fetches) already had the card template's own parsed blocks in
+scope right where they call it, so this only ever needed one more
+argument passed through, not a new place to compute it.
 
 ## Laravel Models (Illuminate/Eloquent)
 

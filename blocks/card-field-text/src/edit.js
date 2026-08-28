@@ -40,12 +40,45 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		error,
 	} = useAvailableColumns( '', { sourceType: 'collection', collection } );
 
+	// A hasOne/belongsTo relationship's own fields (Column_Registry::
+	// get_related_columns_for_collection(), type 'model_related_field')
+	// are kept together at the end of this flat list, under their own
+	// disabled "Related Fields" heading option -- SelectControl has no
+	// real optgroup support, but a disabled option renders as an inert,
+	// visually distinct divider in every browser, which is enough to
+	// keep "this model's own fields" and "a related record's fields"
+	// from reading as one undifferentiated list.
+	const ownColumns = availableColumns.filter(
+		( column ) => 'model_related_field' !== column.type
+	);
+	const relatedColumns = availableColumns.filter(
+		( column ) => 'model_related_field' === column.type
+	);
+
 	const options = [
 		{ label: __( '— Select a field —', 'gateway' ), value: '' },
-		...availableColumns.map( ( column ) => ( {
+		...ownColumns.map( ( column ) => ( {
 			label: column.label,
 			value: column.key,
 		} ) ),
+		...( relatedColumns.length > 0
+			? [
+					{
+						label: __( '── Related Fields ──', 'gateway' ),
+						// Not '' -- that's already the placeholder option's
+						// own value above, and a duplicate would collide as
+						// a React list key. This is disabled and therefore
+						// never actually selectable, so the value itself
+						// only needs to be distinct, not meaningful.
+						value: '__related_fields_heading__',
+						disabled: true,
+					},
+					...relatedColumns.map( ( column ) => ( {
+						label: column.label,
+						value: column.key,
+					} ) ),
+			  ]
+			: [] ),
 	];
 
 	const selectedColumn = availableColumns.find( ( column ) => column.key === fieldKey );

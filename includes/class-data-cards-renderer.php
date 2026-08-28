@@ -157,15 +157,27 @@ class Data_Cards_Renderer {
 	 * visitor's own facet choices compose the same way the postType path's
 	 * `get_query_args()` + `apply_facets()` already do.
 	 *
-	 * @param string $collection Model class name.
-	 * @param int    $page       Zero-based page index.
-	 * @param int    $page_size  Items per page.
-	 * @param int    $limit      Block's configured Limit (0 = no cap).
-	 * @param array  $facets     Validated facets (Facet_Query::validate_facets()'s own shape), or [] for none.
+	 * @param string $collection      Model class name.
+	 * @param int    $page            Zero-based page index.
+	 * @param int    $page_size       Items per page.
+	 * @param int    $limit           Block's configured Limit (0 = no cap).
+	 * @param array  $facets          Validated facets (Facet_Query::validate_facets()'s own shape), or [] for none.
+	 * @param array  $template_blocks Parsed card template blocks -- walked to find which
+	 *                                 related fields (Column_Registry::get_related_columns_for_collection())
+	 *                                 a gateway/card-field-text block actually needs, so the
+	 *                                 corresponding relationship can be eager-loaded here
+	 *                                 rather than lazy-loaded (an N+1 query per record) once
+	 *                                 render_items_for_collection() gets to it.
 	 * @return array { records: \Illuminate\Support\Collection, pager_meta: array }
 	 */
-	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array() ) {
+	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array(), array $template_blocks = array() ) {
 		$query = $collection::query()->orderBy( 'id', 'desc' );
+
+		$related_relationships = self::collect_related_field_relationships( $collection, $template_blocks );
+
+		if ( ! empty( $related_relationships ) ) {
+			$query->with( $related_relationships );
+		}
 
 		/**
 		 * Filters the Eloquent query builder used to populate a Data Cards
@@ -223,6 +235,59 @@ class Data_Cards_Renderer {
 				'recordsTotal'   => $records_total,
 			),
 		);
+	}
+
+	/**
+	 * Walks a card template's parsed blocks (recursively -- a
+	 * gateway/card-field-text block could sit inside a row/column layout
+	 * block, not just directly under gateway/data-cards-body) for every
+	 * gateway/card-field-text block's own `fieldKey`, and returns the
+	 * distinct relationship method name(s) (Column_Registry::
+	 * get_related_columns_for_collection()'s own `relationship_method`)
+	 * any of them actually reference -- what get_collection_page() eager
+	 * -loads before render_items_for_collection() renders a single card.
+	 *
+	 * @param string $collection      Model class name.
+	 * @param array  $template_blocks Parsed card template blocks.
+	 * @return string[] Distinct relationship method names, [] if none of
+	 *                    the template's fields are related fields.
+	 */
+	private static function collect_related_field_relationships( $collection, array $template_blocks ) {
+		if ( empty( $template_blocks ) ) {
+			return array();
+		}
+
+		$relationship_by_key = array();
+
+		foreach ( Column_Registry::get_related_columns_for_collection( $collection ) as $related_column ) {
+			$relationship_by_key[ $related_column['key'] ] = $related_column['relationship_method'];
+		}
+
+		if ( empty( $relationship_by_key ) ) {
+			return array();
+		}
+
+		$relationships = array();
+
+		$walk = static function ( array $blocks ) use ( &$walk, &$relationships, $relationship_by_key ) {
+			foreach ( $blocks as $inner_block ) {
+				if ( 'gateway/card-field-text' === ( $inner_block['blockName'] ?? '' ) ) {
+					$field_key = $inner_block['attrs']['fieldKey'] ?? '';
+
+					if ( is_string( $field_key ) && isset( $relationship_by_key[ $field_key ] ) ) {
+						$relationships[ $relationship_by_key[ $field_key ] ] = true;
+					}
+				}
+
+				if ( ! empty( $inner_block['innerBlocks'] ) ) {
+					$walk( $inner_block['innerBlocks'] );
+				}
+			}
+		};
+
+		$walk( $template_blocks );
+
+		return array_keys( $relationships );
 	}
 
 	/**

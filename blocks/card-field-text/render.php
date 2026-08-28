@@ -54,7 +54,13 @@ if ( ! in_array( $field_key, $available_keys, true ) ) {
 	return;
 }
 
-$value = $record->{ $field_key };
+// A plain field ("name") or a related field ("event.venue_name" -- see
+// Column_Registry::get_related_columns_for_collection()) resolve the
+// same way here: whichever relationship a related field needs was
+// already eager-loaded by Data_Cards_Renderer::get_collection_page()
+// before $record ever reached this block, so this never lazy-loads one
+// on its own.
+$value = \Gateway\Column_Registry::resolve_collection_value( $record, $field_key );
 
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-card-field-text' ) );
 ?>
