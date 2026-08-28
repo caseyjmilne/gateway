@@ -39,6 +39,20 @@ export default function ModelDetail() {
 	const [ saving, setSaving ] = useState( false );
 	const [ saveResult, setSaveResult ] = useState( null );
 
+	// Owned HERE, not inside FieldEditor/RelationshipEditor themselves, and
+	// passed down to both as a controlled prop + shared setter -- FieldEditor's
+	// own "Relate to One"/"Relate to Many" picker needs this model's
+	// CURRENT relationships to build its own dropdown from, and if each
+	// component fetched/owned its own separate copy, adding a relationship
+	// via RelationshipEditor would leave FieldEditor's own copy stale until
+	// a full page reload (a real bug, reported directly: "even when a
+	// relationship exists this error appears" -- it existed in the
+	// database and in RelationshipEditor's own state, just not yet in
+	// FieldEditor's, since nothing ever told it to refetch). One shared
+	// state, updated the moment either component changes it, closes that
+	// window entirely.
+	const [ relationships, setRelationships ] = useState( [] );
+
 	useEffect( () => {
 		let cancelled = false;
 
@@ -56,6 +70,7 @@ export default function ModelDetail() {
 				setModel( data );
 				setTitle( data.class );
 				setPluralTitle( data.plural_title || '' );
+				setRelationships( data.relationships || [] );
 			} )
 			.catch( ( error ) => {
 				if ( ! cancelled ) {
@@ -299,12 +314,14 @@ export default function ModelDetail() {
 						key={ model.class }
 						modelClass={ model.class }
 						initialFields={ model.fields }
+						relationships={ relationships }
 					/>
 
 					<RelationshipEditor
 						key={ model.class }
 						modelClass={ model.class }
-						initialRelationships={ model.relationships }
+						relationships={ relationships }
+						onRelationshipsChange={ setRelationships }
 					/>
 				</>
 			) }

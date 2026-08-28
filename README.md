@@ -3529,9 +3529,25 @@ worth its own class the way a field type's `blueprint_method()`/
 `Model_Relationship_REST_Controller`: `GET`/`POST /gateway/v1/models/<class>/relationships`,
 `DELETE /gateway/v1/models/<class>/relationships/<method_name>`,
 `GET /gateway/v1/relationship-types`. `admin-app/src/components/
-RelationshipEditor.jsx` is the UI, seeded from the model detail
-response's own new `relationships` array the same way `FieldEditor` is
-seeded from `fields`.
+RelationshipEditor.jsx` is the UI.
+
+**A real bug, fixed: `relationships` is owned by `ModelDetail` (the
+parent screen), not fetched independently by `RelationshipEditor` and
+`FieldEditor` each on their own.** It used to be exactly that -- each
+component fetched (or was seeded with) its own separate copy on mount.
+Adding a relationship via `RelationshipEditor` updated only *its own*
+copy; `FieldEditor`'s own "Relate to One"/"Relate to Many" relationship
+picker (below) kept reading its now-stale one, so it kept reporting
+"No Belongs To relationships yet" -- even immediately after adding
+one, in the same session, with no page reload in between -- and had no
+way to actually add the field at all. `ModelDetail` now owns one
+`relationships` state, passed to `RelationshipEditor` as a controlled
+`relationships`/`onRelationshipsChange` pair (its own `handleAdd()`/
+`handleDelete()` call `onRelationshipsChange()` instead of a local
+setter) and straight into `FieldEditor` as a plain `relationships`
+prop -- one shared source of truth, updated the instant either
+component changes it, closing the staleness window entirely rather
+than narrowing it.
 
 ### `Relate to One` / `Relate to Many` -- fields bound to a relationship, not a free-typed name
 

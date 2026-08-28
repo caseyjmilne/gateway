@@ -22,12 +22,17 @@ import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
  * model's own .php file (see Model_Relationships/Model_Builder on the
  * PHP side) -- but unlike a field, adding or removing one never touches
  * the database schema: there's no column, so no migration ever runs.
+ *
+ * `relationships`/`onRelationshipsChange` are a controlled pair, owned
+ * by ModelDetail (the parent) rather than local state here -- FieldEditor
+ * needs this exact same list (for its own "Relate to One"/"Relate to
+ * Many" relationship picker) to update the moment this component adds
+ * or removes one, not just whenever FieldEditor next happens to refetch
+ * it independently. See ModelDetail's own docblock for the bug this
+ * fixes.
  */
-export default function RelationshipEditor( { modelClass, initialRelationships } ) {
+export default function RelationshipEditor( { modelClass, relationships, onRelationshipsChange } ) {
 	const relationshipTypes = useRelationshipTypes();
-	const [ relationships, setRelationships ] = useState(
-		initialRelationships || []
-	);
 	const [ error, setError ] = useState( '' );
 
 	const [ otherModels, setOtherModels ] = useState( [] );
@@ -101,7 +106,7 @@ export default function RelationshipEditor( { modelClass, initialRelationships }
 					type: newType,
 				} ),
 			} );
-			setRelationships( ( current ) => [ ...current, relationship ] );
+			onRelationshipsChange( ( current ) => [ ...current, relationship ] );
 		} catch ( err ) {
 			setError( err.message );
 		} finally {
@@ -118,7 +123,7 @@ export default function RelationshipEditor( { modelClass, initialRelationships }
 				`${ basePath }/${ encodeURIComponent( methodName ) }`,
 				{ method: 'DELETE' }
 			);
-			setRelationships( ( current ) =>
+			onRelationshipsChange( ( current ) =>
 				current.filter(
 					( relationship ) => relationship.method_name !== methodName
 				)

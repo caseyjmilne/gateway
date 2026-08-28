@@ -47,13 +47,11 @@ import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
  * created), editing one disables the Name and Type inputs -- only its
  * Label stays editable, same as every other field type.
  */
-export default function FieldEditor( { modelClass, initialFields } ) {
+export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
 	const relationshipTypes = useRelationshipTypes();
 	const [ fields, setFields ] = useState( initialFields || [] );
 	const [ error, setError ] = useState( '' );
-
-	const [ relationships, setRelationships ] = useState( [] );
 
 	const [ newName, setNewName ] = useState( '' );
 	const [ newLabel, setNewLabel ] = useState( '' );
@@ -78,26 +76,15 @@ export default function FieldEditor( { modelClass, initialFields } ) {
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/fields`;
 	const dragEnabled = null === editingName && null === deletingName;
 
-	// This model's own relationships -- what the relationship dropdown
-	// offers once a Relate to One/Relate to Many type is picked. Fetched
-	// independently (rather than passed down from ModelDetail) the same
-	// way RelationshipEditor fetches its own "other models" list, so
-	// there's one clear owner of when this list gets (re-)loaded.
-	useEffect( () => {
-		let cancelled = false;
-
-		apiFetch( `/models/${ encodeURIComponent( modelClass ) }/relationships` )
-			.then( ( data ) => {
-				if ( ! cancelled ) {
-					setRelationships( data );
-				}
-			} )
-			.catch( () => {} );
-
-		return () => {
-			cancelled = true;
-		};
-	}, [ modelClass ] );
+	// `relationships` (this model's own) arrives as a prop, owned by
+	// ModelDetail and shared with RelationshipEditor -- not fetched here
+	// independently. It used to be: FieldEditor fetched its own copy once
+	// on mount, so adding a relationship via RelationshipEditor (rendered
+	// just below this component, same page, same session) never updated
+	// it, leaving the "Relate to One"/"Relate to Many" picker below
+	// falsely reporting "No <type> relationships yet" even though one
+	// genuinely existed. Sharing one lifted-up state closes that gap
+	// entirely -- see ModelDetail's own docblock.
 
 	const relationshipTypeFor = ( typeKey ) =>
 		fieldTypes.find( ( type ) => type.key === typeKey )?.relationship_type ||
