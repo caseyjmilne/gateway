@@ -3264,14 +3264,10 @@ opposite direction; a `hasMany` and its own inverse `belongsTo` sharing
 the identical physical FK column, by Eloquent's own convention; a Relate
 to One field later bound to a `belongsTo` relationship -- see
 `Model_Fields`' own section below) reuses what's already there rather
-than erroring or trying to create it twice. `remove()` deliberately
-never drops any of it -- a relationship's own row can be removed
-independently of whatever schema it needed, and something else could
-still depend on the exact same column/table, with no reliable way to
-tell from here alone whether it's actually safe to drop. There's also no
-`update()` at all (unlike `Model_Fields`): every part of a relationship,
-including its method name, follows automatically from *which* related
-model and *what* type were picked, so "editing" one is really just
+than erroring or trying to create it twice. There's also no `update()`
+at all (unlike `Model_Fields`): every part of a relationship, including
+its method name, follows automatically from *which* related model and
+*what* type were picked, so "editing" one is really just
 removing it and adding a different one -- nothing to change in place.
 
 **Two real bugs here, fixed.** First: an earlier version of this method
@@ -3302,6 +3298,44 @@ to Many" (`Model_Fields`' own section, below) are purely an optional
 admin-UI layer on top of a relationship that already works without
 them (autocomplete search-and-select), never required infrastructure
 for it.
+
+**`remove()` cleans up the FK column it created too -- but only where
+it's actually safe to.** A third real bug, reported directly: removing
+a `belongsTo`/`hasOne`/`hasMany` relationship left its own auto-created
+FK column behind forever, with nothing to ever clean it up. `remove()`
+now drops it (`drop_foreign_key_column_if_unused()`), via the same
+generated-and-run migration mechanism as everything else here -- but
+only after confirming nothing else still needs it first:
+
+- A real field -- plain, or a Relate to One bound to some *other*
+  relationship (one bound to the relationship actually being removed
+  already blocks reaching this point at all, via the existing "remove
+  the field first" guard) -- still named exactly that column.
+- Any *other* still-recorded relationship, anywhere on the whole site,
+  that would independently derive this exact same (table, column) pair
+  -- the real scenario this guards against: `Event hasMany Ticket` and
+  `Ticket belongsTo Event` are two entirely independent relationship
+  rows that happen to share the identical physical FK column
+  (`tickets.event_id`) by Eloquent's own convention (a `hasOne`/`hasMany`'s
+  FK is named after the *owning* class; a `belongsTo` declared the
+  *other* direction, with its own naturally-derived method name, lands
+  on the exact same column purely by construction). Removing either one
+  alone must never drop a column the other one still needs to function
+  -- checked via a full scan of every relationship currently recorded
+  (`gateway_relationships` is small -- one row per relationship an
+  entire site has configured -- so this costs nothing that matters, and
+  needs no separate reverse index kept in sync).
+
+`belongsToMany`'s own pivot table is the one thing left deliberately
+untouched by any of this, unchanged from before: a whole shared table,
+not a single column another exact relationship could also derive, so
+there's even less signal here to tell whether dropping it is actually
+safe -- another `belongsToMany` (from the opposite direction, or a
+future one) could still be relying on the exact same table, and
+Eloquent's own naming convention doesn't distinguish direction. Like
+every other side effect `remove()` triggers, a failed or skipped column
+drop is never surfaced as an error -- the relationship's own removal
+already succeeded regardless.
 
 **Method names are never typed in -- always derived automatically,
 by design.** Relating a model to another via `belongsTo` or `hasOne`
@@ -3478,9 +3512,10 @@ never just when the column happens to already be gone: dropping it
 would silently break the relationship's own generated `belongsTo()`
 method, which keeps needing that column to function regardless of
 whether a Relate to One field is ever bound to it. Removing the field
-only ever forgets its own metadata; only `Model_Relationships::remove()`
-could ever drop the column, and -- like its own pivot table -- it
-deliberately doesn't.
+only ever forgets its own metadata; `Model_Fields::remove()` itself
+never drops this column under any circumstances -- only
+`Model_Relationships::remove()` ever does (see "Relationships" above
+for when it actually decides that's safe).
 
 **Immutable once created -- matches how a relationship itself already
 works.** Neither the name nor the type of one of these two fields can

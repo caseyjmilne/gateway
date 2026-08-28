@@ -31,13 +31,22 @@
  *   either side's own table (see `ensure_pivot_table()`).
  *
  * Every one of these is idempotent (see `ensure_foreign_key_column()`/
- * `ensure_pivot_table()`'s own docblocks) and, once created, is never
- * dropped by remove() -- a relationship's own row can be removed
- * independently of whatever schema it needed, and something else (a
- * Relate to One field later bound to this same `belongsTo`; another
- * relationship, from the opposite direction, relying on the exact same
- * pivot table) could still depend on it, with no reliable way to tell
- * from here alone whether it's actually safe to drop.
+ * `ensure_pivot_table()`'s own docblocks). remove() cleans up in the
+ * other direction, but only where it's actually safe to: a `belongsTo`/
+ * `hasOne`/`hasMany`'s own FK column is dropped too (`drop_foreign_key_
+ * column_if_unused()`) -- *unless* a real field is still named exactly
+ * that, or some *other* still-recorded relationship (anywhere -- e.g.
+ * `Event hasMany Ticket` and `Ticket belongsTo Event` share the exact
+ * same physical `tickets.event_id` column by Eloquent's own convention;
+ * removing one must never drop a column the other still needs) would
+ * independently derive the identical (table, column) pair. `belongsToMany`'s
+ * pivot table is the one exception left deliberately alone: a whole
+ * shared table, not a single column another exact relationship could
+ * also derive, so there's even less signal here to tell whether
+ * dropping it is actually safe -- another `belongsToMany` (from the
+ * opposite direction, or a future one) could still be relying on the
+ * exact same table, and Eloquent's own naming convention doesn't
+ * distinguish direction.
  *
  * A real bug this fixes: an earlier version of this class treated
  * `belongsTo`/`hasOne`/`hasMany` as pure metadata with no schema
@@ -373,16 +382,9 @@ class Model_Relationships {
 			return $model;
 		}
 
-		$found = false;
+		$relationship = self::find( $class_name, $method_name );
 
-		foreach ( self::all( $class_name ) as $existing ) {
-			if ( $existing['method_name'] === $method_name ) {
-				$found = true;
-				break;
-			}
-		}
-
-		if ( ! $found ) {
+		if ( ! $relationship ) {
 			return new \WP_Error(
 				'gateway_relationship_not_found',
 				__( 'Relationship not found.', 'gateway' ),
@@ -419,9 +421,26 @@ class Model_Relationships {
 			->where( 'method_name', $method_name )
 			->delete();
 
+		// The FK column this relationship needed (add()'s own eager
+		// creation, above) is dropped too, but only if nothing else still
+		// needs it -- see drop_foreign_key_column_if_unused()'s own
+		// docblock for the full "what else could still need it" check.
+		// `belongsToMany`'s pivot table is deliberately excluded from
+		// this cleanup entirely, same as always: a whole shared table,
+		// not a single column one specific other relationship could also
+		// derive, so there's even less signal here to tell whether
+		// dropping it is actually safe.
+		if ( 'belongsToMany' !== $relationship['type'] ) {
+			$required = self::required_foreign_key_for( $class_name, $relationship );
+
+			if ( $required ) {
+				self::drop_foreign_key_column_if_unused( $required[0], $required[1] );
+			}
+		}
+
 		// Not surfaced as a warning here (same reasoning as
 		// Model_Fields::remove()) -- removing the relationship succeeded
-		// regardless.
+		// regardless, whether or not its own schema cleanup did too.
 		Model_Builder::rewrite_model_file(
 			$class_name,
 			$model->getTable(),
@@ -712,6 +731,147 @@ PHP;
 		}
 
 		return true;
+	}
+
+	/**
+	 * Which (owning class, column name) a single `belongsTo`/`hasOne`/
+	 * `hasMany` relationship needs -- the exact same derivation add()'s
+	 * own `ensure_foreign_key_column()` call sites use, factored out so
+	 * remove()'s own cleanup (below) can ask the identical question
+	 * about a relationship it's about to delete, and so
+	 * drop_foreign_key_column_if_unused() can ask it again about every
+	 * *other* relationship still on file when deciding whether dropping
+	 * is actually safe.
+	 *
+	 * @param string $owning_class The model this relationship belongs to
+	 *                              (i.e. whatever `all( $owning_class )`
+	 *                              this relationship came from).
+	 * @param array  $relationship {related_model, type, method_name}.
+	 * @return array{0:string,1:string}|null [table-owning class, column name],
+	 *                or null for `belongsToMany` (no single column -- a
+	 *                whole pivot table instead, handled separately) or an
+	 *                unrecognized type.
+	 */
+	private static function required_foreign_key_for( $owning_class, array $relationship ) {
+		if ( 'belongsTo' === $relationship['type'] ) {
+			return array( $owning_class, self::belongs_to_foreign_key( $relationship['method_name'] ) );
+		}
+
+		if ( in_array( $relationship['type'], array( 'hasOne', 'hasMany' ), true ) ) {
+			return array( $relationship['related_model'], \Illuminate\Support\Str::snake( $owning_class ) . '_id' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Every relationship currently recorded, across every model -- not
+	 * scoped to any one model's own `all( $class_name )`, since deciding
+	 * whether a column is still needed (drop_foreign_key_column_if_unused()'s
+	 * own job) means checking every relationship that could possibly
+	 * derive that exact same column, and that isn't necessarily limited
+	 * to the two models the relationship being removed involves (a
+	 * `hasOne`/`hasMany`'s own FK column lives on the *related* model's
+	 * table, so another, unrelated model could independently declare its
+	 * own `hasOne`/`hasMany` pointing at that same related model with a
+	 * *different* resulting column -- harmless -- but a `belongsTo`
+	 * declared the other direction, or a second `hasOne`/`hasMany` between
+	 * the exact same pair, needs checking regardless of which side
+	 * "started" it). `gateway_relationships` is small (one row per
+	 * relationship an entire site has configured) -- a full scan here
+	 * costs nothing that matters, and no reverse index has to be kept in
+	 * sync to make this cheaper.
+	 *
+	 * @return array<int,array{0:string,1:array{related_model:string,type:string,method_name:string}}>
+	 *              Each entry: [owning class, {related_model, type, method_name}].
+	 */
+	private static function all_relationships_everywhere() {
+		return self::table()
+			->orderBy( 'id' )
+			->get( array( 'model', 'related_model', 'type', 'method_name' ) )
+			->map(
+				function ( $row ) {
+					return array(
+						$row->model,
+						array(
+							'related_model' => $row->related_model,
+							'type'          => $row->type,
+							'method_name'   => $row->method_name,
+						),
+					);
+				}
+			)
+			->all();
+	}
+
+	/**
+	 * Drops a `belongsTo`/`hasOne`/`hasMany` relationship's own FK
+	 * column, via a real generated-and-run migration (the drop
+	 * counterpart to ensure_foreign_key_column()) -- but only once
+	 * confirmed that nothing else still needs it:
+	 *
+	 * - A real field (plain, or a Relate to One bound to some *other*
+	 *   relationship -- one bound to the relationship actually being
+	 *   removed already blocked reaching this point at all, in remove()
+	 *   itself) still named exactly this.
+	 * - Any *other* still-recorded relationship, anywhere, that would
+	 *   independently derive this exact same (table, column) pair --
+	 *   the real scenario this guards: `Event hasMany Ticket` and
+	 *   `Ticket belongsTo Event` are two independent relationship rows
+	 *   that happen to share the identical physical FK column
+	 *   (`tickets.event_id`) by Eloquent's own convention; removing
+	 *   either one alone must never drop a column the other one still
+	 *   needs to function.
+	 *
+	 * Silently does nothing (never returns an error, since remove()
+	 * itself already succeeded regardless) if the column turns out to
+	 * still be needed, doesn't exist at all, or the drop migration
+	 * itself fails for some reason -- same "removal succeeded either
+	 * way" non-fatal treatment remove()'s own model-file rewrite already
+	 * gets.
+	 *
+	 * @param string $table_owner_class Class name whose own table the column lives on.
+	 * @param string $column_name       Column name.
+	 */
+	private static function drop_foreign_key_column_if_unused( $table_owner_class, $column_name ) {
+		foreach ( Model_Fields::all( $table_owner_class ) as $field ) {
+			if ( $field['name'] === $column_name ) {
+				return;
+			}
+		}
+
+		foreach ( self::all_relationships_everywhere() as list( $owning_class, $other_relationship ) ) {
+			$required = self::required_foreign_key_for( $owning_class, $other_relationship );
+
+			if ( $required && $required[0] === $table_owner_class && $required[1] === $column_name ) {
+				return;
+			}
+		}
+
+		if ( ! class_exists( $table_owner_class ) ) {
+			return;
+		}
+
+		$model  = new $table_owner_class();
+		$table  = $model->getTable();
+		$schema = \Illuminate\Database\Capsule\Manager::schema();
+
+		if ( ! $schema->hasColumn( $table, $column_name ) ) {
+			return;
+		}
+
+		$up_body   = "\t\tSchema::table( '{$table}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {\n"
+			. "\t\t\t\$table->dropColumn( '{$column_name}' );\n"
+			. "\t\t} );";
+		$down_body = "\t\tSchema::table( '{$table}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {\n"
+			. "\t\t\t\$table->unsignedBigInteger( '{$column_name}' )->nullable();\n"
+			. "\t\t} );";
+
+		self::generate_and_run_migration(
+			'Remove' . \Illuminate\Support\Str::studly( $column_name ) . 'From' . \Illuminate\Support\Str::studly( $table ) . 'Table',
+			$up_body,
+			$down_body
+		);
 	}
 
 	/**
