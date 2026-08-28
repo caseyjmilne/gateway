@@ -74,6 +74,20 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * A relate field's own stored value -- a bare foreign-key id -- was
+	 * never a meaningful thing to facet by: a Select/Checkboxes facet
+	 * built from it would show raw, unlabeled ids as its own options,
+	 * and Facet_Query has no notion of filtering *through* a
+	 * relationship (matching by the *related* record's own display
+	 * value) in the first place.
+	 */
+	public static function is_filterable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 */
 	public static function relationship_type() {
 		return 'belongsTo';

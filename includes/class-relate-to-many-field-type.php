@@ -85,6 +85,18 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * There isn't even a column here to facet by (see blueprint_method()
+	 * above) -- a Relate to Many field's own value only ever exists as
+	 * pivot-table rows, never a scalar Facet_Query's `meta`/core-column
+	 * branches could compare against in the first place.
+	 */
+	public static function is_filterable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 */
 	public static function relationship_type() {
 		return 'belongsToMany';

@@ -197,17 +197,24 @@ class Column_Registry {
 	 * FILTERABLE_CORE_COLUMNS/get_meta_columns() already make for post
 	 * columns, applied via each field's own `Field_Type` (something a post
 	 * type's meta columns don't have -- see get_meta_columns()'s own
-	 * docblock for why *that* method can't narrow by type): a
-	 * `Password_Field_Type` field (`is_sensitive()`) is never filterable
-	 * at all -- there's no legitimate reason to search/facet a secret
-	 * value; a TextArea field is free text, `['input']` only, the same
-	 * "a Select of every distinct value would be unusable" reasoning
-	 * `post_content`/`post_excerpt` already get; every other type
-	 * (Text, Number, Range, Email, URL, and any future type that doesn't
-	 * opt out) gets the full `['input', 'select', 'checkboxes']`
-	 * vocabulary, same default as post meta. `Facet_Query::
-	 * apply_collection_facets()` is what actually applies one of these to
-	 * an Eloquent query -- the Collection counterpart to `apply_facets()`.
+	 * docblock for why *that* method can't narrow by type): a field type
+	 * that declares itself not `is_filterable()` at all (`Password_Field_Type`,
+	 * a secret value with no legitimate reason to be searchable/facetable;
+	 * `Relate_To_One_Field_Type`/`Relate_To_Many_Field_Type`, whose own
+	 * stored value -- a bare id, or nothing at all -- was never a
+	 * meaningful thing to facet by) is never filterable at all -- a field
+	 * type declares this about itself (`Field_Type::is_filterable()`)
+	 * rather than this method hardcoding a per-type exclusion list of its
+	 * own that every new type would need to remember to be added to. Of
+	 * the ones that ARE filterable, a TextArea field is still free text,
+	 * `['input']` only, the same "a Select of every distinct value would
+	 * be unusable" reasoning `post_content`/`post_excerpt` already get;
+	 * every other filterable type (Text, Number, Range, Email, URL, and
+	 * any future type that doesn't opt out) gets the full `['input',
+	 * 'select', 'checkboxes']` vocabulary, same default as post meta.
+	 * `Facet_Query::apply_collection_facets()` is what actually applies
+	 * one of these to an Eloquent query -- the Collection counterpart to
+	 * `apply_facets()`.
 	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
@@ -231,12 +238,12 @@ class Column_Registry {
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
-			$type_class   = Field_Type_Registry::get( $field['type'] );
-			$is_sensitive = $type_class && class_exists( $type_class ) && $type_class::is_sensitive();
+			$type_class    = Field_Type_Registry::get( $field['type'] );
+			$is_filterable = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
 
 			$facet_type = array();
 
-			if ( ! $is_sensitive ) {
+			if ( $is_filterable ) {
 				$facet_type = 'textarea' === $field['type']
 					? array( 'input' )
 					: array( 'input', 'select', 'checkboxes' );

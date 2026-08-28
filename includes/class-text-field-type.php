@@ -53,4 +53,11 @@ class Text_Field_Type implements Field_Type {
 	public static function is_sensitive() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_filterable() {
+		return true;
+	}
 }

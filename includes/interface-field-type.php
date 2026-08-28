@@ -66,4 +66,32 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function is_sensitive();
+
+	/**
+	 * Whether a field of this type is ever a sensible thing to filter/
+	 * facet a Data Table or Data Cards grid by -- what `Column_Registry::
+	 * get_columns_for_collection()` reads to decide a field's own
+	 * `isFilterable`/`facetType` (`false` here means both a flat `[]`,
+	 * regardless of anything a `gateway_datatable_collection_facet_type`
+	 * filter might otherwise try to add back -- see that method's own
+	 * docblock). A field type declares this about *itself*, rather than
+	 * `Column_Registry` hardcoding a per-type exclusion list of its own
+	 * (`is_subclass_of( $type_class, Relationship_Field_Type::class )`,
+	 * a specific type key, ...) that every new type would need to
+	 * remember to be added to.
+	 *
+	 * `false` for `Password_Field_Type` (a secret value has no legitimate
+	 * reason to be searchable/facetable at all -- independent of, if
+	 * overlapping with, `is_sensitive()`'s own masking-on-display
+	 * concern) and for `Relate_To_One_Field_Type`/`Relate_To_Many_Field_Type`
+	 * (a relate field's own stored value -- a bare foreign-key id, or
+	 * nothing at all for Relate to Many -- was never a meaningful thing
+	 * to facet by; a facet showing raw, unlabeled ids as its Select/
+	 * Checkboxes options would be actively confusing, and `Facet_Query`
+	 * has no notion of filtering *through* a relationship in the first
+	 * place). `true` for every other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function is_filterable();
 }

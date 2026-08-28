@@ -65,4 +65,15 @@ class Password_Field_Type implements Field_Type {
 	public static function is_sensitive() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * A secret value has no legitimate reason to be searchable/facetable
+	 * at all -- independent of, if overlapping with, is_sensitive()'s own
+	 * masking-on-display concern above.
+	 */
+	public static function is_filterable() {
+		return false;
+	}
 }

@@ -2326,19 +2326,37 @@ either.
 `Column_Registry::get_columns_for_collection()` marks a model's own
 fields `isFilterable` (mirroring the UX judgment `FILTERABLE_CORE_COLUMNS`/
 `get_meta_columns()` already make for post columns, using each field's
-own `Field_Type` -- something a post type's meta columns don't have): a
-`Password_Field_Type` field (`is_sensitive()`) is never filterable at
-all, since there's no legitimate reason to search/facet a secret value;
-a TextArea field is free text (`facetType: ['input']` only, the same
-"a Select of every distinct value would be unusable" reasoning
-`post_content`/`post_excerpt` already get); every other type gets the
-full `['input', 'select', 'checkboxes']` vocabulary, the same default as
-post meta. A new `gateway_datatable_collection_facet_type` filter lets a
-site narrow this further, mirroring `gateway_datatable_meta_facet_type`.
+own `Field_Type` -- something a post type's meta columns don't have):
+a field type declares whether it's ever a sensible thing to filter/facet
+by at all via a new `Field_Type::is_filterable()` (added to the base
+interface, so every registered type -- including a future one -- must
+say one way or the other, rather than this method hardcoding its own
+per-type/per-`is_subclass_of()` exclusion list to keep in sync by hand).
+`false` for `Password_Field_Type` (a secret value has no legitimate
+reason to be searchable/facetable at all) and for
+`Relate_To_One_Field_Type`/`Relate_To_Many_Field_Type` (a relate field's
+own stored value -- a bare foreign-key id, or nothing at all for Relate
+to Many -- was never a meaningful thing to facet by: a Select/Checkboxes
+built from raw, unlabeled ids would be actively confusing, and
+`Facet_Query` has no notion of filtering *through* a relationship in the
+first place -- reported directly as "relationship fields are not
+suitable for filtering... skip it in the facet list," fixed by adding
+this declaration rather than a one-off exclusion). `true` for every
+other built-in type; of those, a TextArea field is still free text
+(`facetType: ['input']` only, the same "a Select of every distinct value
+would be unusable" reasoning `post_content`/`post_excerpt` already get),
+every other filterable type gets the full `['input', 'select',
+'checkboxes']` vocabulary, the same default as post meta. A new
+`gateway_datatable_collection_facet_type` filter still lets a site
+narrow this further on top, mirroring `gateway_datatable_meta_facet_type`.
 Because this is the exact same method `gateway/datatable`'s own Facets
-panel/`gateway/facet` already use, this benefits both blocks at once --
-see the "Facets work for a Collection too" note under the Data Table
-section above for what changed there specifically.
+panel/`gateway/facet` already use, this benefits both blocks (and
+`gateway/data-cards`'s own Facets panel/`gateway/card-facet`) at once,
+with no JS changes needed anywhere -- every one of those already reads
+`isFilterable` off whatever `Column_Registry` hands it, never re-deriving
+it from a field's type on their own; see the "Facets work for a
+Collection too" note under the Data Table section above for what changed
+there specifically.
 
 **`Facet_Query` gains two Eloquent counterparts** to its existing
 `WP_Query`-only methods:
@@ -3455,6 +3473,8 @@ interface Field_Type {
 	public static function blueprint_method(); // "string", "double", ...
 	public static function input_type();       // the HTML <input type>
 	public static function cast( $value );     // e.g. "3" -> 3 for Number
+	public static function is_sensitive();     // mask in RecordsCrud's table? (Password only)
+	public static function is_filterable();    // ever a sensible facet/filter? (false for Password, Relate to One/Many)
 }
 ```
 
