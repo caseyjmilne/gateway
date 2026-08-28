@@ -18,6 +18,7 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 // gains a presentation setting.
 const PRESENTATION_FIELD_META = {
 	placeholder: { label: 'Placeholder', type: 'text' },
+	step: { label: 'Step Size', type: 'number' },
 	prepend: { label: 'Prepend', type: 'text' },
 	append: { label: 'Append', type: 'text' },
 	instructions: { label: 'Instructions', type: 'textarea' },
@@ -49,7 +50,12 @@ const PRESENTATION_FIELD_META = {
  * that since it only opens) flushes any still-pending change immediately
  * first, so closing right after typing never drops it, then removes the
  * row entirely if it's a draft that never actually reached a valid,
- * saved state.
+ * saved state. The other way a change can still be mid-debounce --
+ * navigating away from this screen entirely, not closing the row first --
+ * is covered too: the debounce effect's own cleanup flushes whatever's
+ * still pending (`pendingSaveValuesRef`) rather than just cancelling the
+ * timer, so this component unmounting is never a silent way to lose the
+ * last few keystrokes.
  *
  * This does mean a field's Name going through several real RENAME COLUMN
  * migrations if someone pauses mid-word while typing it (each pause past
@@ -147,9 +153,13 @@ const PRESENTATION_FIELD_META = {
  * per key in the picked type's own `presentation_fields` -- see
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
  * own docblock on the PHP side for the whole "different types need
- * different extra data" design this is the first real use of; a plain
- * note instead for a type that recognizes none, currently every type
- * except Text), and **Conditional Logic**, still an intentionally empty
+ * different extra data" design this is the first real use of -- Text and
+ * Number recognize these today (Number also gets its own `step`, a plain
+ * number input rendered via `PRESENTATION_FIELD_META`'s own `type:
+ * 'number'`, in between Placeholder and Prepend -- the order a type's own
+ * `presentation_fields` lists a key in is the order this tab renders it
+ * in); a plain note instead for every other type, which recognizes
+ * none), and **Conditional Logic**, still an intentionally empty
  * placeholder -- a reserved tab, not yet backed by anything on the PHP
  * side. A small green dot on a tab's own heading (General/Validation/
  * Presentation) marks that it currently holds real content (a non-blank
@@ -198,6 +208,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	// and delete the row out from under it.
 	const saveChainRef = useRef( Promise.resolve() );
 	const debounceTimerRef = useRef( null );
+	// The values the debounce timer above is currently waiting to save, if
+	// any -- null whenever nothing is pending (no change since the last
+	// save, or the pending one already fired). Needed so the debounce
+	// effect's own cleanup (see its own comment below) can flush a change
+	// that's still mid-wait when this component unmounts out from under
+	// it -- navigating away entirely (not closing the row, which already
+	// flushes via finishEditing()) -- instead of just cancelling it.
+	const pendingSaveValuesRef = useRef( null );
 	const savedFlashTimerRef = useRef( null );
 
 	const {
@@ -468,7 +486,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 		const subscription = watch( ( values ) => {
 			clearTimeout( debounceTimerRef.current );
+			pendingSaveValuesRef.current = values;
 			debounceTimerRef.current = setTimeout( () => {
+				pendingSaveValuesRef.current = null;
 				attemptAutosave( values, editingIndex );
 			}, AUTOSAVE_DEBOUNCE_MS );
 		} );
@@ -476,6 +496,20 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		return () => {
 			subscription.unsubscribe();
 			clearTimeout( debounceTimerRef.current );
+
+			// A change still mid-debounce when this runs is only ever one
+			// this component is about to lose for good -- editingIndex only
+			// ever goes from non-null to null via finishEditing() (which
+			// clears debounceTimerRef and flushes on its own, see below),
+			// so the one other way this cleanup fires with something still
+			// pending is the component unmounting entirely: the user
+			// navigated elsewhere with a change not yet auto-saved. Flush
+			// it now rather than silently dropping it.
+			if ( pendingSaveValuesRef.current ) {
+				const values = pendingSaveValuesRef.current;
+				pendingSaveValuesRef.current = null;
+				attemptAutosave( values, editingIndex );
+			}
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ watch, editingIndex ] );
@@ -586,6 +620,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	const finishEditing = async () => {
 		clearTimeout( debounceTimerRef.current );
+		// This flushes explicitly below -- clearing this here too means the
+		// debounce effect's own cleanup (about to run once editingIndex
+		// changes to null) finds nothing left pending and doesn't flush a
+		// second time.
+		pendingSaveValuesRef.current = null;
 
 		const values = getValues();
 
@@ -907,6 +946,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 										<textarea
 											className="regular-text"
 											rows={ 3 }
+											{ ...register( `settings.${ key }` ) }
+										/>
+									) : 'number' === meta.type ? (
+										<input
+											type="number"
+											step="any"
+											className="regular-text"
 											{ ...register( `settings.${ key }` ) }
 										/>
 									) : (

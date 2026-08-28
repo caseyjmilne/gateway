@@ -160,11 +160,12 @@ interface Field_Type {
 	/**
 	 * Which of the admin app's Field Editor's own generic "Presentation"
 	 * settings (`FieldEditor.jsx`'s own `PRESENTATION_FIELD_META` catalog
-	 * -- currently `placeholder`/`prepend`/`append`/`instructions`, a
-	 * fixed, small vocabulary this method only ever selects a subset of,
-	 * never invents new keys for) this type actually recognizes -- a
-	 * type declares this about *itself*, the same "no hardcoded per-type
-	 * list living somewhere else" reasoning `is_filterable()`/
+	 * -- currently `placeholder`/`step`/`prepend`/`append`/`instructions`,
+	 * a small vocabulary this method only ever selects a subset of; a new
+	 * type-specific need like `step` below is added to the catalog itself,
+	 * not invented ad hoc by a single type) this type actually recognizes
+	 * -- a type declares this about *itself*, the same "no hardcoded
+	 * per-type list living somewhere else" reasoning `is_filterable()`/
 	 * `is_text_renderable()` already establish, rather than
 	 * `Model_Fields::sanitize_settings()` (the one place this is actually
 	 * enforced -- see that method's own docblock) hardcoding which types
@@ -181,11 +182,16 @@ interface Field_Type {
 	 * declared subset of the fixed key catalog ever survives
 	 * `sanitize_settings()`, whatever a request actually sends.
 	 *
-	 * `[]` for every built-in type except `Text_Field_Type`, which
-	 * returns all four -- the first (and, for now, only) type this
-	 * exists for at all.
+	 * `[]` for every built-in type except `Text_Field_Type` (`placeholder`/
+	 * `prepend`/`append`/`instructions`) and `Number_Field_Type`
+	 * (the same four, plus its own `step` -- the HTML `<input type="number">`
+	 * `step` attribute; recognized by no other type, since it means
+	 * nothing for a plain string). The order a type returns these in is
+	 * the order the Presentation tab renders them in, not just which ones
+	 * appear -- `Number_Field_Type` returns `step` right after
+	 * `placeholder` and before `prepend` for exactly that reason.
 	 *
-	 * @return string[] Subset of `['placeholder', 'prepend', 'append', 'instructions']`.
+	 * @return string[] Subset of `['placeholder', 'step', 'prepend', 'append', 'instructions']`, in display order.
 	 */
 	public static function presentation_fields();
 }

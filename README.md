@@ -3499,6 +3499,18 @@ real RENAME COLUMN migrations if someone pauses mid-word while typing it
 -- an accepted trade-off for "changes just happen," not something
 specially worked around for Name alone.
 
+**A pending change survives navigating away, not just closing the row.**
+Closing a row is one way a change still mid-debounce gets flushed instead
+of dropped, but it's not the only way this component stops watching a
+row: leaving the screen entirely (this component unmounting) while a
+change is still waiting out its 800ms debounce is a second one, found by
+actually exercising the autosave flow end to end in a real browser rather
+than only against `Model_Fields` directly -- unmounting used to just
+cancel the pending timer outright. The debounce `useEffect`'s own cleanup
+now flushes whatever's still pending (tracked in a small
+`pendingSaveValuesRef`) instead of only clearing the timer, so the last
+few keystrokes before navigating elsewhere are never silently lost.
+
 See "Choice field types" below for the panel's own General/Validation/
 Presentation/Conditional Logic tabs (the latter two currently empty
 placeholders, mirroring ACF's own field-settings layout).
@@ -4182,15 +4194,18 @@ as every other write path in this plugin, and every query is wrapped in
 column that's since been dropped by hand, say) comes back as a clean
 `\WP_Error` rather than a fatal.
 
-### Presentation field settings (placeholder / prepend / append / instructions)
+### Presentation field settings (placeholder / prepend / append / instructions / step)
 
 A field's "Presentation" tab (previously an empty placeholder, alongside
-"Conditional Logic") is now real for the one type that currently needs
-it: **Text**. A Text field can be given a placeholder, a prepended and/or
-appended string shown flush against its own input (e.g. a "$" prepend
-and a "USD" append on a price field), and an instructions note shown
-between its label and its control -- all four purely presentational, none
-of them touching what's actually stored in the field's own column.
+"Conditional Logic") is now real for two types: **Text** and **Number**.
+Both can be given a placeholder, a prepended and/or appended string shown
+flush against their own input (e.g. a "$" prepend and a "USD" append on
+a price field), and an instructions note shown between the label and the
+control. Number also gets one setting of its own, **Step**, the HTML
+`<input type="number">` `step` attribute -- e.g. `0.01` so a price field
+increments/decrements (and validates) by cents rather than whole units,
+or `5` so a quantity field only moves in fives. None of the five touch
+what's actually stored in the field's own column -- purely presentational.
 
 **Why one generic JSON column, not one dedicated column per setting.**
 `gateway_fields` gains a single new nullable `text` column, `settings`,
@@ -4209,12 +4224,17 @@ here it's shape variance across types, there it was orderability.
 
 **`Field_Type::presentation_fields()`** (new interface method, alongside
 `eloquent_cast()`/`is_filterable()`/`is_text_renderable()`) is that
-whitelist: it returns the subset of `['placeholder', 'prepend', 'append',
-'instructions']` a given type actually recognizes -- every built-in type
-returns `[]` except `Text_Field_Type`, which returns all four. Adding a
-setting to another type later (or a type-specific one, like a Number
-field's own `min`/`max`) means adding its key to that one static method,
-not a schema migration or a new column.
+whitelist: it returns the subset of `['placeholder', 'step', 'prepend',
+'append', 'instructions']` a given type actually recognizes, **in the
+order its own Presentation tab should render them in** -- every built-in
+type returns `[]` except `Text_Field_Type` (all four, no `step`) and
+`Number_Field_Type` (the same four plus its own `step`, returned right
+after `placeholder` and before `prepend`, which is exactly where it
+renders). `step` is recognized by no other type -- it means nothing for
+a plain string. Adding a setting to another type later (or another
+type-specific one, like a Number field's own `min`/`max`) means adding
+its key to the fixed catalog and to that one static method, not a schema
+migration or a new column.
 
 **`Model_Fields::sanitize_settings( $type, $raw_settings )`** is the
 actual trust boundary, called from both `add()` and `update()` (each
@@ -4222,18 +4242,24 @@ gaining a new, always-sent `$settings` param, default `[]`) exactly the
 way `require_choices_for_field()` already gates `choices`: it looks up
 `$type`'s own `presentation_fields()`, keeps only the raw settings whose
 key appears in that list (silently dropping anything else the request
-sent, e.g. a `placeholder` submitted for a Number field, or an
-unrecognized key entirely), runs each surviving value through
-`sanitize_text_field( trim( ... ) )`, and drops a value entirely rather
-than storing `''` if it's blank after trimming -- a field with no real
-settings stores `NULL`, not `'{}'` or a JSON object full of empty
-strings. `update()`'s own "nothing changed" no-op check gained a matching
-`$settings_changed` alongside `$name_changed`/`$type_changed`/
-`$label_changed`/`$choices_changed`/`$required_changed`, and (like
-`choices`) a field's settings are silently dropped the moment its type
-changes away from one that recognizes them -- retyping a Text field with
-a configured placeholder into a Number field discards it, the same as
-retyping away from a Choice type discards its choices.
+sent, e.g. a `step` submitted for a Select field, or an unrecognized key
+entirely), runs each surviving value through `sanitize_text_field(
+trim( ... ) )` (`step`, though its own admin-app input is a real
+`<input type="number">`, is stored and sanitized as a string -- like
+every other setting here -- since all `settings` ever needs to do with
+it is round-trip it back into the HTML `step` attribute, which is itself
+just a string), and drops a value entirely rather than storing `''` if
+it's blank after trimming -- a field with no real settings stores `NULL`,
+not `'{}'` or a JSON object full of empty strings. `update()`'s own
+"nothing changed" no-op check gained a matching `$settings_changed`
+alongside `$name_changed`/`$type_changed`/`$label_changed`/
+`$choices_changed`/`$required_changed`, and (like `choices`) a field's
+settings are silently dropped the moment its type changes away from one
+that recognizes them -- retyping a Number field with a configured `step`
+into a Select field discards it, the same as retyping away from a Choice
+type discards its choices (retyping between Text and Number specifically
+keeps whichever of the four shared keys were already set, since both
+recognize them -- only `step` itself is Number-only).
 
 Same upgrade path as every other column here: `ensure_table()`'s
 fresh-CREATE block declares `settings` directly; an ALTER adds it for a
@@ -4247,20 +4273,27 @@ exposes each type's own `presentation_fields()` list too, alongside
 `FieldEditor`'s own Presentation tab which inputs to actually show for
 the currently-picked type, without a per-type list living in JavaScript.
 
-**The admin app.** `FieldEditor`'s Presentation tab renders one `<input>`
-(or, for `instructions`, one `<textarea>`) per key in the current type's
-own `presentation_fields()`, driven by a small local
-`PRESENTATION_FIELD_META` catalog (`{ placeholder: {...}, prepend:
-{...}, append: {...}, instructions: {...} }`) that just supplies each
-key's own label and control kind -- registered with React Hook Form as
-`settings.placeholder`/`settings.prepend`/etc. (dot-notation nested
-paths `register()` already supports natively), so they autosave exactly
-like Name/Label/Required already do, and the tab's own heading grows the
-same small green dot as General/Validation whenever any setting
-currently holds a non-blank value. A type that recognizes no
-presentation settings at all (everything except Text, today) shows a
-plain "This field type has no presentation settings yet." instead of an
-empty tab.
+**The admin app.** `FieldEditor`'s Presentation tab renders one control
+per key in the current type's own `presentation_fields()`, **in that
+list's own order** (this is what actually places Number's own Step Size
+between Placeholder and Prepend, not a hardcoded position in the JSX),
+driven by a small local `PRESENTATION_FIELD_META` catalog (`{
+placeholder: {...}, step: {...}, prepend: {...}, append: {...},
+instructions: {...} }`) that just supplies each key's own label and
+control kind -- a plain `<input type="text">` by default, `<textarea>`
+for `instructions`, and `<input type="number" step="any">` for `step`
+itself (so entering a fractional step like `0.01` isn't fought by the
+browser's own default whole-number stepping on the input used to *set*
+it -- unrelated to whatever value ends up in the *record* form's own
+`step` attribute for site visitors). Every one of these registers with
+React Hook Form as `settings.placeholder`/`settings.step`/etc.
+(dot-notation nested paths `register()` already supports natively), so
+they autosave exactly like Name/Label/Required already do, and the tab's
+own heading grows the same small green dot as General/Validation
+whenever any setting currently holds a non-blank value. A type that
+recognizes no presentation settings at all (everything except Text and
+Number, today) shows a plain "This field type has no presentation
+settings yet." instead of an empty tab.
 
 `RecordForm` reads `field.settings` **generically**, not gated on
 `field.type === 'text'` specifically -- since the server-side whitelist
@@ -4268,14 +4301,19 @@ above already guarantees every other type's `settings` is `{}`, there's
 nothing for a type-specific check here to protect against.
 `settings.instructions`, when present, renders as a small
 `.description`-styled note between a field's label and its own control,
-for any field type at all. `settings.placeholder`/`prepend`/`append`
-only ever have anything to show for the one plain `<input>` fallback
-branch at the very bottom of `RecordForm`'s own type-conditional chain
-(textarea/range/relate/select/radio/buttons/checkboxes/boolean each
-render their own dedicated control, none of which currently reads any of
-these three) -- `placeholder` passes straight through to the `<input>`'s
-own `placeholder` attribute, and `prepend`/`append` wrap it in a small
-inline group (`.gateway-record-form-input-group`, each addon a
+for any field type at all. `settings.placeholder`/`step`/`prepend`/
+`append` only ever have anything to show for the one plain `<input>`
+fallback branch at the very bottom of `RecordForm`'s own type-conditional
+chain (textarea/range/relate/select/radio/buttons/checkboxes/boolean
+each render their own dedicated control, none of which currently reads
+any of these four) -- `placeholder` and `step` both pass straight
+through to the `<input>`'s own like-named attributes unconditionally
+(setting `step` on a non-numeric `<input>` is a harmless no-op in every
+browser, so there's no need to gate it on the field actually being a
+Number -- `step` only ever comes back non-empty for one in the first
+place, since it's the only type that recognizes it), and `prepend`/
+`append` wrap the input in a small inline group
+(`.gateway-record-form-input-group`, each addon a
 `.gateway-record-form-input-addon`) styled flush against the input's own
 border, matching the familiar prepended/appended-text input pattern.
 

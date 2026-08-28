@@ -87,8 +87,14 @@ class Number_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * The second type these apply to, alongside Text_Field_Type -- plus
+	 * one Number-specific key of its own, `step`, recognized by no other
+	 * type (see this interface method's own docblock for why the fixed
+	 * catalog can grow a type-specific key like this one without every
+	 * other type needing to care).
 	 */
 	public static function presentation_fields() {
-		return array();
+		return array( 'placeholder', 'step', 'prepend', 'append', 'instructions' );
 	}
 }

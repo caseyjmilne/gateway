@@ -54,11 +54,16 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * already guarantees that server-side), so this component never needs
  * its own per-type list to know when there's nothing to show.
  * `settings.instructions` renders as a small note between the label and
- * the actual control, for any field type; `settings.placeholder`/
+ * the actual control, for any field type; `settings.placeholder`/`step`/
  * `prepend`/`append` only ever have anything to show for the one plain
  * `<input>` fallback branch at the bottom (nothing else -- textarea,
  * select, a relate autocomplete, ...) -- currently recognizes them at
- * all.
+ * all. `step` only ever comes back non-empty for a Number field (the
+ * only type `Field_Type::presentation_fields()` recognizes it for), and
+ * passes straight through to the `<input>`'s own `step` attribute
+ * unconditionally -- setting `step` on a non-numeric `<input type>` is a
+ * silent no-op in every browser, so there's no need to gate it on
+ * `inputType === 'number'` here as well.
  */
 export default function RecordForm( {
 	fields,
@@ -313,6 +318,7 @@ export default function RecordForm( {
 										type={ inputType }
 										className="regular-text"
 										placeholder={ field.settings?.placeholder }
+										step={ field.settings?.step || undefined }
 										value={ values[ field.name ] }
 										onChange={ handleChange( field.name ) }
 									/>
@@ -328,6 +334,7 @@ export default function RecordForm( {
 									type={ inputType }
 									className="regular-text"
 									placeholder={ field.settings?.placeholder }
+									step={ field.settings?.step || undefined }
 									value={ values[ field.name ] }
 									onChange={ handleChange( field.name ) }
 								/>
