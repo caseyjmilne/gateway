@@ -144,6 +144,17 @@ class Model_Field_REST_Controller {
 				'items'    => array( 'type' => 'string' ),
 				'default'  => array(),
 			),
+			// Whether a record can be saved with this field left empty
+			// (Model_Fields::validate_required_fields()). The `'required'
+			// => false` below describes THIS PARAM ITSELF (the request
+			// doesn't have to include a "required" key at all, same as
+			// every other arg here) -- unrelated to what the param's own
+			// value, once given, actually means for the field.
+			'required'             => array(
+				'required' => false,
+				'type'     => 'boolean',
+				'default'  => false,
+			),
 		);
 	}
 
@@ -184,7 +195,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'type' ),
 			(string) $request->get_param( 'label' ),
 			$request->get_param( 'relationship_method' ),
-			$request->get_param( 'choices' )
+			$request->get_param( 'choices' ),
+			(bool) $request->get_param( 'required' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -205,7 +217,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'name' ),
 			$request->get_param( 'type' ),
 			(string) $request->get_param( 'label' ),
-			$request->get_param( 'choices' )
+			$request->get_param( 'choices' ),
+			(bool) $request->get_param( 'required' )
 		);
 
 		if ( is_wp_error( $result ) ) {

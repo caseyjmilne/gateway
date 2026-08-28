@@ -281,7 +281,18 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data        = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+
+		// Checked BEFORE extract_relate_many_data() strips a Relate to
+		// Many field's own value back out of $data -- see
+		// Model_Fields::validate_required_fields()'s own docblock for why
+		// the order here matters.
+		$required_check = Model_Fields::validate_required_fields( $class, $data, true );
+
+		if ( is_wp_error( $required_check ) ) {
+			return $required_check;
+		}
+
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
@@ -335,7 +346,17 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data        = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+
+		// $is_create = false: a required field this request simply
+		// doesn't mention is left alone, not rejected -- only a required
+		// field explicitly present-but-empty in this request is.
+		$required_check = Model_Fields::validate_required_fields( $class, $data, false );
+
+		if ( is_wp_error( $required_check ) ) {
+			return $required_check;
+		}
+
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {

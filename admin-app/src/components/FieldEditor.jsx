@@ -63,17 +63,27 @@ import ChoicesEditor from './ChoicesEditor.jsx';
  * created), editing an EXISTING one of these disables the Name and Type
  * inputs -- only its Label stays editable, same as every other field type.
  *
+ * Name/Label/Type is a plain, un-tabbed form -- the only two things ever
+ * tabbed are what comes after: **Choices** (a ChoicesEditor for the
+ * field's own orderable choice list, Gateway\\Model_Field_Choices on the
+ * server -- only meaningful for a Choice_Field_Type, but the tab itself
+ * is always there, showing a plain explanatory note for a type that
+ * doesn't have one, rather than appearing/disappearing as the picked
+ * type changes) and **Validation** (currently just a "Required" toggle,
+ * Gateway\\Model_Fields::validate_required_fields() on the server --
+ * applies to every field regardless of type, so this tab is always
+ * relevant). A small green dot on a tab's own heading marks that its
+ * content differs from what this field started this edit session with,
+ * so a site owner editing an existing field can see at a glance which of
+ * the (possibly several) tabs they've actually touched.
+ *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
- * type's own `has_choices` from useFieldTypes()) are a lighter special
- * case: unlike a relate field, everything about the field (name, type,
- * label) stays freely editable -- only one extra thing appears, a second
- * "Choices" tab (alongside "General") holding a ChoicesEditor for the
- * field's own orderable choice list (Gateway\\Model_Field_Choices on the
- * server), required (at least one non-blank choice) whenever the picked
- * type has one. Reordering, adding, or removing a choice is a normal
- * in-place edit, submitted the same way a renamed field or a changed
- * label is -- there's no "immutable once created" rule for choices the
- * way there is for a relate field's own relationship.
+ * type's own `has_choices` from useFieldTypes()) are the one case where
+ * Choices is more than a placeholder: reordering, adding, or removing a
+ * choice is a normal in-place edit here, submitted the same way a
+ * renamed field or a changed label is -- there's no "immutable once
+ * created" rule for choices the way there is for a relate field's own
+ * relationship (below).
  */
 export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
@@ -96,7 +106,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const [ editType, setEditType ] = useState( 'text' );
 	const [ editRelationshipMethod, setEditRelationshipMethod ] = useState( '' );
 	const [ editChoices, setEditChoices ] = useState( [] );
-	const [ editTab, setEditTab ] = useState( 'general' );
+	const [ editRequired, setEditRequired ] = useState( false );
+	const [ editTab, setEditTab ] = useState( 'choices' );
 	const [ savingEdit, setSavingEdit ] = useState( false );
 
 	const [ deletingName, setDeletingName ] = useState( null );
@@ -147,6 +158,22 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		? Boolean( relationshipTypeFor( editingOriginalField.type ) )
 		: false;
 
+	// What this edit session actually started from, for the tabs' own
+	// green "you changed this" dots below -- `[]`/`false` for a draft,
+	// since it started from nothing.
+	const originalChoices = editingOriginalField
+		? editingOriginalField.choices || []
+		: [];
+	const originalRequired = editingOriginalField
+		? Boolean( editingOriginalField.required )
+		: false;
+
+	const arraysEqual = ( a, b ) =>
+		a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
+
+	const choicesTabChanged = ! arraysEqual( editChoices, originalChoices );
+	const requiredTabChanged = editRequired !== originalRequired;
+
 	// Whenever the picked type changes, default (or clear) the
 	// relationship dropdown to match -- a relationship chosen for a
 	// different type no longer makes sense once the type itself has
@@ -179,15 +206,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ editType, relationships, editingIndex ] );
 
-	// A "Choices" tab that just disappeared (the picked type stopped
-	// having choices) shouldn't leave the panel sitting on an now-hidden
-	// tab -- fall back to General.
-	useEffect( () => {
-		if ( ! editHasChoices && 'choices' === editTab ) {
-			setEditTab( 'general' );
-		}
-	}, [ editHasChoices, editTab ] );
-
 	const relationshipOptionLabel = ( relationship ) =>
 		`${ relationship.related_model } (${ relationship.method_name }())`;
 
@@ -206,6 +224,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				relationship_method: null,
 				related_model: null,
 				choices: [],
+				required: false,
 			},
 		] );
 		setEditingIndex( fields.length );
@@ -216,7 +235,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		setEditType( 'text' );
 		setEditRelationshipMethod( '' );
 		setEditChoices( [] );
-		setEditTab( 'general' );
+		setEditRequired( false );
+		setEditTab( 'choices' );
 	};
 
 	const startEdit = ( field, index ) => {
@@ -229,7 +249,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		setEditType( field.type );
 		setEditRelationshipMethod( field.relationship_method || '' );
 		setEditChoices( field.choices && field.choices.length > 0 ? field.choices : [] );
-		setEditTab( 'general' );
+		setEditRequired( Boolean( field.required ) );
+		setEditTab( 'choices' );
 	};
 
 	const cancelEdit = () => {
@@ -256,6 +277,10 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						label: editLabel,
 				  }
 				: { name: editName, label: editLabel, type: editType };
+
+			// Required applies uniformly, unlike choices -- always sent,
+			// never gated on what the picked type actually is.
+			body.required = editRequired;
 
 			if ( editHasChoices ) {
 				body.choices = editChoices;
@@ -372,35 +397,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	const renderEditPanel = () => (
 		<div className="gateway-field-editor-edit-panel">
-			<div className="nav-tab-wrapper">
-				<button
-					type="button"
-					className={
-						'nav-tab' +
-						( 'general' === editTab ? ' nav-tab-active' : '' )
-					}
-					onClick={ () => setEditTab( 'general' ) }
-				>
-					General
-				</button>
-				{ editHasChoices && (
-					<button
-						type="button"
-						className={
-							'nav-tab' +
-							( 'choices' === editTab ? ' nav-tab-active' : '' )
-						}
-						onClick={ () => setEditTab( 'choices' ) }
-					>
-						Choices
-					</button>
-				) }
-			</div>
 			<form onSubmit={ handleSaveEdit }>
-				<div
-					hidden={ 'general' !== editTab }
-					className="gateway-field-editor-form-grid"
-				>
+				<div className="gateway-field-editor-form-grid">
 					<label>
 						<span>Name</span>
 						{ editRelationshipType ? (
@@ -489,14 +487,79 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						</p>
 					) }
 				</div>
-				{ editHasChoices && (
-					<div hidden={ 'choices' !== editTab }>
+
+				<div className="nav-tab-wrapper gateway-field-editor-subtabs">
+					<button
+						type="button"
+						className={
+							'nav-tab' +
+							( 'choices' === editTab ? ' nav-tab-active' : '' )
+						}
+						onClick={ () => setEditTab( 'choices' ) }
+					>
+						Choices
+						{ choicesTabChanged && (
+							<span
+								className="gateway-tab-changed-dot"
+								title="Edited"
+								aria-label="Edited"
+							/>
+						) }
+					</button>
+					<button
+						type="button"
+						className={
+							'nav-tab' +
+							( 'validation' === editTab ? ' nav-tab-active' : '' )
+						}
+						onClick={ () => setEditTab( 'validation' ) }
+					>
+						Validation
+						{ requiredTabChanged && (
+							<span
+								className="gateway-tab-changed-dot"
+								title="Edited"
+								aria-label="Edited"
+							/>
+						) }
+					</button>
+				</div>
+
+				<div hidden={ 'choices' !== editTab }>
+					{ editHasChoices ? (
 						<ChoicesEditor
 							choices={ editChoices }
 							onChange={ setEditChoices }
 						/>
-					</div>
-				) }
+					) : (
+						<p className="description">
+							This field type doesn&rsquo;t use choices.
+						</p>
+					) }
+				</div>
+
+				<div hidden={ 'validation' !== editTab }>
+					<label className="gateway-toggle">
+						<input
+							type="checkbox"
+							checked={ editRequired }
+							onChange={ ( event ) =>
+								setEditRequired( event.target.checked )
+							}
+						/>
+						<span
+							className="gateway-toggle-slider"
+							aria-hidden="true"
+						/>
+						<span>Required</span>
+					</label>
+					<p className="description">
+						If enabled, a record can&rsquo;t be created without
+						this field, and it can&rsquo;t be cleared on an
+						existing one.
+					</p>
+				</div>
+
 				<p className="gateway-field-editor-form-actions">
 					<button
 						type="submit"

@@ -3992,19 +3992,25 @@ block that prints an actual "Yes"/"No" is real, separate, undone work.
 Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 
 **The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)'s
-own inline edit panel gains a second "Choices" tab (alongside "General"
--- plain `nav-tab`/`nav-tab-active`, the same core wp-admin classes the
-Fields/Relationships tabs above use) whenever the picked type's own
-`has_choices` (a new key on `Field_Type_Registry::describe_all()`'s own
-output, alongside a Choice type's own `is_multiple`) is `true` -- shown
-for both a brand new draft field and an existing one being edited, since
-there's only the one panel either way. That tab holds a new
-`ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`) -- one
-text input per choice, a "⠿" handle to drag-reorder it (the same native
-HTML5 drag-and-drop convention `FieldEditor`'s own fields table already
-uses, not a second different mechanism), "Remove" to delete one, "Add
-Choice" to append a blank one. Save/Add Field is disabled until at least
-one non-blank choice exists. `RecordForm`
+own inline edit panel is a plain, un-tabbed Name/Label/Type form, followed
+by two ALWAYS-present tabs -- "Choices" and "Validation" (see "Required
+fields" below for the latter) -- plain `nav-tab`/`nav-tab-active`, the same
+core wp-admin classes the Fields/Relationships tabs use. Choices doesn't
+disappear for a type that isn't a `Choice_Field_Type`; it just shows a
+plain "This field type doesn't use choices." note instead of the real
+editor, so the panel's own shape never shifts as the picked type changes.
+When the picked type's own `has_choices` (a key on `Field_Type_Registry::
+describe_all()`'s own output, alongside a Choice type's own `is_multiple`)
+IS `true`, that tab holds a `ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`)
+-- one text input per choice, a "⠿" handle to drag-reorder it (the same
+native HTML5 drag-and-drop convention `FieldEditor`'s own fields table
+already uses, not a second different mechanism), "Remove" to delete one,
+"Add Choice" to append a blank one. Save/Add Field is disabled until at
+least one non-blank choice exists. Each tab's own heading grows a small
+green dot the moment its content differs from what the field started this
+edit session with (`[]`/`false` for a brand new draft), so re-opening an
+existing field's edit panel makes it obvious which of the two tabs were
+actually touched before hitting Save. `RecordForm`
 (`admin-app/src/components/RecordForm.jsx`) reads a field's own `choices`
 straight off the field object (already threaded through by
 `Model_Fields::all()`/the fields REST route) to render the right control
@@ -4014,7 +4020,61 @@ row of toggle buttons for "buttons", a group of checkboxes for
 array), and a single native checkbox for "boolean" (form state and the
 submitted value both a real JS boolean).
 
-## Records -- a CRUD UI for a model's actual rows
+### Required fields
+
+A new plain boolean column on `gateway_fields`, `required` -- applies
+uniformly to every field type (unlike `choices`, which only means
+something for a `Choice_Field_Type`), toggled via the "Validation" tab
+in `FieldEditor`'s own inline edit panel (a small custom toggle-switch
+control, `.gateway-toggle`, built from a real `<input type="checkbox">`
+so it stays a genuine, accessible checkbox under the hood -- there's no
+`@wordpress/components`-style toggle available to this plain-React admin
+app to reach for instead). `Model_Fields::add()`/`update()` both take a
+`$required` param (always sent, default `false`); `update()`'s own
+"nothing changed, skip straight to returning the old field" no-op check
+gained a matching `$required_changed` alongside `$name_changed`/
+`$type_changed`/`$label_changed`/`$choices_changed`. Same upgrade path as
+every other column here: `ensure_table()`'s fresh-CREATE block declares it
+directly, an ALTER adds it (`default(false)`) for a table that predates
+it.
+
+**Enforcement, not just metadata**: `Model_Fields::validate_required_fields(
+$class_name, $data, $is_create )` -- called by `Records_REST_Controller::
+create_record()`/`update_record()` right after `sanitize_record_data()`
+casts the request body, and (this ordering matters) BEFORE
+`extract_relate_many_data()` strips a Relate to Many field's own value
+back out of `$data` for its own separate `sync()` call -- a required
+Relate to Many field's own selected ids still need to be visible to this
+check when it runs. `$is_create` changes what a field the request simply
+doesn't mention at all means: on `create_record()` every required field
+must actually be present (a brand new record has no existing value to
+fall back on); on `update_record()`'s own partial update, an absent key is
+left alone -- only a required field explicitly present-but-empty in the
+request is rejected. Either way, once a key IS present, "empty" depends on
+the value's own PHP shape (not the field's declared type), so this needs
+no per-`Field_Type` interface method of its own:
+
+- An array (a Relate to Many field's own ids, or a Checkbox field's own
+  selected choices): empty only if `[]` -- `[0]` is a real selection.
+- A bool (True/False): "required" here specifically means "must be
+  checked" (the familiar "must agree to terms" meaning of a required
+  checkbox) -- `false` counts as empty, not just `null`.
+- A string (Text/TextArea/Email/URL/Password, or a single-select Choice
+  type's own value): empty if blank *after trimming* -- a field of a
+  handful of spaces has no more real content than `''` does.
+- Anything else (Number/Range, a Relate to One's own id, ...): empty only
+  if `null` -- `0`/`0.0` are real, present values a required Number field
+  must accept.
+
+A rejected request gets a single `gateway_record_missing_required_fields`
+`WP_Error` (400) naming every missing field by its own label, not just the
+first one found, so a site owner fixing a create request that's missing
+three required fields doesn't have to resubmit three times to discover
+each one in turn.
+
+`RecordForm` marks a required field's own label with a small red `*`
+(purely a visual hint -- the actual enforcement is the REST validation
+above, not anything client-side) whenever `field.required` is `true`.
 
 A third top-level tab, alongside Models and Database: **Records**. Its
 own list screen (`RecordsList`, route `/records`) is every model again,

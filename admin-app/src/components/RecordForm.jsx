@@ -156,6 +156,15 @@ export default function RecordForm( {
 					<p key={ field.name }>
 						<label htmlFor={ inputId }>
 							{ field.label || field.name }
+							{ field.required && (
+								<span
+									className="gateway-record-form-required"
+									title="Required"
+									aria-label="Required"
+								>
+									{ ' ' }*
+								</span>
+							) }
 						</label>
 						<br />
 						{ 'textarea' === inputType && (

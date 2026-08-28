@@ -117,6 +117,11 @@ class Model_Fields {
 					// One/Relate to Many field -- see the upgrade-path
 					// ALTER below and all()'s own docblock.
 					$table->string( 'relationship_method' )->nullable();
+					// Whether a record can be saved with this field left
+					// empty -- see the upgrade-path ALTER below and
+					// validate_required_fields()'s own docblock for what
+					// "empty" means per value shape.
+					$table->boolean( 'required' )->default( false );
 					$table->timestamps();
 
 					// Belt-and-suspenders alongside validate()'s own uniqueness
@@ -171,6 +176,20 @@ class Model_Fields {
 				}
 			);
 		}
+
+		// Same idea as position -- every existing row defaults to false
+		// (its DEFAULT), which is exactly right: a field created before
+		// this column existed was never actually enforced as required, so
+		// treating it as "not required" is the only backfill that doesn't
+		// change behavior out from under an existing site.
+		if ( ! $schema->hasColumn( self::TABLE, 'required' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->boolean( 'required' )->default( false );
+				}
+			);
+		}
 	}
 
 	/**
@@ -215,8 +234,12 @@ class Model_Fields {
 	 * Choice_Field_Type field -- the same "one query total" reasoning
 	 * relationship resolution above already follows.
 	 *
+	 * `required` is a plain bool -- see validate_required_fields()'s own
+	 * docblock for what actually reads it and what "required" means per
+	 * value shape.
+	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[]}>
+	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool}>
 	 */
 	public static function all( $class_name ) {
 		$relationships_by_method = array();
@@ -229,7 +252,7 @@ class Model_Fields {
 			->where( 'model', $class_name )
 			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method' ) );
+			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method', 'required' ) );
 
 		$choices_by_field_id = Model_Field_Choices::for_fields( $rows->pluck( 'id' )->all() );
 
@@ -255,10 +278,112 @@ class Model_Fields {
 							? $relationships_by_method[ $relationship_method ]
 							: null,
 						'choices'              => $is_choice_type ? ( $choices_by_field_id[ (int) $row->id ] ?? array() ) : array(),
+						'required'             => (bool) $row->required,
 					);
 				}
 			)
 			->all();
+	}
+
+	/**
+	 * Checks every one of a model's `required` fields against $data
+	 * (Records_REST_Controller calls this with sanitize_record_data()'s
+	 * own output, straight after casting and BEFORE extract_relate_many_data()
+	 * strips a Relate to Many field's own value back out of it -- a
+	 * required Relate to Many field's own selected ids still need to be
+	 * checked here, and extract_relate_many_data() would otherwise have
+	 * already removed the one key this method would need to see).
+	 *
+	 * $is_create distinguishes the two record-write paths, since they
+	 * mean something different for a field the request simply doesn't
+	 * mention at all: on create() every required field must actually be
+	 * present (a brand new record has no existing value to fall back on);
+	 * on a partial update(), a key that's simply absent is left alone --
+	 * only a key that IS present but resolves to an empty value is
+	 * rejected. Either way, once a key is present, "empty" means the same
+	 * thing regardless of which path is checking it:
+	 *
+	 * - An array (Relate to Many's ids, or Checkbox's own selected
+	 *   choices): empty only if `[]` -- `[0]` is a real selection.
+	 * - A bool (True/False): "required" here specifically means "must be
+	 *   checked" (the common "must agree to terms" meaning of a required
+	 *   checkbox), so `false` counts as empty, not just `null`.
+	 * - A string (Text/TextArea/Email/URL/Password, or a single-select
+	 *   Choice type's own value): empty if blank *after trimming* -- a
+	 *   handful of spaces has no more real content than `''` does, and
+	 *   "required" exists specifically to guarantee real content.
+	 * - Anything else (Number/Range, a Relate to One's own id, ...):
+	 *   empty only if `null` -- `0`/`0.0` are real, present values a
+	 *   required Number field must accept.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $data       sanitize_record_data()'s own output, not
+	 *                            yet passed through extract_relate_many_data().
+	 * @param bool   $is_create  True for create_record(), false for update_record().
+	 * @return true|\WP_Error
+	 */
+	public static function validate_required_fields( $class_name, array $data, $is_create ) {
+		$missing_labels = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( ! $field['required'] ) {
+				continue;
+			}
+
+			if ( ! array_key_exists( $field['name'], $data ) ) {
+				if ( $is_create ) {
+					$missing_labels[] = $field['label'];
+				}
+
+				continue;
+			}
+
+			if ( self::is_required_value_missing( $data[ $field['name'] ] ) ) {
+				$missing_labels[] = $field['label'];
+			}
+		}
+
+		if ( empty( $missing_labels ) ) {
+			return true;
+		}
+
+		return new \WP_Error(
+			'gateway_record_missing_required_fields',
+			sprintf(
+				/* translators: %s: comma-separated list of field labels */
+				__( 'The following required fields need a value: %s.', 'gateway' ),
+				implode( ', ', $missing_labels )
+			),
+			array( 'status' => 400 )
+		);
+	}
+
+	/**
+	 * @param mixed $value An already-cast field value (sanitize_record_data()'s
+	 *                       own output for one field) -- see
+	 *                       validate_required_fields()'s own docblock for
+	 *                       what "missing" means per value shape.
+	 * @return bool
+	 */
+	private static function is_required_value_missing( $value ) {
+		if ( is_array( $value ) ) {
+			return empty( $value );
+		}
+
+		if ( is_bool( $value ) ) {
+			return false === $value;
+		}
+
+		if ( is_string( $value ) ) {
+			// Trimmed, not a bare '' check -- a Text/TextArea/Email/URL
+			// value of "   " has no more real content than an empty
+			// string does, and "required" exists specifically to
+			// guarantee real content, not just "the key wasn't blank in
+			// the most literal sense."
+			return '' === trim( $value );
+		}
+
+		return null === $value;
 	}
 
 	/**
@@ -326,11 +451,14 @@ class Model_Fields {
 	 *                                           "Radio"/"Checkbox"); ignored
 	 *                                           otherwise -- see
 	 *                                           require_choices_for_field().
-	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[]}|\WP_Error
+	 * @param bool          $required          Whether a record can be saved
+	 *                                           with this field left empty --
+	 *                                           see validate_required_fields().
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
-	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null ) {
+	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null, $required = false ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -412,6 +540,8 @@ class Model_Fields {
 		$max_position       = self::table()->where( 'model', $class_name )->max( 'position' );
 		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
 
+		$required = (bool) $required;
+
 		$field_id = self::table()->insertGetId(
 			array(
 				'model'               => $class_name,
@@ -420,6 +550,7 @@ class Model_Fields {
 				'type'                => $field['type'],
 				'position'            => $field['position'],
 				'relationship_method' => $relationship_method,
+				'required'            => $required,
 				'created_at'          => current_time( 'mysql' ),
 				'updated_at'          => current_time( 'mysql' ),
 			)
@@ -433,6 +564,7 @@ class Model_Fields {
 		$field['relationship_method']  = $relationship_method;
 		$field['related_model']        = $related_model;
 		$field['choices']              = $validated_choices;
+		$field['required']             = $required;
 
 		// The table row above is already the recorded field -- rewriting
 		// the model file with the now-current, DB-sourced field list is a
@@ -474,9 +606,15 @@ class Model_Fields {
 	 *                              Ignored (and any existing choices
 	 *                              forgotten) whenever $type is not a
 	 *                              Choice_Field_Type.
-	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[]}|\WP_Error
+	 * @param bool          $required Whether a record can be saved with
+	 *                              this field left empty -- see
+	 *                              validate_required_fields(). Unlike
+	 *                              choices, applies uniformly regardless
+	 *                              of type -- always sent, never gated on
+	 *                              what $type resolves to.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool}|\WP_Error
 	 */
-	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null ) {
+	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -572,7 +710,10 @@ class Model_Fields {
 			->value( 'label' );
 		$label_changed = (string) $stored_label !== $new_field['label'];
 
-		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed ) {
+		$required         = (bool) $required;
+		$required_changed = $old_field['required'] !== $required;
+
+		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed && ! $required_changed ) {
 			return $old_field;
 		}
 
@@ -582,12 +723,13 @@ class Model_Fields {
 
 		$table = $model->getTable();
 
-		// A label-only (or choices-only) change never touches the schema --
-		// there's no column to rename/retype, nothing to migrate -- so it
-		// skips straight to recording the new metadata below, the same way
-		// a truly no-op update (caught above) skips it entirely.
+		// A label-only (or choices-only, or required-only) change never
+		// touches the schema -- there's no column to rename/retype,
+		// nothing to migrate -- so it skips straight to recording the new
+		// metadata below, the same way a truly no-op update (caught
+		// above) skips it entirely.
 		if ( ! $name_changed && ! $type_changed ) {
-			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices );
+			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required );
 		}
 
 		$up   = array();
@@ -624,7 +766,7 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices );
+		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required );
 	}
 
 	/**
@@ -643,9 +785,10 @@ class Model_Fields {
 	 * @param array    $new_field     {name, label, type} to save.
 	 * @param bool     $is_choice_type Whether $new_field['type'] is a Choice_Field_Type.
 	 * @param string[] $choices       Already-validated choices -- only used/saved when $is_choice_type.
-	 * @return array{id:int,name:string,label:string,type:string,choices:string[]}|\WP_Error
+	 * @param bool     $required      Whether this field is required -- applies unconditionally, unlike $choices.
+	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool}|\WP_Error
 	 */
-	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices ) {
+	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required ) {
 		self::table()
 			->where( 'model', $class_name )
 			->where( 'name', $current_name )
@@ -654,6 +797,7 @@ class Model_Fields {
 					'name'       => $new_field['name'],
 					'label'      => $new_field['label'],
 					'type'       => $new_field['type'],
+					'required'   => (bool) $required,
 					'updated_at' => current_time( 'mysql' ),
 				)
 			);
@@ -670,8 +814,9 @@ class Model_Fields {
 			Model_Field_Choices::forget( $field_id );
 		}
 
-		$new_field['id']      = $field_id;
-		$new_field['choices'] = $is_choice_type ? $choices : array();
+		$new_field['id']       = $field_id;
+		$new_field['choices']  = $is_choice_type ? $choices : array();
+		$new_field['required'] = (bool) $required;
 
 		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 
