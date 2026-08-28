@@ -311,11 +311,21 @@ class Data_Cards_Renderer {
 	 * card shares the one record already fetched here rather than each
 	 * re-querying it independently.
 	 *
+	 * Reused as-is by `gateway/related-items/render.php` for the exact
+	 * same reason -- rendering one card template per record, injecting
+	 * that one record into `'record'` context -- just with a different
+	 * `$records` source (a record's own `hasMany`/`belongsToMany`
+	 * relation instead of a top-level query) and a different `$item_class`
+	 * (so a nested related-items list never carries the outer grid's own
+	 * `gateway-data-cards-grid__item` class, which a site's own CSS
+	 * targeting that class shouldn't also match).
+	 *
 	 * @param \Illuminate\Support\Collection $records         Records for the current page (get_collection_page()'s own 'records').
 	 * @param array                          $template_blocks Parsed block list (the card's contents).
+	 * @param string                         $item_class      CSS class for each wrapping `<li>`.
 	 * @return string Concatenated `<li>` markup, '' if nothing to render.
 	 */
-	public static function render_items_for_collection( $records, array $template_blocks ) {
+	public static function render_items_for_collection( $records, array $template_blocks, $item_class = 'gateway-data-cards-grid__item' ) {
 		if ( empty( $template_blocks ) || 0 === count( $records ) ) {
 			return '';
 		}
@@ -340,7 +350,7 @@ class Data_Cards_Renderer {
 			$item_content = ( new \WP_Block( $wrapper_block ) )->render( array( 'dynamic' => false ) );
 			remove_filter( 'render_block_context', $filter_block_context, 1 );
 
-			$content .= '<li class="gateway-data-cards-grid__item">' . $item_content . '</li>';
+			$content .= '<li class="' . esc_attr( $item_class ) . '">' . $item_content . '</li>';
 		}
 
 		return $content;

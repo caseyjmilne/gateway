@@ -2650,6 +2650,109 @@ was never affected by this specific bug, since it resolves a Related
 Field's value directly off the actual Eloquent record injected into
 block context, never through this REST response at all.
 
+### `gateway/related-items` -- looping over a hasMany/belongsToMany relationship, with its own template
+
+Related Fields (above) cover a *to-one* relationship -- one related
+record's own field shown as a plain value. A *to-many* one (an `Event`'s
+own `Tickets`) needs a genuinely different shape: not one more column,
+but a repeated list, each item rendered from its own template -- so it
+gets its own block, `gateway/related-items`, reusing Data Cards' own
+"design one template, repeat it" mechanism (`useBlockPreview`/
+`BlockContextProvider`, one active item at a time) rather than
+inventing a second one.
+
+**Placement and configuration are entirely per-block-instance** -- same
+decision already made for Related Fields, for the same reason (no
+separate model-level concept to manage; every setting lives on the
+block itself, in its own Inspector). `ancestor: ["gateway/data-cards-body"]`
+(matching `gateway/card-field-text`'s own scoping -- any depth, as long
+as a card template is somewhere above it) and `usesContext: ["gateway/
+data-cards/collection", "record"]` -- the parent record (e.g. the
+`Event`) it loops relative to. Two real settings, in its own
+`PanelBody`: **Relationship** (a `SelectControl` fed by a new
+`useLoopableRelationships( collection )` hook -- `GET /gateway/v1/models/
+<class>/relationships`, filtered client-side to `hasMany`/`belongsToMany`
+only, the same reasoning `Column_Registry::get_related_columns_for_collection()`
+already applies to Related Fields in the other direction: a `hasOne`/
+`belongsTo` has at most one related record, nothing to loop over) and
+**Limit** (a `RangeControl`, 0-50, `0` meaning every related record --
+same convention as `gateway/data-cards`'s own Limit).
+
+**Choosing a relationship also resolves and stores `relatedCollection`**
+(the related model's own class name, from that same relationships
+list) as a second attribute -- not re-derived at render time, since
+`providesContext` needs an actual attribute to map from: `{"gateway/
+data-cards/collection": "relatedCollection"}`. This is the one context
+key this block overrides for its own descendants; `gateway/data-cards/
+sourceType` is deliberately left unprovided, simply inheriting the
+ambient value from the outer `gateway/data-cards` block (always
+`'collection'` wherever `gateway/related-items` is meaningfully used at
+all, since a relationship only exists between two Gateway models).
+
+**`gateway/card-field-text` needed zero changes to work inside this
+block's own template.** It already only ever reads `context.record`
+and `context['gateway/data-cards/collection']` generically -- it has no
+idea, and no need to know, whether the record it's showing a field of
+is the outer Data Cards card's own record or one level deeper, into a
+related-items loop. Its own field picker (fed by `relatedCollection`
+via the context override above) lists the *related* model's own
+fields -- including, automatically, one more hop of Related Fields, if
+the related model itself has any `hasOne`/`belongsTo` relationships of
+its own. A card-field-text bound to a stale field (the relationship or
+its underlying field changed since) degrades exactly the same "no
+longer exists" way it already does everywhere else.
+
+**A starting template auto-seeds itself** the same way `gateway/data-cards-body`
+seeds a fresh Collection card: the first `RELATED_FIELD_COUNT` (3) of
+the *related* model's own available fields, as `gateway/card-field-text`
+blocks, the moment a relationship is chosen (or changed to a different
+one) -- computed fresh from whatever `relatedCollection` is currently,
+via the same `useAvailableColumns()` hook every other field picker uses.
+
+**The editor's own live preview** fetches a real, page-1-sized sample of
+related records for whichever record is currently active in the
+*parent* `gateway/data-cards-body` preview -- a new route,
+`GET /gateway/v1/models/<class>/records/<id>/relationships/<method>`
+(`Records_REST_Controller::get_related_records()`), rejecting a
+relationship that isn't `hasMany`/`belongsToMany` (`gateway_relationship_not_loopable`,
+400) the same way the front end silently refuses to render one at all.
+Returns `{ records, total }` -- `records` enriched exactly like
+`list_records()`'s own response (`enrich_records()`, reused as-is, so a
+related Ticket's own Related Fields/Relate to One-Many values show up
+correctly in the preview too), `total` the real relationship count
+(via the relation's own `->count()`), independent of `per_page` --
+matching every other paginated response shape in this plugin. Purely a
+preview aid, same as every other Collection-aware block's own editor
+fetch; the real front end never calls it at all.
+
+**The real front end (`render.php`) resolves everything directly off
+the actual Eloquent record already in block context** -- no REST round
+trip, no eager-loading concern to worry about here the way Related
+Fields' own flat-list eager-loading is: a nested per-card loop like
+this one is inherently "for each outer record, fetch its own related
+rows," one query per *parent* record (`$record->{$method}()->take(
+$limit)->get()`, or `->get()` for no limit), the same accepted cost a
+nested Query Loop block already carries in WordPress core. Re-validates
+`relationshipMethod` the same defensive way `card-field-text` re
+-validates its own `fieldKey` -- `Model_Relationships::find()` must
+still resolve it, and it must still be `hasMany`/`belongsToMany` --
+silently rendering nothing for a stale/invalid one rather than trusting
+a saved attribute. An empty related list shows "No `<related model's
+plural title>` found." (matching Data Cards' own empty-state wording);
+a non-empty one is rendered via `Data_Cards_Renderer::
+render_items_for_collection()` **reused as-is** -- the exact same
+synthetic-wrapper-block/`render_block_context` mechanism that
+repeats a card template per top-level record, called here with this
+block's own inner blocks (`$block->parsed_block['innerBlocks']`, read
+directly off itself, the same property a parent block already reads a
+*child's* own inner blocks from elsewhere in this plugin) and the
+related records fetched above -- the only change needed to that shared
+method was a new, optional `$item_class` parameter (default unchanged)
+so a nested related-items list gets its own `gateway-related-items__item`
+class instead of the outer grid's `gateway-data-cards-grid__item`,
+which a site's own custom CSS targeting that class shouldn't also
+match.
+
 ## Laravel Models (Illuminate/Eloquent)
 
 Gateway's blocks currently read data exclusively from WordPress Custom Post

@@ -132,6 +132,23 @@ class Records_REST_Controller {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/models/(?P<class>[A-Za-z0-9_]+)/records/(?P<id>\d+)/relationships/(?P<method>[A-Za-z0-9_]+)',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'get_related_records' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				'args'                => array(
+					'per_page' => array(
+						'required' => false,
+						'type'     => 'integer',
+						'default'  => self::DEFAULT_PER_PAGE,
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -359,6 +376,72 @@ class Records_REST_Controller {
 		}
 
 		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	/**
+	 * GET /gateway/v1/models/<class>/records/<id>/relationships/<method>?per_page=
+	 *
+	 * A record's own related items through one of its `hasMany`/
+	 * `belongsToMany` relationships -- what `gateway/related-items`' own
+	 * editor preview calls to show a real, page-1-sized sample of related
+	 * records for whichever record is currently active in the parent
+	 * `gateway/data-cards-body` preview, the same "real editor preview,
+	 * not a placeholder" convention every other Collection-aware block
+	 * in this plugin already follows. The real front end never calls
+	 * this at all -- `gateway/related-items/render.php` resolves a
+	 * record's own related items directly off the real Eloquent record
+	 * already in block context, with no REST round trip.
+	 *
+	 * Only a `hasMany`/`belongsToMany` relationship is ever a sensible
+	 * thing to "loop over" -- a `hasOne`/`belongsTo` has at most one
+	 * related record, which is exactly what a Related Field
+	 * (`Column_Registry::get_related_columns_for_collection()`) already
+	 * surfaces as a plain value, not a repeated list.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function get_related_records( \WP_REST_Request $request ) {
+		$class = self::require_model( $request->get_param( 'class' ) );
+
+		if ( is_wp_error( $class ) ) {
+			return $class;
+		}
+
+		$record = self::find_record( $class, $request->get_param( 'id' ) );
+
+		if ( is_wp_error( $record ) ) {
+			return $record;
+		}
+
+		$method       = (string) $request->get_param( 'method' );
+		$relationship = Model_Relationships::find( $class, $method );
+
+		if ( ! $relationship || ! in_array( $relationship['type'], array( 'hasMany', 'belongsToMany' ), true ) ) {
+			return new \WP_Error(
+				'gateway_relationship_not_loopable',
+				__( 'This relationship isn\'t a "to many" relationship -- there\'s nothing to loop over.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$per_page = (int) $request->get_param( 'per_page' );
+		$per_page = $per_page > 0 ? min( self::MAX_PER_PAGE, $per_page ) : self::DEFAULT_PER_PAGE;
+
+		try {
+			$query   = $record->{ $method }();
+			$total   = $query->count();
+			$related = ( clone $query )->take( $per_page )->get();
+		} catch ( \Throwable $e ) {
+			return new \WP_Error( 'gateway_records_query_failed', $e->getMessage(), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'records' => self::enrich_records( $relationship['related_model'], $related ),
+				'total'   => $total,
+			)
+		);
 	}
 
 	/**
