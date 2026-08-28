@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
+
+const AUTOSAVE_DEBOUNCE_MS = 800;
 
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
@@ -15,18 +18,54 @@ import ChoicesEditor from './ChoicesEditor.jsx';
  * for real schema reasons (a duplicate or reserved name, an unsupported
  * type) and is reported inline via the same notice area other screens use.
  *
- * One editing surface, not two: "Add Field" appends a draft row straight
- * into the table (`{ name: '', label: '', type: 'text', choices: [] }`,
- * no id yet) and immediately opens it in the exact same inline edit panel
- * an existing row's own "Edit" button opens -- there's no separate
- * standalone "Add Field" form any more. `editingIndex` (an index into
- * `fields`, not a name -- a draft has no name yet to key off of) tracks
- * which single row is open; `isNewDraft` is the one thing that actually
- * differs at save time (POST a new field vs. PUT the field found at
- * `editOriginalName`) and at cancel time (a cancelled draft is removed
- * from the list entirely; a cancelled edit of a real field just closes
- * the panel, since editing state lives separately from `fields` itself
- * until Save actually commits it).
+ * **Autosaves -- no Save/Cancel to manage.** The panel's own form state is
+ * a single React Hook Form instance (`useForm`), `reset()` to a field's
+ * current values (or a blank draft's) whenever editing starts. A `watch()`
+ * subscription debounces every value change by `AUTOSAVE_DEBOUNCE_MS`
+ * and, once the result actually differs from what's currently saved
+ * (`lastSavedRef`) AND is valid enough to submit at all, fires the exact
+ * same POST/PUT this used to wait for an explicit Save click to send --
+ * so typing a Label, flipping Required, or reordering a choice just
+ * takes effect shortly after you stop, the same way `label`-only edits
+ * already ran no migration at all. The one button left is "Done", which
+ * flushes any still-pending change immediately (so closing right after
+ * typing never drops it) and then closes the panel -- removing the row
+ * entirely if it's a draft that never actually reached a valid, saved
+ * state.
+ *
+ * This does mean a field's Name going through several real RENAME COLUMN
+ * migrations if someone pauses mid-word while typing it (each pause past
+ * the debounce window commits whatever's been typed so far) -- an
+ * accepted trade-off for "changes just happen," not something this tries
+ * to special-case away by treating Name differently from every other
+ * input.
+ *
+ * **The row never disappears -- the panel opens right underneath it, and
+ * the whole row (not a separate "Edit" button) is what opens/closes it.**
+ * Clicking the row that's already open collapses it (same flush-then-close
+ * as the panel's own "Done" button); clicking a different one while one
+ * is open does nothing, the same "one editing surface at a time"
+ * constraint a disabled Edit button used to enforce. The open row's own
+ * cells show the LIVE, not-yet-necessarily-saved values (name/label/type)
+ * rather than freezing at whatever was last actually saved, so renaming a
+ * field is visible on its own row immediately, not up to
+ * `AUTOSAVE_DEBOUNCE_MS` later once the request lands.
+ *
+ * `editingIndex` (an index into `fields`, not a name -- a draft has no
+ * name yet to key off of) tracks which single row is open; `isNewDraft`
+ * is what actually differs between a brand new field and an existing one
+ * (POST vs. PUT, and whether "Done" with nothing ever saved removes the
+ * row). Because autosave can flip a draft into "saved" mid-session (the
+ * moment its first valid save succeeds), `isNewDraftRef`/`editOriginalNameRef`
+ * mirror that state into refs the autosave chain itself reads -- reading
+ * the plain state variables there would risk seeing a stale value from
+ * before React re-renders. Every autosave attempt (the debounce timer, or
+ * "Done"/a row click flushing one immediately) is chained through
+ * `saveChainRef` rather than fired independently, so two attempts arriving
+ * close together (e.g. "Done" clicked right as a debounced save is still
+ * in flight) run strictly one after another instead of racing -- the
+ * second one always sees the first one's now-current `isNewDraftRef`/
+ * `lastSavedRef`, never a stale snapshot from before it finished.
  *
  * Label is the one field-level thing here that *isn't* a schema change --
  * it's a plain display string (shown in place of the raw name wherever a
@@ -61,54 +100,93 @@ import ChoicesEditor from './ChoicesEditor.jsx';
  * `relationship_method` instead of `name`. Matching the server-side
  * immutability guard (a relate field's relationship can't be changed once
  * created), editing an EXISTING one of these disables the Name and Type
- * inputs -- only its Label stays editable, same as every other field type.
+ * inputs -- only its Label (and Validation/Choices) stay editable, same
+ * as every other field type.
  *
- * Name/Label/Type is a plain, un-tabbed form -- the only two things ever
- * tabbed are what comes after: **Choices** (a ChoicesEditor for the
- * field's own orderable choice list, Gateway\\Model_Field_Choices on the
- * server -- only meaningful for a Choice_Field_Type, but the tab itself
- * is always there, showing a plain explanatory note for a type that
- * doesn't have one, rather than appearing/disappearing as the picked
- * type changes) and **Validation** (currently just a "Required" toggle,
- * Gateway\\Model_Fields::validate_required_fields() on the server --
- * applies to every field regardless of type, so this tab is always
- * relevant). A small green dot on a tab's own heading marks that its
- * content differs from what this field started this edit session with,
- * so a site owner editing an existing field can see at a glance which of
- * the (possibly several) tabs they've actually touched.
+ * Four tabs, always all present, mirroring ACF's own field-settings
+ * layout: **General** (Name/Label/Type, plus -- inline, below those,
+ * never a tab of its own -- a ChoicesEditor for the field's own
+ * orderable choice list, Gateway\\Model_Field_Choices on the server,
+ * shown only when the picked type's own `has_choices` is true), then
+ * **Validation** (currently just a "Required" toggle, Gateway\\Model_Fields::
+ * validate_required_fields() on the server -- applies to every field
+ * regardless of type), then **Presentation** and **Conditional Logic**,
+ * both intentionally empty placeholders for now -- reserved tabs, not
+ * yet backed by anything on the PHP side. A small green dot on General's
+ * or Validation's own heading marks that it currently holds real content
+ * (at least one non-blank choice; Required switched on) -- based on the
+ * live, already-autosaved values, not a "changed since this session
+ * started" diff, so it's still showing the next time this same field is
+ * opened for editing, not just while it's being actively typed into.
  *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
  * type's own `has_choices` from useFieldTypes()) are the one case where
- * Choices is more than a placeholder: reordering, adding, or removing a
- * choice is a normal in-place edit here, submitted the same way a
- * renamed field or a changed label is -- there's no "immutable once
- * created" rule for choices the way there is for a relate field's own
- * relationship (below).
+ * General's own inline Choices section is more than absent: reordering,
+ * adding, or removing a choice is a normal in-place (auto-saved) edit
+ * here, the same as a renamed field or a changed label is -- there's no
+ * "immutable once created" rule for choices the way there is for a
+ * relate field's own relationship (above).
  */
 export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
 	const relationshipTypes = useRelationshipTypes();
 	const [ fields, setFields ] = useState( initialFields || [] );
 	const [ error, setError ] = useState( '' );
+	const [ justSaved, setJustSaved ] = useState( false );
 
 	// The single row currently open for editing OR adding, by its index
 	// in `fields` (not by name -- a not-yet-saved draft has none yet).
-	// `null` means nothing is open. `isNewDraft` distinguishes the two
-	// cases that share this one panel (see this component's own
-	// docblock); `editOriginalName` is only meaningful when it's false --
-	// the field's name at the moment editing started, needed for the PUT
-	// URL even after `editName` itself has been changed mid-edit.
+	// `null` means nothing is open.
 	const [ editingIndex, setEditingIndex ] = useState( null );
 	const [ isNewDraft, setIsNewDraft ] = useState( false );
 	const [ editOriginalName, setEditOriginalName ] = useState( '' );
-	const [ editName, setEditName ] = useState( '' );
-	const [ editLabel, setEditLabel ] = useState( '' );
-	const [ editType, setEditType ] = useState( 'text' );
-	const [ editRelationshipMethod, setEditRelationshipMethod ] = useState( '' );
-	const [ editChoices, setEditChoices ] = useState( [] );
-	const [ editRequired, setEditRequired ] = useState( false );
-	const [ editTab, setEditTab ] = useState( 'choices' );
 	const [ savingEdit, setSavingEdit ] = useState( false );
+
+	// Mirrors of the state above the autosave chain itself reads -- see
+	// this component's own docblock for why plain state isn't safe there.
+	const isNewDraftRef = useRef( false );
+	const editOriginalNameRef = useRef( '' );
+	const lastSavedRef = useRef( null );
+	// Every autosave attempt -- whether from the debounce timer below or
+	// from finishEditing() flushing a last change on "Done" -- chains onto
+	// this instead of firing independently, so two attempts arriving close
+	// together run strictly one after another (each seeing the OTHER's
+	// now-current isNewDraftRef/lastSavedRef) rather than racing: without
+	// this, "Done" clicked right as a debounced save was still in flight
+	// could see stale isNewDraftRef.current, wrongly conclude a request
+	// that's actually about to succeed never happened, and delete the row
+	// out from under it.
+	const saveChainRef = useRef( Promise.resolve() );
+	const debounceTimerRef = useRef( null );
+	const savedFlashTimerRef = useRef( null );
+
+	const {
+		control,
+		register,
+		watch,
+		reset,
+		getValues,
+		setValue,
+	} = useForm( {
+		defaultValues: {
+			name: '',
+			label: '',
+			type: 'text',
+			relationshipMethod: '',
+			choices: [],
+			required: false,
+		},
+	} );
+
+	const watched = watch();
+	const editName = watched.name;
+	const editLabel = watched.label;
+	const editType = watched.type;
+	const editRelationshipMethod = watched.relationshipMethod;
+	const editChoices = watched.choices;
+	const editRequired = watched.required;
+
+	const [ editTab, setEditTab ] = useState( 'general' );
 
 	const [ deletingName, setDeletingName ] = useState( null );
 
@@ -148,31 +226,72 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	// The field this edit session started from -- unset for a draft (it
 	// never came from `fields` in the first place). Its (unchanging)
-	// *original* type, not the live `editType` state, is what decides
-	// whether Name/Type stay locked -- otherwise picking a different type
-	// mid-edit would retroactively unlock inputs a relate field's own
-	// immutability rule never actually allows changing.
+	// *original* type is what decides whether Name/Type stay locked --
+	// otherwise picking a different type mid-edit would retroactively
+	// unlock inputs a relate field's own immutability rule never actually
+	// allows changing.
 	const editingOriginalField =
 		! isNewDraft && null !== editingIndex ? fields[ editingIndex ] : null;
 	const editingIsRelate = editingOriginalField
 		? Boolean( relationshipTypeFor( editingOriginalField.type ) )
 		: false;
 
-	// What this edit session actually started from, for the tabs' own
-	// green "you changed this" dots below -- `[]`/`false` for a draft,
-	// since it started from nothing.
-	const originalChoices = editingOriginalField
-		? editingOriginalField.choices || []
-		: [];
-	const originalRequired = editingOriginalField
-		? Boolean( editingOriginalField.required )
-		: false;
+	// A tab's own dot reflects whether it currently holds real content --
+	// the live (already-autosaved-or-about-to-be) values, not a diff
+	// against this session's own starting point, so it's still showing
+	// the next time this field is reopened for editing, not just while
+	// it's being actively typed into.
+	const choicesTabHasContent = editChoices.some( ( choice ) => choice.trim() );
+	const requiredTabHasContent = Boolean( editRequired );
 
 	const arraysEqual = ( a, b ) =>
 		a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
 
-	const choicesTabChanged = ! arraysEqual( editChoices, originalChoices );
-	const requiredTabChanged = editRequired !== originalRequired;
+	const snapshotsEqual = ( a, b ) =>
+		null !== a &&
+		null !== b &&
+		a.name === b.name &&
+		a.label === b.label &&
+		a.type === b.type &&
+		a.relationshipMethod === b.relationshipMethod &&
+		a.required === b.required &&
+		arraysEqual( a.choices, b.choices );
+
+	const isValidToSaveValues = ( values ) => {
+		const relationshipType = relationshipTypeFor( values.type );
+
+		const nameOk = relationshipType
+			? Boolean( values.relationshipMethod )
+			: Boolean( values.name.trim() );
+
+		const choicesOk =
+			! hasChoicesFor( values.type ) ||
+			values.choices.filter( ( choice ) => choice.trim() ).length > 0;
+
+		return nameOk && choicesOk;
+	};
+
+	const buildBody = ( values ) => {
+		const relationshipType = relationshipTypeFor( values.type );
+
+		const body = relationshipType
+			? {
+					relationship_method: values.relationshipMethod,
+					type: values.type,
+					label: values.label,
+			  }
+			: { name: values.name, label: values.label, type: values.type };
+
+		// Required applies uniformly, unlike choices -- always sent,
+		// never gated on what the picked type actually is.
+		body.required = values.required;
+
+		if ( hasChoicesFor( values.type ) ) {
+			body.choices = values.choices;
+		}
+
+		return body;
+	};
 
 	// Whenever the picked type changes, default (or clear) the
 	// relationship dropdown to match -- a relationship chosen for a
@@ -188,7 +307,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		}
 
 		if ( ! editRelationshipType ) {
-			setEditRelationshipMethod( '' );
+			setValue( 'relationshipMethod', '' );
 			return;
 		}
 
@@ -196,15 +315,102 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			( relationship ) => relationship.type === editRelationshipType
 		);
 
-		setEditRelationshipMethod( ( current ) =>
-			matches.some( ( relationship ) => relationship.method_name === current )
-				? current
-				: matches[ 0 ]
-				? matches[ 0 ].method_name
-				: ''
-		);
+		if ( ! matches.some( ( relationship ) => relationship.method_name === editRelationshipMethod ) ) {
+			setValue( 'relationshipMethod', matches[ 0 ] ? matches[ 0 ].method_name : '' );
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ editType, relationships, editingIndex ] );
+
+	const flashSaved = () => {
+		clearTimeout( savedFlashTimerRef.current );
+		setJustSaved( true );
+		savedFlashTimerRef.current = setTimeout( () => setJustSaved( false ), 1500 );
+	};
+
+	// The autosave chain itself -- see this component's own docblock, and
+	// saveChainRef's own comment above, for why isNewDraftRef/
+	// editOriginalNameRef (not the plain state) are what this reads and
+	// writes, and why every call chains onto saveChainRef rather than
+	// running independently.
+	const attemptAutosave = ( values, targetIndex ) => {
+		const run = async () => {
+			if ( ! isValidToSaveValues( values ) ) {
+				return;
+			}
+
+			if ( snapshotsEqual( values, lastSavedRef.current ) ) {
+				return;
+			}
+
+			setSavingEdit( true );
+
+			try {
+				const body = buildBody( values );
+
+				const savedField = isNewDraftRef.current
+					? await apiFetch( basePath, {
+							method: 'POST',
+							body: JSON.stringify( body ),
+					  } )
+					: await apiFetch(
+							`${ basePath }/${ encodeURIComponent( editOriginalNameRef.current ) }`,
+							{
+								method: 'PUT',
+								body: JSON.stringify( body ),
+							}
+					  );
+
+				lastSavedRef.current = values;
+				isNewDraftRef.current = false;
+				setIsNewDraft( false );
+				editOriginalNameRef.current = savedField.name;
+				setEditOriginalName( savedField.name );
+
+				setFields( ( current ) =>
+					current.map( ( existing, i ) =>
+						i === targetIndex ? savedField : existing
+					)
+				);
+				setError( '' );
+				flashSaved();
+			} catch ( err ) {
+				setError( err.message );
+			} finally {
+				setSavingEdit( false );
+			}
+		};
+
+		// Chained via .then() with the SAME handler on both success and
+		// failure paths -- one save attempt failing (e.g. a transient
+		// network error) must never permanently wedge every later one
+		// behind a rejected promise.
+		saveChainRef.current = saveChainRef.current.then( run, run );
+
+		return saveChainRef.current;
+	};
+
+	// Debounces every form value change -- resubscribed whenever
+	// `editingIndex` changes so each subscription's own closure captures
+	// the right target row index (see attemptAutosave's own `targetIndex`
+	// param).
+	useEffect( () => {
+		if ( null === editingIndex ) {
+			return;
+		}
+
+		const subscription = watch( ( values ) => {
+			clearTimeout( debounceTimerRef.current );
+			debounceTimerRef.current = setTimeout( () => {
+				attemptAutosave( values, editingIndex );
+			}, AUTOSAVE_DEBOUNCE_MS );
+		} );
+
+		return () => {
+			subscription.unsubscribe();
+			clearTimeout( debounceTimerRef.current );
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ watch, editingIndex ] );
 
 	const relationshipOptionLabel = ( relationship ) =>
 		`${ relationship.related_model } (${ relationship.method_name }())`;
@@ -227,34 +433,85 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				required: false,
 			},
 		] );
+
+		const defaults = {
+			name: '',
+			label: '',
+			type: 'text',
+			relationshipMethod: '',
+			choices: [],
+			required: false,
+		};
+		reset( defaults );
+		lastSavedRef.current = null; // nothing saved yet at all -- anything valid should autosave.
+		isNewDraftRef.current = true;
+		editOriginalNameRef.current = '';
+
 		setEditingIndex( fields.length );
 		setIsNewDraft( true );
 		setEditOriginalName( '' );
-		setEditName( '' );
-		setEditLabel( '' );
-		setEditType( 'text' );
-		setEditRelationshipMethod( '' );
-		setEditChoices( [] );
-		setEditRequired( false );
-		setEditTab( 'choices' );
+		setEditTab( 'general' );
 	};
 
 	const startEdit = ( field, index ) => {
 		setError( '' );
+
+		const defaults = {
+			name: field.name,
+			label: field.label,
+			type: field.type,
+			relationshipMethod: field.relationship_method || '',
+			choices: field.choices && field.choices.length > 0 ? field.choices : [],
+			required: Boolean( field.required ),
+		};
+		reset( defaults );
+		lastSavedRef.current = defaults;
+		isNewDraftRef.current = false;
+		editOriginalNameRef.current = field.name;
+
 		setEditingIndex( index );
 		setIsNewDraft( false );
 		setEditOriginalName( field.name );
-		setEditName( field.name );
-		setEditLabel( field.label );
-		setEditType( field.type );
-		setEditRelationshipMethod( field.relationship_method || '' );
-		setEditChoices( field.choices && field.choices.length > 0 ? field.choices : [] );
-		setEditRequired( Boolean( field.required ) );
-		setEditTab( 'choices' );
+		setEditTab( 'general' );
 	};
 
-	const cancelEdit = () => {
-		if ( isNewDraft ) {
+	// The whole row is the "Edit" control now (see this component's own
+	// docblock) -- clicking the row that's already open collapses it
+	// (same flush-then-close as the panel's own "Done" button); clicking
+	// any OTHER row while one is open does nothing, the same "one editing
+	// surface at a time" constraint the old per-row Edit/Delete buttons'
+	// own `disabled` already enforced.
+	const handleRowClick = ( field, index ) => {
+		if ( null !== deletingName || reordering ) {
+			return;
+		}
+
+		if ( editingIndex === index ) {
+			finishEditing();
+			return;
+		}
+
+		if ( null !== editingIndex ) {
+			return;
+		}
+
+		startEdit( field, index );
+	};
+
+	const finishEditing = async () => {
+		clearTimeout( debounceTimerRef.current );
+
+		const values = getValues();
+
+		// Flush a still-pending change rather than dropping it -- closing
+		// right after typing shouldn't silently discard the last edit.
+		await attemptAutosave( values, editingIndex );
+
+		// isNewDraftRef, not the (possibly stale, pre-await) isNewDraft
+		// state -- attemptAutosave() above may have just flipped this to
+		// false, and this needs to see that, not the value from before it
+		// ran.
+		if ( isNewDraftRef.current ) {
 			setFields( ( current ) =>
 				current.filter( ( _field, i ) => i !== editingIndex )
 			);
@@ -262,55 +519,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 		setEditingIndex( null );
 		setIsNewDraft( false );
-	};
-
-	const handleSaveEdit = async ( event ) => {
-		event.preventDefault();
-		setError( '' );
-		setSavingEdit( true );
-
-		try {
-			const body = editRelationshipType
-				? {
-						relationship_method: editRelationshipMethod,
-						type: editType,
-						label: editLabel,
-				  }
-				: { name: editName, label: editLabel, type: editType };
-
-			// Required applies uniformly, unlike choices -- always sent,
-			// never gated on what the picked type actually is.
-			body.required = editRequired;
-
-			if ( editHasChoices ) {
-				body.choices = editChoices;
-			}
-
-			const savedField = isNewDraft
-				? await apiFetch( basePath, {
-						method: 'POST',
-						body: JSON.stringify( body ),
-				  } )
-				: await apiFetch(
-						`${ basePath }/${ encodeURIComponent( editOriginalName ) }`,
-						{
-							method: 'PUT',
-							body: JSON.stringify( body ),
-						}
-				  );
-
-			setFields( ( current ) =>
-				current.map( ( existing, i ) =>
-					i === editingIndex ? savedField : existing
-				)
-			);
-			setEditingIndex( null );
-			setIsNewDraft( false );
-		} catch ( err ) {
-			setError( err.message );
-		} finally {
-			setSavingEdit( false );
-		}
 	};
 
 	const handleDelete = async ( name ) => {
@@ -389,47 +597,87 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		}
 	};
 
-	const saveDisabled =
-		savingEdit ||
-		( editRelationshipType ? ! editRelationshipMethod : ! editName.trim() ) ||
-		( editHasChoices &&
-			0 === editChoices.filter( ( choice ) => choice.trim() ).length );
-
 	const renderEditPanel = () => (
 		<div className="gateway-field-editor-edit-panel">
-			<form onSubmit={ handleSaveEdit }>
+			<div className="nav-tab-wrapper gateway-field-editor-subtabs">
+				<button
+					type="button"
+					className={
+						'nav-tab' +
+						( 'general' === editTab ? ' nav-tab-active' : '' )
+					}
+					onClick={ () => setEditTab( 'general' ) }
+				>
+					General
+					{ choicesTabHasContent && (
+						<span
+							className="gateway-tab-changed-dot"
+							title="Has choices configured"
+							aria-label="Has choices configured"
+						/>
+					) }
+				</button>
+				<button
+					type="button"
+					className={
+						'nav-tab' +
+						( 'validation' === editTab ? ' nav-tab-active' : '' )
+					}
+					onClick={ () => setEditTab( 'validation' ) }
+				>
+					Validation
+					{ requiredTabHasContent && (
+						<span
+							className="gateway-tab-changed-dot"
+							title="Required is on"
+							aria-label="Required is on"
+						/>
+					) }
+				</button>
+				<button
+					type="button"
+					className={
+						'nav-tab' +
+						( 'presentation' === editTab ? ' nav-tab-active' : '' )
+					}
+					onClick={ () => setEditTab( 'presentation' ) }
+				>
+					Presentation
+				</button>
+				<button
+					type="button"
+					className={
+						'nav-tab' +
+						( 'conditional_logic' === editTab
+							? ' nav-tab-active'
+							: '' )
+					}
+					onClick={ () => setEditTab( 'conditional_logic' ) }
+				>
+					Conditional Logic
+				</button>
+			</div>
+
+			<div hidden={ 'general' !== editTab }>
 				<div className="gateway-field-editor-form-grid">
 					<label>
 						<span>Name</span>
 						{ editRelationshipType ? (
 							matchingRelationships.length > 0 ? (
-								<select
-									value={ editRelationshipMethod }
-									onChange={ ( event ) =>
-										setEditRelationshipMethod(
-											event.target.value
-										)
-									}
-								>
-									{ matchingRelationships.map(
-										( relationship ) => (
-											<option
-												key={ relationship.method_name }
-												value={ relationship.method_name }
-											>
-												{ relationshipOptionLabel(
-													relationship
-												) }
-											</option>
-										)
-									) }
+								<select { ...register( 'relationshipMethod' ) }>
+									{ matchingRelationships.map( ( relationship ) => (
+										<option
+											key={ relationship.method_name }
+											value={ relationship.method_name }
+										>
+											{ relationshipOptionLabel( relationship ) }
+										</option>
+									) ) }
 								</select>
 							) : (
 								<span className="description">
 									No{ ' ' }
-									{ relationshipTypeLabel(
-										editRelationshipType
-									) }{ ' ' }
+									{ relationshipTypeLabel( editRelationshipType ) }{ ' ' }
 									relationships yet -- add one in the
 									Relationships tab first.
 								</span>
@@ -439,11 +687,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								type="text"
 								className="regular-text"
 								placeholder="e.g. first_name"
-								value={ editName }
 								disabled={ editingIsRelate }
-								onChange={ ( event ) =>
-									setEditName( event.target.value )
-								}
+								{ ...register( 'name' ) }
 							/>
 						) }
 						<span className="description">
@@ -457,21 +702,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							type="text"
 							className="regular-text"
 							placeholder="Label (optional)"
-							value={ editLabel }
-							onChange={ ( event ) =>
-								setEditLabel( event.target.value )
-							}
+							{ ...register( 'label' ) }
 						/>
 					</label>
 					<label>
 						<span>Type</span>
-						<select
-							value={ editType }
-							disabled={ editingIsRelate }
-							onChange={ ( event ) =>
-								setEditType( event.target.value )
-							}
-						>
+						<select disabled={ editingIsRelate } { ...register( 'type' ) }>
 							{ fieldTypes.map( ( type ) => (
 								<option key={ type.key } value={ type.key }>
 									{ type.label }
@@ -488,100 +724,51 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					) }
 				</div>
 
-				<div className="nav-tab-wrapper gateway-field-editor-subtabs">
-					<button
-						type="button"
-						className={
-							'nav-tab' +
-							( 'choices' === editTab ? ' nav-tab-active' : '' )
-						}
-						onClick={ () => setEditTab( 'choices' ) }
-					>
-						Choices
-						{ choicesTabChanged && (
-							<span
-								className="gateway-tab-changed-dot"
-								title="Edited"
-								aria-label="Edited"
-							/>
-						) }
-					</button>
-					<button
-						type="button"
-						className={
-							'nav-tab' +
-							( 'validation' === editTab ? ' nav-tab-active' : '' )
-						}
-						onClick={ () => setEditTab( 'validation' ) }
-					>
-						Validation
-						{ requiredTabChanged && (
-							<span
-								className="gateway-tab-changed-dot"
-								title="Edited"
-								aria-label="Edited"
-							/>
-						) }
-					</button>
-				</div>
-
-				<div hidden={ 'choices' !== editTab }>
-					{ editHasChoices ? (
-						<ChoicesEditor
-							choices={ editChoices }
-							onChange={ setEditChoices }
+				{ editHasChoices && (
+					<div className="gateway-field-editor-choices-inline">
+						<h4>Choices</h4>
+						<Controller
+							control={ control }
+							name="choices"
+							render={ ( { field } ) => (
+								<ChoicesEditor
+									choices={ field.value }
+									onChange={ field.onChange }
+								/>
+							) }
 						/>
-					) : (
-						<p className="description">
-							This field type doesn&rsquo;t use choices.
-						</p>
-					) }
-				</div>
+					</div>
+				) }
+			</div>
 
-				<div hidden={ 'validation' !== editTab }>
-					<label className="gateway-toggle">
-						<input
-							type="checkbox"
-							checked={ editRequired }
-							onChange={ ( event ) =>
-								setEditRequired( event.target.checked )
-							}
-						/>
-						<span
-							className="gateway-toggle-slider"
-							aria-hidden="true"
-						/>
-						<span>Required</span>
-					</label>
-					<p className="description">
-						If enabled, a record can&rsquo;t be created without
-						this field, and it can&rsquo;t be cleared on an
-						existing one.
-					</p>
-				</div>
-
-				<p className="gateway-field-editor-form-actions">
-					<button
-						type="submit"
-						className="button button-primary"
-						disabled={ saveDisabled }
-					>
-						{ savingEdit
-							? 'Saving…'
-							: isNewDraft
-							? 'Add Field'
-							: 'Save' }
-					</button>{ ' ' }
-					<button
-						type="button"
-						className="button"
-						onClick={ cancelEdit }
-						disabled={ savingEdit }
-					>
-						Cancel
-					</button>
+			<div hidden={ 'validation' !== editTab }>
+				<label className="gateway-toggle">
+					<input type="checkbox" { ...register( 'required' ) } />
+					<span className="gateway-toggle-slider" aria-hidden="true" />
+					<span>Required</span>
+				</label>
+				<p className="description">
+					If enabled, a record can&rsquo;t be created without this
+					field, and it can&rsquo;t be cleared on an existing one.
 				</p>
-			</form>
+			</div>
+
+			<div hidden={ 'presentation' !== editTab }>
+				<p className="description">Nothing here yet.</p>
+			</div>
+
+			<div hidden={ 'conditional_logic' !== editTab }>
+				<p className="description">Nothing here yet.</p>
+			</div>
+
+			<p className="gateway-field-editor-form-actions">
+				<span className="gateway-field-editor-save-status">
+					{ savingEdit ? 'Saving…' : justSaved ? 'Saved' : '' }
+				</span>{ ' ' }
+				<button type="button" className="button" onClick={ finishEditing }>
+					Done
+				</button>
+			</p>
 		</div>
 	);
 
@@ -589,11 +776,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		<div className="gateway-field-editor">
 			<h3>Fields</h3>
 			<p className="description">
-				Fields become this model&rsquo;s mass-assignable attributes
-				-- each one is a real column on <code>{ modelClass }</code>
-				&rsquo;s own table. Adding, editing, or removing one runs a
-				migration right away; dragging a row to reorder it
-				doesn&rsquo;t.
+				Fields become this model&rsquo;s mass-assignable attributes --
+				each one is a real column on <code>{ modelClass }</code>
+				&rsquo;s own table. Changes here save automatically a moment
+				after you make them; dragging a row to reorder it never runs a
+				migration, editing everything else can.
 			</p>
 
 			{ error && (
@@ -616,20 +803,29 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						</tr>
 					</thead>
 					<tbody>
-						{ fields.map( ( field, index ) =>
-							editingIndex === index ? (
-								<tr key={ field.id ?? 'draft' }>
-									<td colSpan={ 5 }>
-										{ renderEditPanel() }
-									</td>
-								</tr>
-							) : (
+						{ fields.map( ( field, index ) => {
+							const isEditingThisRow = editingIndex === index;
+
+							// While this row's own panel is open, its summary
+							// row shows the LIVE (not-yet-necessarily-saved)
+							// values instead of the last-saved `field` --
+							// otherwise a rename wouldn't visibly update the
+							// very row you're renaming until the debounced
+							// autosave actually lands, up to
+							// AUTOSAVE_DEBOUNCE_MS later.
+							const rowName = isEditingThisRow
+								? editRelationshipType
+									? editOriginalName || editRelationshipMethod || ''
+									: editName
+								: field.name;
+							const rowLabel = isEditingThisRow ? editLabel : field.label;
+							const rowType = isEditingThisRow ? editType : field.type;
+
+							return [
 								<tr
-									key={ field.id }
+									key={ field.id ?? 'draft' }
 									draggable={ dragEnabled }
-									onDragStart={ handleDragStart(
-										field.name
-									) }
+									onDragStart={ handleDragStart( field.name ) }
 									onDragOver={
 										dragEnabled ? handleDragOver : undefined
 									}
@@ -638,48 +834,43 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											? handleDrop( field.name )
 											: undefined
 									}
+									onClick={ () => handleRowClick( field, index ) }
 									className={
-										draggedName === field.name
-											? 'gateway-field-editor-row-dragging'
-											: ''
+										( draggedName === field.name
+											? 'gateway-field-editor-row-dragging '
+											: '' ) +
+										( isEditingThisRow
+											? 'gateway-field-editor-row-active'
+											: '' )
 									}
 								>
 									<td
 										className="gateway-field-editor-drag-col"
-										title="Drag to reorder"
+										title={
+											isEditingThisRow
+												? 'Collapse'
+												: 'Drag to reorder'
+										}
 									>
-										⠿
+										{ isEditingThisRow ? '⌃' : '⠿' }
 									</td>
 									<td>
-										<code>{ field.name }</code>
+										<code>{ rowName }</code>
 									</td>
-									<td>{ field.label }</td>
+									<td>{ rowLabel }</td>
 									<td>
 										{ fieldTypes.find(
-											( type ) => type.key === field.type
-										)?.label || field.type }
+											( type ) => type.key === rowType
+										)?.label || rowType }
 									</td>
 									<td>
 										<button
 											type="button"
 											className="button"
-											onClick={ () =>
-												startEdit( field, index )
-											}
-											disabled={
-												null !== editingIndex ||
-												null !== deletingName ||
-												reordering
-											}
-										>
-											Edit
-										</button>
-										<button
-											type="button"
-											className="button"
-											onClick={ () =>
-												handleDelete( field.name )
-											}
+											onClick={ ( event ) => {
+												event.stopPropagation();
+												handleDelete( field.name );
+											} }
 											disabled={
 												null !== editingIndex ||
 												deletingName === field.name ||
@@ -691,9 +882,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 												: 'Delete' }
 										</button>
 									</td>
-								</tr>
-							)
-						) }
+								</tr>,
+								isEditingThisRow && (
+									<tr key={ `${ field.id ?? 'draft' }-panel` }>
+										<td colSpan={ 5 }>{ renderEditPanel() }</td>
+									</tr>
+								),
+							];
+						} ) }
 					</tbody>
 				</table>
 			) }

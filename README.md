@@ -3431,19 +3431,53 @@ than nested under `fields` (e.g. not `/fields/order`) -- nesting it
 would put it in direct conflict with `/fields/<field_name>`, which would
 just as happily match the literal string "order" as a field name.
 `admin-app/src/components/FieldEditor.jsx` is the UI: an editable,
-drag-to-reorder table of existing fields (each row swaps to an inline
-edit panel; dragging one anywhere on the row -- not just the "⠿" handle
-cell -- calls `fields-order` via native HTML5 drag-and-drop, no library),
-seeded from the model detail response's own `fields` array
+drag-to-reorder table of existing fields (dragging a row anywhere on it
+-- not just the "⠿" handle cell -- calls `fields-order` via native
+HTML5 drag-and-drop, no library, disabled the whole time any row is open
+for editing), seeded from the model detail response's own `fields` array
 (`Model_REST_Controller::describe_model()`) so the page doesn't need a
-second request just to show them. There is deliberately no separate
-"Add Field" form: a "+ Add Field" button appends a draft row (`{ name:
-'', label: '', type: 'text', choices: [] }`, no id yet) straight into
-the table and opens it in the exact same inline edit panel an existing
-row's own "Edit" button opens -- one editing surface either way, not two
-independently-built ones that could drift out of sync with each other.
-See "Choice field types" below for that panel's own General/Choices
-tabs.
+second request just to show them.
+
+**The row never disappears, and the whole row opens it -- no Edit
+button, no Save/Cancel.** Clicking a row opens its own edit panel right
+underneath it (a second `<tr>`, not a replacement for the first); the
+open row itself keeps showing its own Name/Label/Type, live-updating as
+you type rather than freezing until a save round-trips. Clicking the
+already-open row again (or the panel's one remaining button, "Done")
+closes it; clicking a different row while one is open does nothing --
+the same "one editing surface at a time" a disabled Edit button used to
+enforce. "+ Add Field" appends a draft row (`{ name: '', label: '',
+type: 'text', choices: [] }`, no id yet) straight into the table, open
+from the start, in the exact same panel -- there's no separate
+standalone "Add Field" form, and no POST-vs-PUT distinction visible to
+the site owner either.
+
+**Every change autosaves -- there's nothing to manage.** The panel's own
+form state is one `react-hook-form` instance (`useForm`), reset to a
+field's current values (or a blank draft's) whenever a row opens. A
+`watch()` subscription debounces every value change by 800ms and, once
+the result differs from what's actually saved and is valid enough to
+submit at all, fires the same POST/PUT this used to wait for an explicit
+Save click to send -- so typing a Label, flipping Required, or
+reordering a choice just takes effect shortly after you stop. "Done"
+(and closing the currently-open row by clicking it again) flushes any
+still-pending change immediately first, so closing right after typing
+never drops it; a draft that never reached a valid, saved state is
+removed from the list entirely instead. Every autosave attempt -- the
+debounce timer, or a flush from closing -- chains through one promise
+(`saveChainRef`) rather than firing independently, so two attempts
+arriving close together run strictly one after another instead of
+racing (a real risk otherwise: closing right as a debounced save is
+still in flight could see a stale "is this still a new, unsaved draft?"
+flag and wrongly delete a row that was actually about to be saved). This
+does mean a field's Name can go through several real RENAME COLUMN
+migrations if someone pauses mid-word while typing it -- an accepted
+trade-off for "changes just happen," not something specially worked
+around for Name alone.
+
+See "Choice field types" below for the panel's own General/Validation/
+Presentation/Conditional Logic tabs (the latter two currently empty
+placeholders, mirroring ACF's own field-settings layout).
 
 ### Relationships (`Model_Relationships`) -- real Eloquent relationship methods, printed the same way fields are
 
@@ -3992,25 +4026,25 @@ block that prints an actual "Yes"/"No" is real, separate, undone work.
 Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 
 **The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)'s
-own inline edit panel is a plain, un-tabbed Name/Label/Type form, followed
-by two ALWAYS-present tabs -- "Choices" and "Validation" (see "Required
-fields" below for the latter) -- plain `nav-tab`/`nav-tab-active`, the same
-core wp-admin classes the Fields/Relationships tabs use. Choices doesn't
-disappear for a type that isn't a `Choice_Field_Type`; it just shows a
-plain "This field type doesn't use choices." note instead of the real
-editor, so the panel's own shape never shifts as the picked type changes.
-When the picked type's own `has_choices` (a key on `Field_Type_Registry::
-describe_all()`'s own output, alongside a Choice type's own `is_multiple`)
-IS `true`, that tab holds a `ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`)
--- one text input per choice, a "⠿" handle to drag-reorder it (the same
-native HTML5 drag-and-drop convention `FieldEditor`'s own fields table
-already uses, not a second different mechanism), "Remove" to delete one,
-"Add Choice" to append a blank one. Save/Add Field is disabled until at
-least one non-blank choice exists. Each tab's own heading grows a small
-green dot the moment its content differs from what the field started this
-edit session with (`[]`/`false` for a brand new draft), so re-opening an
-existing field's edit panel makes it obvious which of the two tabs were
-actually touched before hitting Save. `RecordForm`
+own edit panel has four ALWAYS-present tabs -- "General", "Validation",
+"Presentation", "Conditional Logic" -- plain `nav-tab`/`nav-tab-active`,
+the same core wp-admin classes the Fields/Relationships tabs use, and
+the same four ACF's own field-settings screen has (the latter two are
+currently empty placeholders, not backed by anything on the PHP side
+yet). Name/Label/Type live in General; a `ChoicesEditor`
+(`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
+them, in that same tab, only when the picked type's own `has_choices` (a
+key on `Field_Type_Registry::describe_all()`'s own output, alongside a
+Choice type's own `is_multiple`) is `true` -- one text input per choice,
+a "⠿" handle to drag-reorder it (the same native HTML5 drag-and-drop
+convention `FieldEditor`'s own fields table already uses, not a second
+different mechanism), "Remove" to delete one, "Add Choice" to append a
+blank one. A tab's own heading grows a small green dot whenever it
+currently holds real content (General: at least one non-blank choice;
+Validation: Required switched on) -- based on the live, already-autosaved
+values, not a "changed this session" diff, so it's still showing the
+next time this same field is reopened for editing, not just while it's
+being actively typed into. `RecordForm`
 (`admin-app/src/components/RecordForm.jsx`) reads a field's own `choices`
 straight off the field object (already threaded through by
 `Model_Fields::all()`/the fields REST route) to render the right control
@@ -4025,9 +4059,9 @@ submitted value both a real JS boolean).
 A new plain boolean column on `gateway_fields`, `required` -- applies
 uniformly to every field type (unlike `choices`, which only means
 something for a `Choice_Field_Type`), toggled via the "Validation" tab
-in `FieldEditor`'s own inline edit panel (a small custom toggle-switch
-control, `.gateway-toggle`, built from a real `<input type="checkbox">`
-so it stays a genuine, accessible checkbox under the hood -- there's no
+in `FieldEditor`'s own edit panel (a small custom toggle-switch control,
+`.gateway-toggle`, built from a real `<input type="checkbox">` so it
+stays a genuine, accessible checkbox under the hood -- there's no
 `@wordpress/components`-style toggle available to this plain-React admin
 app to reach for instead). `Model_Fields::add()`/`update()` both take a
 `$required` param (always sent, default `false`); `update()`'s own
