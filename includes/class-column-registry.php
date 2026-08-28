@@ -216,6 +216,18 @@ class Column_Registry {
 	 * one of these to an Eloquent query -- the Collection counterpart to
 	 * `apply_facets()`.
 	 *
+	 * `isTextRenderable` is the same "a field type declares this about
+	 * itself" pattern, this time via `Field_Type::is_text_renderable()`
+	 * -- what `gateway/card-field-text` reads to decide which fields its
+	 * own Field picker offers at all, and to reject a stale/hand-crafted
+	 * `fieldKey` on the front end that its own picker would never have
+	 * offered (`false` for a Password field, whose secret value has no
+	 * business being printed as public text, and for a Relate to One/
+	 * Relate to Many field, whose own raw value is a bare id or, for
+	 * Relate to Many, not even a real column at all -- see that
+	 * interface method's own docblock). `true` for the synthetic `id`
+	 * column and every other built-in field type.
+	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
 	 *                  real, registered model.
@@ -227,19 +239,21 @@ class Column_Registry {
 
 		$columns = array(
 			array(
-				'key'          => 'id',
-				'label'        => __( 'ID', 'gateway' ),
-				'type'         => 'model_id',
-				'isFilterable' => true,
+				'key'              => 'id',
+				'label'            => __( 'ID', 'gateway' ),
+				'type'             => 'model_id',
+				'isFilterable'     => true,
 				// Free-text/exact only -- a Select of every distinct id
 				// would be unusable, same reasoning as core `ID`.
-				'facetType'    => array( 'input' ),
+				'facetType'        => array( 'input' ),
+				'isTextRenderable' => true,
 			),
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
-			$type_class    = Field_Type_Registry::get( $field['type'] );
-			$is_filterable = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
+			$type_class         = Field_Type_Registry::get( $field['type'] );
+			$is_filterable      = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
+			$is_text_renderable = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
 
 			$facet_type = array();
 
@@ -262,11 +276,12 @@ class Column_Registry {
 			$facet_type = apply_filters( 'gateway_datatable_collection_facet_type', $facet_type, $field, $class_name );
 
 			$columns[] = array(
-				'key'          => $field['name'],
-				'label'        => $field['label'],
-				'type'         => 'model_field',
-				'isFilterable' => ! empty( $facet_type ),
-				'facetType'    => array_values( $facet_type ),
+				'key'              => $field['name'],
+				'label'            => $field['label'],
+				'type'             => 'model_field',
+				'isFilterable'     => ! empty( $facet_type ),
+				'facetType'        => array_values( $facet_type ),
+				'isTextRenderable' => $is_text_renderable,
 			);
 		}
 
@@ -350,6 +365,15 @@ class Column_Registry {
 					'type'                => 'model_related_field',
 					'isFilterable'        => false,
 					'facetType'           => array(),
+					// Always true in practice today -- the "one level deep
+					// only" skip above already excludes a related field
+					// that's itself a relate field, and the is_sensitive()
+					// skip already excludes Password, so nothing left here
+					// could ever resolve to false. Computed properly
+					// anyway (rather than hardcoded true) so this stays
+					// correct by construction if either of those exclusions
+					// is ever loosened.
+					'isTextRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
 					'relationship_method' => $relationship['method_name'],
 				);
 			}

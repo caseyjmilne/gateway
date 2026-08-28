@@ -94,4 +94,39 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function is_filterable();
+
+	/**
+	 * Whether a field of this type's own raw stored value is a sensible
+	 * thing to print as plain text -- what `Column_Registry::
+	 * get_columns_for_collection()` reads to decide a field's own
+	 * `isTextRenderable`, which `gateway/card-field-text` uses both to
+	 * decide which fields its own Field picker even offers and, on the
+	 * front end, to refuse a stale/hand-crafted `fieldKey` its own
+	 * picker would never have offered in the first place -- the same
+	 * "declare it about yourself" reasoning `is_filterable()` already
+	 * uses, rather than `Column_Registry`/that block hardcoding a
+	 * per-type exclusion list of its own that every new type would need
+	 * to remember to be added to.
+	 *
+	 * `false` for `Password_Field_Type` (a secret value has no
+	 * legitimate reason to ever be printed as plain, visible text on a
+	 * public-facing card -- independent of, if overlapping with,
+	 * `is_sensitive()`'s own masking-on-*admin-list* concern, and
+	 * `is_filterable()`'s own searchability concern) and for
+	 * `Relate_To_One_Field_Type`/`Relate_To_Many_Field_Type` (a relate
+	 * field's own raw stored value -- a bare foreign-key id, or, for
+	 * Relate to Many, nothing at all: its own field name isn't even a
+	 * real column, it's the relationship's own method name, so reading
+	 * it as a plain attribute would return the *relationship* itself,
+	 * an `Illuminate\Support\Collection` object PHP can't cast to a
+	 * string at all -- was never a meaningful or even safe thing to
+	 * print as text; a related record's own label needs
+	 * `Records_REST_Controller::resolve_display_field()`/`record_option()`,
+	 * which neither `Column_Registry::resolve_collection_value()` nor
+	 * `gateway/card-field-text/render.php` attempt). `true` for every
+	 * other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function is_text_renderable();
 }

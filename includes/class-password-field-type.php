@@ -76,4 +76,16 @@ class Password_Field_Type implements Field_Type {
 	public static function is_filterable() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * A secret value has no legitimate reason to ever be printed as
+	 * plain, visible text on a public-facing card -- independent of, if
+	 * overlapping with, is_sensitive()'s own masking-on-admin-list-view
+	 * concern above.
+	 */
+	public static function is_text_renderable() {
+		return false;
+	}
 }

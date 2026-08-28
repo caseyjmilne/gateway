@@ -2533,6 +2533,27 @@ field-display blocks (Number, Date, Image, ...) are expected to follow
 this same shape (one block per "how to render this field's value") with
 their own type-appropriate output instead.
 
+**Not every field belongs in this block's own picker.** A Password
+field's raw value is a secret with no legitimate reason to be printed as
+public text; a Relate to One field's raw stored value is a bare
+foreign-key id, not a related record's own label; a Relate to Many
+field's own "field" isn't a real column at all -- its name is the
+relationship's own method name, so reading it as a plain attribute
+returns the relationship itself (an `Illuminate\Support\Collection`),
+which `(string)` can't cast and would fatal error. Each `Field_Type`
+declares this about itself via a new `is_text_renderable()` (the same
+"a type declares it about itself" pattern `is_filterable()` already
+established), which `Column_Registry::get_columns_for_collection()`
+surfaces per column as `isTextRenderable`: `false` for Password/Relate to
+One/Relate to Many, `true` for every other built-in type. `edit.js`'s own
+Field picker filters both the model's own fields and its Related Fields
+(below) down to just the renderable ones before building its options
+list, and `render.php` applies the identical filter to `fieldKey` itself
+-- not just "does this column still exist" -- so a field configured
+before this existed, or one whose type changed into a non-renderable one
+since, is rejected the same way a genuinely removed field already was,
+rather than ever printing a secret or crashing on an uncastable value.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)
@@ -2560,6 +2581,7 @@ and turns each one into another column:
 	'type'                => 'model_related_field',
 	'isFilterable'        => false,
 	'facetType'           => [],
+	'isTextRenderable'    => true, // the related field's own is_text_renderable() -- always true today, see below.
 	'relationship_method' => 'eventDetails',
 ]
 ```

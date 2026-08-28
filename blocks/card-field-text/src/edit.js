@@ -40,6 +40,22 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		error,
 	} = useAvailableColumns( '', { sourceType: 'collection', collection } );
 
+	// Only a field whose own type declares itself isTextRenderable
+	// (Column_Registry::get_columns_for_collection(), driven by each
+	// Field_Type's own is_text_renderable()) is offered here at all --
+	// a Password field's secret value has no business being printed as
+	// public text, and a Relate to One/Relate to Many field's own raw
+	// value is either a meaningless bare id or, for Relate to Many, not
+	// even a real column (reading it as a plain attribute would return
+	// the relationship itself, which render.php can't cast to a string
+	// at all). Neither ever belongs in this block's own picker -- a
+	// related record's own label needs the dedicated relate-field
+	// handling gateway/related-items/gateway/data-display already do,
+	// not this generic "print the raw attribute" block.
+	const renderableColumns = availableColumns.filter(
+		( column ) => false !== column.isTextRenderable
+	);
+
 	// A hasOne/belongsTo relationship's own fields (Column_Registry::
 	// get_related_columns_for_collection(), type 'model_related_field')
 	// are kept together at the end of this flat list, under their own
@@ -48,10 +64,10 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	// visually distinct divider in every browser, which is enough to
 	// keep "this model's own fields" and "a related record's fields"
 	// from reading as one undifferentiated list.
-	const ownColumns = availableColumns.filter(
+	const ownColumns = renderableColumns.filter(
 		( column ) => 'model_related_field' !== column.type
 	);
-	const relatedColumns = availableColumns.filter(
+	const relatedColumns = renderableColumns.filter(
 		( column ) => 'model_related_field' === column.type
 	);
 
@@ -81,7 +97,13 @@ export default function Edit( { attributes, setAttributes, context } ) {
 			: [] ),
 	];
 
-	const selectedColumn = availableColumns.find( ( column ) => column.key === fieldKey );
+	// Checked against renderableColumns, not the full availableColumns --
+	// a field configured before this block started declaring
+	// isTextRenderable (or one whose type changed into a non-renderable
+	// one since) must show the same "no longer exists" style warning
+	// below as a genuinely removed field, not silently keep rendering a
+	// value this block was never meant to show.
+	const selectedColumn = renderableColumns.find( ( column ) => column.key === fieldKey );
 	const isFieldConfigured = Boolean( selectedColumn );
 
 	let previewText = __( '(no field selected)', 'gateway' );

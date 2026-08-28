@@ -60,4 +60,11 @@ class Text_Field_Type implements Field_Type {
 	public static function is_filterable() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_text_renderable() {
+		return true;
+	}
 }

@@ -44,13 +44,31 @@ if ( '' === $field_key || ! ( $record instanceof \Illuminate\Database\Eloquent\M
 $collection = get_class( $record );
 
 // Only ever trust a field key that's genuinely still one of this model's
-// own available columns -- a stale fieldKey (the model's fields changed
-// since this block was configured) must never surface whatever attribute
-// happens to share its name on the record instead (id, timestamps,
-// anything else Eloquent exposes that isn't a real, user-defined field).
-$available_keys = wp_list_pluck( \Gateway\Column_Registry::get_columns_for_collection( $collection ), 'key' );
+// own available, TEXT-RENDERABLE columns -- a stale fieldKey (the model's
+// fields changed since this block was configured, or the field's own
+// type changed) must never surface whatever attribute happens to share
+// its name on the record instead (id, timestamps, anything else Eloquent
+// exposes that isn't a real, user-defined field), and must never print a
+// Password field's secret value or a Relate to One/Relate to Many
+// field's own raw value (a bare id, or -- for Relate to Many, whose own
+// field name is a relationship method name, not a real column -- the
+// relationship itself, which (string) below can't cast at all and would
+// fatal error). The editor's own Field picker (edit.js) already only
+// ever offers a renderable field, but this is what actually enforces it
+// -- the same "never trust the editor's own picker alone" reasoning
+// every other render.php in this plugin already applies to its own
+// fieldKey/relationship attributes.
+$renderable_keys = wp_list_pluck(
+	array_filter(
+		\Gateway\Column_Registry::get_columns_for_collection( $collection ),
+		function ( $column ) {
+			return false !== ( $column['isTextRenderable'] ?? true );
+		}
+	),
+	'key'
+);
 
-if ( ! in_array( $field_key, $available_keys, true ) ) {
+if ( ! in_array( $field_key, $renderable_keys, true ) ) {
 	return;
 }
 

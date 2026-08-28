@@ -88,6 +88,21 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * A relate field's own stored value -- a bare foreign-key id -- isn't
+	 * a related record's own label; printing it as plain text would show
+	 * a meaningless number where a name belongs. Showing the related
+	 * record's actual label needs Records_REST_Controller::
+	 * resolve_display_field()/record_option(), which gateway/card-field-text
+	 * doesn't do -- pick a Relate to One field's related model directly
+	 * instead (see get_related_columns_for_collection()).
+	 */
+	public static function is_text_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 */
 	public static function relationship_type() {
 		return 'belongsTo';
