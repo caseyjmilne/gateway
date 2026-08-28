@@ -3466,9 +3466,10 @@ distinction visible to the site owner either.
 on row hover: "Edit | Duplicate | Delete"**, plain text links
 (`.row-actions`, hidden until hover, the same convention wp-admin's own
 post list table already uses) -- each stops the click from also
-bubbling up to the row's own open/close handler. "Edit" only ever opens
-(never toggles an already-open row closed, unlike clicking the row
-itself). "Duplicate" POSTs a copy of the field's own current, already-saved
+bubbling up to the row's own open/close handler. "Edit" toggles the same
+open/closed state clicking the row itself does -- opens a closed row,
+closes that same row back up (flushing first) if it's the one already
+open. "Duplicate" POSTs a copy of the field's own current, already-saved
 data (name suffixed `_copy`, label suffixed " (Copy)") through the exact
 same `/fields` route "Add Field" uses -- a Relationship_Field_Type field
 can't actually be duplicated this way yet (its real name is always
@@ -4293,7 +4294,12 @@ own heading grows the same small green dot as General/Validation
 whenever any setting currently holds a non-blank value. A type that
 recognizes no presentation settings at all (everything except Text and
 Number, today) shows a plain "This field type has no presentation
-settings yet." instead of an empty tab.
+settings yet." instead of an empty tab. Prepend and Append each carry a
+small `.description` hint of their own underneath the input ("Appears
+before the input."/"Appears after the input.") -- purely a local,
+admin-app-only aid for the site owner configuring the field (their own
+direction isn't otherwise obvious from the label alone), never sent to
+the server or stored anywhere.
 
 `RecordForm` reads `field.settings` **generically**, not gated on
 `field.type === 'text'` specifically -- since the server-side whitelist

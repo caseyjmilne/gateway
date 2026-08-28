@@ -15,12 +15,16 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 // catalog here is what lets this component render any of them generically
 // (an `<input>` or `<textarea>` per recognized key, looked up by name)
 // instead of needing its own hardcoded UI for every field type that ever
-// gains a presentation setting.
+// gains a presentation setting. `hint`, where present, is a purely local,
+// admin-app-only aid for this input itself (Prepend/Append's own
+// direction isn't otherwise obvious from the label alone) -- rendered as
+// a plain `.description` note under the input, same as Name's own in
+// General; it's never sent to the server or stored anywhere.
 const PRESENTATION_FIELD_META = {
 	placeholder: { label: 'Placeholder', type: 'text' },
 	step: { label: 'Step Size', type: 'number' },
-	prepend: { label: 'Prepend', type: 'text' },
-	append: { label: 'Append', type: 'text' },
+	prepend: { label: 'Prepend', type: 'text', hint: 'Appears before the input.' },
+	append: { label: 'Append', type: 'text', hint: 'Appears after the input.' },
 	instructions: { label: 'Instructions', type: 'textarea' },
 };
 
@@ -46,11 +50,12 @@ const PRESENTATION_FIELD_META = {
  * or reordering a choice just takes effect shortly after you stop, the
  * same way `label`-only edits already ran no migration at all. There is
  * no button anywhere for this any more, not even a "Done": closing a row
- * (clicking it again, or its own row-action "Edit" is never needed for
- * that since it only opens) flushes any still-pending change immediately
- * first, so closing right after typing never drops it, then removes the
- * row entirely if it's a draft that never actually reached a valid,
- * saved state. The other way a change can still be mid-debounce --
+ * (clicking it again, or its own row-action "Edit" -- the two toggle the
+ * same open/closed state, see handleRowClick/handleEditClick) flushes any
+ * still-pending change immediately first, so closing right after typing
+ * never drops it, then removes the row entirely if it's a draft that
+ * never actually reached a valid, saved state. The other way a change
+ * can still be mid-debounce --
  * navigating away from this screen entirely, not closing the row first --
  * is covered too: the debounce effect's own cleanup flushes whatever's
  * still pending (`pendingSaveValuesRef`) rather than just cancelling the
@@ -607,15 +612,16 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	// The row-actions' own explicit "Edit" link (see this component's own
 	// docblock, and the wp-admin list-table row-actions convention it
-	// mirrors) -- unlike clicking the row itself, this never toggles an
-	// already-open row closed; it only ever opens.
+	// mirrors) -- same toggle behavior as clicking the row itself
+	// (handleRowClick, above): opens a closed row, closes that same row
+	// back up if it's the one already open (flushing first, via
+	// finishEditing()), and does nothing to any OTHER row while one is
+	// already open.
 	const handleEditClick = ( field, index ) => ( event ) => {
 		event.preventDefault();
 		event.stopPropagation();
 
-		if ( null === editingIndex ) {
-			startEdit( field, index );
-		}
+		handleRowClick( field, index );
 	};
 
 	const finishEditing = async () => {
@@ -961,6 +967,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											className="regular-text"
 											{ ...register( `settings.${ key }` ) }
 										/>
+									) }
+									{ meta.hint && (
+										<span className="description">{ meta.hint }</span>
 									) }
 								</label>
 							);
