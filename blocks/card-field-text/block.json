@@ -5,11 +5,11 @@
 	"title": "Field: Text",
 	"category": "widgets",
 	"icon": "editor-textcolor",
-	"description": "Displays one field's value from the current Data Cards record as plain text. Only meaningful inside a Collection-sourced Data Cards card template.",
+	"description": "Displays one field's value from the current record as plain text. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, or a Data Display detail template.",
 	"keywords": [ "field", "text", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"ancestor": [ "gateway/data-cards-body" ],
+	"ancestor": [ "gateway/data-cards-body", "gateway/data-display" ],
 	"usesContext": [
 		"gateway/data-cards/sourceType",
 		"gateway/data-cards/collection",

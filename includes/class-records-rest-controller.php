@@ -521,13 +521,20 @@ class Records_REST_Controller {
 	const DISPLAY_FIELD_TYPES = array( 'text', 'textarea', 'email', 'url' );
 
 	/**
+	 * Public (not just this controller's own concern any more): `gateway/
+	 * data-display/render.php` calls this directly to label a sidebar
+	 * item -- a parent group heading, or a child link -- the exact same
+	 * way this controller already labels a related record's own option.
+	 * One definition of "what a record's own display name is," reused
+	 * everywhere that needs one instead of a second copy.
+	 *
 	 * @param string $class_name Model class name.
 	 * @return string|null The field name to use as this model's own
 	 *                       records' display label, or null if it has no
 	 *                       suitable field (falls back to "#<id>" wherever
 	 *                       this matters).
 	 */
-	private static function resolve_display_field( $class_name ) {
+	public static function resolve_display_field( $class_name ) {
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( in_array( $field['type'], self::DISPLAY_FIELD_TYPES, true ) ) {
 				return $field['name'];
@@ -542,7 +549,7 @@ class Records_REST_Controller {
 	 * @param string|null                          $display_field resolve_display_field()'s own result for that model.
 	 * @return array{id:int,label:string}
 	 */
-	private static function record_option( \Illuminate\Database\Eloquent\Model $record, $display_field ) {
+	public static function record_option( \Illuminate\Database\Eloquent\Model $record, $display_field ) {
 		$label = $display_field ? (string) ( $record->{$display_field} ?? '' ) : '';
 
 		return array(
@@ -607,6 +614,16 @@ class Records_REST_Controller {
 	 * stays cheap for the Records list view (many rows), not just a
 	 * single record.
 	 *
+	 * Also adds a `label` key to every record -- the exact same display
+	 * value `record_option()`/`search_records()` already compute for a
+	 * *related* record, now on the record's own top-level response too,
+	 * so a caller needing a human label to show alongside (not instead
+	 * of) the full record -- `gateway/data-display`'s own sidebar
+	 * headings/child links, currently the only one -- never has to
+	 * re-derive `resolve_display_field()`'s own "first genuinely
+	 * free-text field" rule a second time, client-side, where none of
+	 * this method's own field-type information is actually available.
+	 *
 	 * @param string                                     $class_name Model class name.
 	 * @param \Illuminate\Database\Eloquent\Collection $records    Records of $class_name.
 	 * @return array[] Each record's own toArray(), enriched.
@@ -621,11 +638,23 @@ class Records_REST_Controller {
 		}
 
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
+		$display_field   = self::resolve_display_field( $class_name );
 
 		if ( ( empty( $relate_fields ) && empty( $related_columns ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) {
-					return $record->toArray();
+				function ( $record ) use ( $display_field ) {
+					$array = $record->toArray();
+
+					// Never overwrite a real field a site owner happens to
+					// have named "label" -- "label" isn't one of
+					// Model_Fields::RESERVED_NAMES, so this genuinely can
+					// happen; the synthetic display label only fills in
+					// where there's no naming conflict.
+					if ( ! array_key_exists( 'label', $array ) ) {
+						$array['label'] = self::record_option( $record, $display_field )['label'];
+					}
+
+					return $array;
 				}
 			)->values()->all();
 		}
@@ -647,8 +676,15 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
+
+				// Never overwrite a real field a site owner happens to
+				// have named "label" -- see the early-return branch
+				// above's own identical guard for why.
+				if ( ! array_key_exists( 'label', $array ) ) {
+					$array['label'] = self::record_option( $record, $display_field )['label'];
+				}
 
 				foreach ( $relate_fields as $field ) {
 					$related_class = $field['related_model'];

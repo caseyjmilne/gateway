@@ -9,7 +9,7 @@
 	"keywords": [ "relationship", "related", "loop", "repeater", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"ancestor": [ "gateway/data-cards-body" ],
+	"ancestor": [ "gateway/data-cards-body", "gateway/data-display" ],
 	"usesContext": [ "gateway/data-cards/collection", "record" ],
 	"providesContext": {
 		"gateway/data-cards/collection": "relatedCollection"

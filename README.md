@@ -2753,6 +2753,107 @@ class instead of the outer grid's `gateway-data-cards-grid__item`,
 which a site's own custom CSS targeting that class shouldn't also
 match.
 
+### `gateway/data-display` -- a docs-style sidebar browser (Doc Groups -> Docs)
+
+A different shape of relationship browsing than either of the above:
+not a value on a card (Related Fields), not a repeated loop inside a
+card (Related Items), but a whole standalone, top-level two-pane
+widget -- every record of a Collection listed down the left as group
+headings, its own `hasMany` children listed under each one, and
+clicking a child loads *that one's own* detail template into a main
+pane on the right. Modeled directly on a typical documentation site's
+own layout, and built and tested against exactly that shape: **Doc
+Groups** (parent) `hasMany` **Docs** (child), each Doc Group heading
+expanding to its own Docs, clicking one showing that Doc's own content.
+
+**Only `hasMany` is offered, never `belongsToMany`.** A `useLoopableRelationships()`
+call (gained an optional `types` parameter for this -- `gateway/related-items`
+still defaults to both "to many" types) passes `['hasMany']` alone: a
+`belongsToMany` child has no single "owning" parent to sit under --
+this block's whole sidebar shape is one parent, its own children
+underneath -- so it isn't offered in the Relationship picker at all.
+
+**No Source toggle, unlike `gateway/data-cards`/`gateway/datatable` --
+this block only ever browses a Collection.** There's no post-type mode
+for it to switch out of in the first place (relationships are a
+Gateway-model-only concept), so its own Inspector is just two controls:
+`CollectionControl` (the parent Collection) and a Relationship
+`SelectControl` (fed by `useLoopableRelationships`, filtered as above)
+-- choosing one also resolves and stores `relatedCollection` (the
+child model's own class name), the same pattern `gateway/related-items`
+already established. `providesContext` maps `gateway/data-cards/collection`
+from `relatedCollection` and `gateway/data-cards/sourceType` from a
+fixed, never-edited `sourceType` attribute (always `'collection'`) --
+unlike `gateway/related-items`, which simply inherits `sourceType` from
+its own ancestor `gateway/data-cards` block, `gateway/data-display` has
+no such ancestor to inherit it from at all (it's the root of its own
+tree), so it has to provide that context itself.
+
+**`gateway/card-field-text` (and `gateway/related-items`, for a child's
+own further nested relationships) work inside this block's own
+template with zero changes** -- both gained `"gateway/data-display"` in
+their own `ancestor` list, the only change either needed, since both
+already only ever read `record`/`gateway/data-cards/collection` from
+context generically. The detail template is designed exactly the same
+way a Data Cards card or a Related Items loop's own template is.
+
+**Ordered oldest-first, deliberately not newest-first.** Both parent
+groups and their own children are queried `orderBy( 'id', 'asc' )` --
+the opposite of Data Table/Data Cards' own newest-first default. This
+is a stable navigational index, not an activity feed: newest-first
+would reorder existing sidebar entries every time a new group or child
+was added, which is exactly the wrong feel for a sidebar a visitor
+expects to find the same entry in from one visit to the next.
+
+**Everything is rendered server-side, up front -- there's no REST fetch
+on click, and no pagination.** Every child's own detail markup (across
+every group) is rendered into the page at once, `hidden` except the
+first; a small, dependency-free `view.js` just toggles which
+`.gateway-data-display__panel` is visible and which sidebar link
+carries `.is-active` on click -- the same "PHP renders real state up
+front, JS only ever toggles/interacts" philosophy this plugin already
+follows for Data Cards' own pagination. A known, accepted trade-off for
+this first version: a Collection with a very large number of groups/
+children renders a correspondingly large page. Real pagination/lazy
+-loading here is real, separate work this version doesn't take on.
+
+**A real gap this surfaced, fixed: `Records_REST_Controller::enrich_records()`
+now adds a `label` key to every record it returns** (`list_records()`,
+`get_record()`, `create_record()`, `update_record()`,
+`get_related_records()` -- every one of them, since they all funnel
+through this one method), the same display value `record_option()`
+already computes for a *related* record shown elsewhere, now on the
+record's own top-level response too. This block's own editor preview
+needed a human label for a sidebar heading/child link alongside the
+full record (for the detail template's own live preview) -- and
+critically, there was no way to compute one correctly client-side:
+`useAvailableColumns()`'s own column shape has no per-field type
+information (`Password`/`Text`/`Number`/...) to apply `resolve_display_field()`'s
+"first genuinely free-text field" rule against at all, only a generic
+`'model_field'` classification. Reusing the server's own already
+-computed answer, once, centrally, was the only way to get this right
+without re-deriving that rule a second time somewhere it couldn't
+actually be applied correctly. Guarded against a real, if narrow,
+naming collision: "label" isn't one of `Model_Fields::RESERVED_NAMES`,
+so a site owner's own field genuinely named "label" is never
+overwritten -- the synthetic key only fills in where `$record->toArray()`
+doesn't already have one.
+
+**The editor's own preview** fetches real parent groups (`GET /gateway/v1/models/<class>/records`,
+capped the same "page-1-sized preview" way every other Collection
+-aware block's own editor fetch already is) and, for each one shown, its
+own real children (`GET /gateway/v1/models/<class>/records/<id>/relationships/<method>`,
+`gateway/related-items`' own endpoint, reused as-is) -- building the
+same nested group/child sidebar structure render.php itself builds,
+so designing the child detail template happens against real data, the
+same "real editor preview, not a placeholder" conviction every other
+Collection-aware block in this plugin already holds. Clicking a
+child in the editor's own sidebar preview swaps which child's context
+feeds the one real, editable template -- the same `useBlockPreview`/
+`BlockContextProvider`, one-active-item-at-a-time mechanism `gateway/data-cards-body`/
+`gateway/related-items` already established, applied here across every
+child of every group rather than one flat list.
+
 ## Laravel Models (Illuminate/Eloquent)
 
 Gateway's blocks currently read data exclusively from WordPress Custom Post

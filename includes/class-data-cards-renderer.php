@@ -318,14 +318,21 @@ class Data_Cards_Renderer {
 	 * relation instead of a top-level query) and a different `$item_class`
 	 * (so a nested related-items list never carries the outer grid's own
 	 * `gateway-data-cards-grid__item` class, which a site's own CSS
-	 * targeting that class shouldn't also match).
+	 * targeting that class shouldn't also match). `gateway/data-display/render.php`
+	 * reuses it a third way, for its own main-pane detail panels -- one
+	 * per child record, each needing its own `data-child-id`/`hidden`
+	 * markers for the front end's plain JS to toggle between, hence
+	 * `$extra_attributes`.
 	 *
-	 * @param \Illuminate\Support\Collection $records         Records for the current page (get_collection_page()'s own 'records').
-	 * @param array                          $template_blocks Parsed block list (the card's contents).
-	 * @param string                         $item_class      CSS class for each wrapping `<li>`.
+	 * @param \Illuminate\Support\Collection $records          Records for the current page (get_collection_page()'s own 'records').
+	 * @param array                          $template_blocks  Parsed block list (the card's contents).
+	 * @param string                         $item_class       CSS class for each wrapping `<li>`.
+	 * @param ?callable                      $extra_attributes Optional `function( $record ): string` returning
+	 *                                                           extra raw HTML attributes (already escaped by the
+	 *                                                           caller) to add to that record's own `<li>`.
 	 * @return string Concatenated `<li>` markup, '' if nothing to render.
 	 */
-	public static function render_items_for_collection( $records, array $template_blocks, $item_class = 'gateway-data-cards-grid__item' ) {
+	public static function render_items_for_collection( $records, array $template_blocks, $item_class = 'gateway-data-cards-grid__item', $extra_attributes = null ) {
 		if ( empty( $template_blocks ) || 0 === count( $records ) ) {
 			return '';
 		}
@@ -350,7 +357,13 @@ class Data_Cards_Renderer {
 			$item_content = ( new \WP_Block( $wrapper_block ) )->render( array( 'dynamic' => false ) );
 			remove_filter( 'render_block_context', $filter_block_context, 1 );
 
-			$content .= '<li class="' . esc_attr( $item_class ) . '">' . $item_content . '</li>';
+			$attributes = 'class="' . esc_attr( $item_class ) . '"';
+
+			if ( is_callable( $extra_attributes ) ) {
+				$attributes .= ' ' . $extra_attributes( $record );
+			}
+
+			$content .= '<li ' . $attributes . '>' . $item_content . '</li>';
 		}
 
 		return $content;

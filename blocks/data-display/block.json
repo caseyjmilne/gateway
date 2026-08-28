@@ -1,0 +1,43 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-display",
+	"title": "Data Display",
+	"category": "widgets",
+	"icon": "list-view",
+	"description": "A docs-style browser: every record of a Collection listed down the left as group headings, its own hasMany children listed under each -- click a child to load its own detail template into the main pane on the right.",
+	"keywords": [ "docs", "documentation", "sidebar", "browser", "relationship", "collection" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"providesContext": {
+		"gateway/data-cards/sourceType": "sourceType",
+		"gateway/data-cards/collection": "relatedCollection"
+	},
+	"attributes": {
+		"collection": {
+			"type": "string",
+			"default": ""
+		},
+		"relationshipMethod": {
+			"type": "string",
+			"default": ""
+		},
+		"relatedCollection": {
+			"type": "string",
+			"default": ""
+		},
+		"sourceType": {
+			"type": "string",
+			"default": "collection"
+		}
+	},
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [ "wide", "full" ]
+	},
+	"editorScript": "file:./build/index.js",
+	"viewScript": "file:./build/view.js",
+	"style": "file:./build/style-view.css",
+	"render": "file:./render.php"
+}
