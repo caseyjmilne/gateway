@@ -114,4 +114,11 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	public static function eloquent_cast() {
 		return null;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function presentation_fields() {
+		return array();
+	}
 }

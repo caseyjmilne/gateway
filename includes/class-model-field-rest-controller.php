@@ -155,6 +155,19 @@ class Model_Field_REST_Controller {
 				'type'     => 'boolean',
 				'default'  => false,
 			),
+			// Raw "Presentation" settings (Field_Type::presentation_fields())
+			// -- an arbitrary-shaped object on purpose, deliberately with
+			// no fixed `properties` schema here: which keys are even
+			// meaningful depends on `type`, and Model_Fields::sanitize_settings()
+			// is what actually enforces that (drops anything the picked
+			// type doesn't itself recognize), the same "accept broadly
+			// here, validate for real in Model_Fields" split `choices`
+			// already has.
+			'settings'             => array(
+				'required' => false,
+				'type'     => 'object',
+				'default'  => array(),
+			),
 		);
 	}
 
@@ -196,7 +209,8 @@ class Model_Field_REST_Controller {
 			(string) $request->get_param( 'label' ),
 			$request->get_param( 'relationship_method' ),
 			$request->get_param( 'choices' ),
-			(bool) $request->get_param( 'required' )
+			(bool) $request->get_param( 'required' ),
+			(array) $request->get_param( 'settings' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -218,7 +232,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'type' ),
 			(string) $request->get_param( 'label' ),
 			$request->get_param( 'choices' ),
-			(bool) $request->get_param( 'required' )
+			(bool) $request->get_param( 'required' ),
+			(array) $request->get_param( 'settings' )
 		);
 
 		if ( is_wp_error( $result ) ) {

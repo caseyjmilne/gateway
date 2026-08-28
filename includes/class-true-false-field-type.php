@@ -103,4 +103,11 @@ class True_False_Field_Type implements Field_Type {
 	public static function eloquent_cast() {
 		return 'boolean';
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function presentation_fields() {
+		return array();
+	}
 }

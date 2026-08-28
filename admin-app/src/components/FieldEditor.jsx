@@ -8,6 +8,21 @@ import ChoicesEditor from './ChoicesEditor.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
+// The admin app's own fixed catalog of "Presentation" settings -- see
+// Gateway\Field_Type::presentation_fields()'s own docblock for why this
+// is a small, fixed vocabulary a type only ever selects a SUBSET of,
+// rather than each type inventing its own arbitrary keys: one shared
+// catalog here is what lets this component render any of them generically
+// (an `<input>` or `<textarea>` per recognized key, looked up by name)
+// instead of needing its own hardcoded UI for every field type that ever
+// gains a presentation setting.
+const PRESENTATION_FIELD_META = {
+	placeholder: { label: 'Placeholder', type: 'text' },
+	prepend: { label: 'Prepend', type: 'text' },
+	append: { label: 'Append', type: 'text' },
+	instructions: { label: 'Instructions', type: 'textarea' },
+};
+
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
  * place, delete one -- backed by Gateway\Model_Fields via
@@ -128,14 +143,21 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
  * shown only when the picked type's own `has_choices` is true), then
  * **Validation** (currently just a "Required" toggle, Gateway\\Model_Fields::
  * validate_required_fields() on the server -- applies to every field
- * regardless of type), then **Presentation** and **Conditional Logic**,
- * both intentionally empty placeholders for now -- reserved tabs, not
- * yet backed by anything on the PHP side. A small green dot on General's
- * or Validation's own heading marks that it currently holds real content
- * (at least one non-blank choice; Required switched on) -- based on the
- * live, already-autosaved values, not a "changed since this session
- * started" diff, so it's still showing the next time this same field is
- * opened for editing, not just while it's being actively typed into.
+ * regardless of type), then **Presentation** (one `<input>`/`<textarea>`
+ * per key in the picked type's own `presentation_fields` -- see
+ * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
+ * own docblock on the PHP side for the whole "different types need
+ * different extra data" design this is the first real use of; a plain
+ * note instead for a type that recognizes none, currently every type
+ * except Text), and **Conditional Logic**, still an intentionally empty
+ * placeholder -- a reserved tab, not yet backed by anything on the PHP
+ * side. A small green dot on a tab's own heading (General/Validation/
+ * Presentation) marks that it currently holds real content (a non-blank
+ * choice; Required switched on; a non-blank presentation setting) --
+ * based on the live, already-autosaved values, not a "changed since this
+ * session started" diff, so it's still showing the next time this same
+ * field is opened for editing, not just while it's being actively typed
+ * into.
  *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
  * type's own `has_choices` from useFieldTypes()) are the one case where
@@ -193,6 +215,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			relationshipMethod: '',
 			choices: [],
 			required: false,
+			settings: {},
 		},
 	} );
 
@@ -203,6 +226,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editRelationshipMethod = watched.relationshipMethod;
 	const editChoices = watched.choices;
 	const editRequired = watched.required;
+	const editSettings = watched.settings || {};
 
 	const [ editTab, setEditTab ] = useState( 'general' );
 
@@ -234,8 +258,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const hasChoicesFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.has_choices );
 
+	const presentationFieldsFor = ( typeKey ) =>
+		fieldTypes.find( ( type ) => type.key === typeKey )?.presentation_fields || [];
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
+	const editPresentationFields = presentationFieldsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -261,9 +289,22 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	// it's being actively typed into.
 	const choicesTabHasContent = editChoices.some( ( choice ) => choice.trim() );
 	const requiredTabHasContent = Boolean( editRequired );
+	const presentationTabHasContent = Object.values( editSettings ).some(
+		( value ) => value && String( value ).trim()
+	);
 
 	const arraysEqual = ( a, b ) =>
 		a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
+
+	const settingsEqual = ( a, b ) => {
+		const aKeys = Object.keys( a || {} );
+		const bKeys = Object.keys( b || {} );
+
+		return (
+			aKeys.length === bKeys.length &&
+			aKeys.every( ( key ) => ( a || {} )[ key ] === ( b || {} )[ key ] )
+		);
+	};
 
 	const snapshotsEqual = ( a, b ) =>
 		null !== a &&
@@ -273,7 +314,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		a.type === b.type &&
 		a.relationshipMethod === b.relationshipMethod &&
 		a.required === b.required &&
-		arraysEqual( a.choices, b.choices );
+		arraysEqual( a.choices, b.choices ) &&
+		settingsEqual( a.settings, b.settings );
 
 	const isValidToSaveValues = ( values ) => {
 		const relationshipType = relationshipTypeFor( values.type );
@@ -307,6 +349,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		if ( hasChoicesFor( values.type ) ) {
 			body.choices = values.choices;
 		}
+
+		// Same reasoning as required -- always sent, regardless of type.
+		// Model_Fields::sanitize_settings() is what actually filters this
+		// down to whatever the picked type recognizes; sending everything
+		// currently in form state (leftover values from a type this
+		// session briefly picked and moved on from, say) is harmless,
+		// never stored for a type that doesn't recognize a given key.
+		body.settings = values.settings || {};
 
 		return body;
 	};
@@ -449,6 +499,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				related_model: null,
 				choices: [],
 				required: false,
+				settings: {},
 			},
 		] );
 
@@ -459,6 +510,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			relationshipMethod: '',
 			choices: [],
 			required: false,
+			settings: {},
 		};
 		reset( defaults );
 		lastSavedRef.current = null; // nothing saved yet at all -- anything valid should autosave.
@@ -481,6 +533,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			relationshipMethod: field.relationship_method || '',
 			choices: field.choices && field.choices.length > 0 ? field.choices : [],
 			required: Boolean( field.required ),
+			settings: field.settings || {},
 		};
 		reset( defaults );
 		lastSavedRef.current = defaults;
@@ -720,6 +773,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					onClick={ () => setEditTab( 'presentation' ) }
 				>
 					Presentation
+					{ presentationTabHasContent && (
+						<span
+							className="gateway-tab-changed-dot"
+							title="Has presentation settings configured"
+							aria-label="Has presentation settings configured"
+						/>
+					) }
 				</button>
 				<button
 					type="button"
@@ -831,7 +891,40 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			</div>
 
 			<div hidden={ 'presentation' !== editTab }>
-				<p className="description">Nothing here yet.</p>
+				{ editPresentationFields.length > 0 ? (
+					<div className="gateway-field-editor-form-grid">
+						{ editPresentationFields.map( ( key ) => {
+							const meta =
+								PRESENTATION_FIELD_META[ key ] || {
+									label: key,
+									type: 'text',
+								};
+
+							return (
+								<label key={ key }>
+									<span>{ meta.label }</span>
+									{ 'textarea' === meta.type ? (
+										<textarea
+											className="regular-text"
+											rows={ 3 }
+											{ ...register( `settings.${ key }` ) }
+										/>
+									) : (
+										<input
+											type="text"
+											className="regular-text"
+											{ ...register( `settings.${ key }` ) }
+										/>
+									) }
+								</label>
+							);
+						} ) }
+					</div>
+				) : (
+					<p className="description">
+						This field type has no presentation settings yet.
+					</p>
+				) }
 			</div>
 
 			<div hidden={ 'conditional_logic' !== editTab }>
@@ -849,13 +942,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	return (
 		<div className="gateway-field-editor">
 			<h3>Fields</h3>
-			<p className="description">
-				Fields become this model&rsquo;s mass-assignable attributes --
-				each one is a real column on <code>{ modelClass }</code>
-				&rsquo;s own table. Changes here save automatically a moment
-				after you make them; dragging a row to reorder it never runs a
-				migration, editing everything else can.
-			</p>
 
 			{ error && (
 				<div className="notice notice-error">
@@ -870,9 +956,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					<thead>
 						<tr>
 							<th className="gateway-field-editor-drag-col"></th>
-							<th>Type</th>
 							<th>Label</th>
 							<th>Name</th>
+							<th>Type</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -944,11 +1030,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 										</span>
 									</td>
 									<td>
-										{ fieldTypes.find(
-											( type ) => type.key === rowType
-										)?.label || rowType }
-									</td>
-									<td>
 										{ rowLabel }
 										<div className="row-actions">
 											<span className="edit">
@@ -1001,6 +1082,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 									</td>
 									<td>
 										<code>{ rowName }</code>
+									</td>
+									<td>
+										{ fieldTypes.find(
+											( type ) => type.key === rowType
+										)?.label || rowType }
 									</td>
 								</tr>,
 								isEditingThisRow && (

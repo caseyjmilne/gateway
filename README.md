@@ -4053,9 +4053,10 @@ Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 own edit panel has four ALWAYS-present tabs -- "General", "Validation",
 "Presentation", "Conditional Logic" -- plain `nav-tab`/`nav-tab-active`,
 the same core wp-admin classes the Fields/Relationships tabs use, and
-the same four ACF's own field-settings screen has (the latter two are
-currently empty placeholders, not backed by anything on the PHP side
-yet). Name/Label/Type live in General; a `ChoicesEditor`
+the same four ACF's own field-settings screen has ("Conditional Logic"
+is still an empty placeholder, not backed by anything on the PHP side
+yet; see "Presentation field settings" below for what Presentation
+actually does). Name/Label/Type live in General; a `ChoicesEditor`
 (`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
 them, in that same tab, only when the picked type's own `has_choices` (a
 key on `Field_Type_Registry::describe_all()`'s own output, alongside a
@@ -4180,6 +4181,103 @@ as every other write path in this plugin, and every query is wrapped in
 `try`/`catch` so a real `QueryException` (a stale field pointing at a
 column that's since been dropped by hand, say) comes back as a clean
 `\WP_Error` rather than a fatal.
+
+### Presentation field settings (placeholder / prepend / append / instructions)
+
+A field's "Presentation" tab (previously an empty placeholder, alongside
+"Conditional Logic") is now real for the one type that currently needs
+it: **Text**. A Text field can be given a placeholder, a prepended and/or
+appended string shown flush against its own input (e.g. a "$" prepend
+and a "USD" append on a price field), and an instructions note shown
+between its label and its control -- all four purely presentational, none
+of them touching what's actually stored in the field's own column.
+
+**Why one generic JSON column, not one dedicated column per setting.**
+`gateway_fields` gains a single new nullable `text` column, `settings`,
+storing whatever a field's own type recognizes as a JSON object -- not
+`placeholder`/`prepend`/`append`/`instructions` each getting their own
+column. Different field types will eventually want different, unrelated
+extra data of their own (a Number field's own min/max/step, a Date
+field's own format, ...) with no shared shape at all; a dedicated column
+per possible setting doesn't scale the way `gateway_fields`' other
+columns do (`choices`/`required`, each meaning the same thing for every
+field type that uses them at all), and would leave most of them `NULL`
+for most fields. One JSON column, validated against a per-type
+whitelist rather than trusted as-is, is the same trade `choices` living
+in its own table (not a column) already made for a different reason --
+here it's shape variance across types, there it was orderability.
+
+**`Field_Type::presentation_fields()`** (new interface method, alongside
+`eloquent_cast()`/`is_filterable()`/`is_text_renderable()`) is that
+whitelist: it returns the subset of `['placeholder', 'prepend', 'append',
+'instructions']` a given type actually recognizes -- every built-in type
+returns `[]` except `Text_Field_Type`, which returns all four. Adding a
+setting to another type later (or a type-specific one, like a Number
+field's own `min`/`max`) means adding its key to that one static method,
+not a schema migration or a new column.
+
+**`Model_Fields::sanitize_settings( $type, $raw_settings )`** is the
+actual trust boundary, called from both `add()` and `update()` (each
+gaining a new, always-sent `$settings` param, default `[]`) exactly the
+way `require_choices_for_field()` already gates `choices`: it looks up
+`$type`'s own `presentation_fields()`, keeps only the raw settings whose
+key appears in that list (silently dropping anything else the request
+sent, e.g. a `placeholder` submitted for a Number field, or an
+unrecognized key entirely), runs each surviving value through
+`sanitize_text_field( trim( ... ) )`, and drops a value entirely rather
+than storing `''` if it's blank after trimming -- a field with no real
+settings stores `NULL`, not `'{}'` or a JSON object full of empty
+strings. `update()`'s own "nothing changed" no-op check gained a matching
+`$settings_changed` alongside `$name_changed`/`$type_changed`/
+`$label_changed`/`$choices_changed`/`$required_changed`, and (like
+`choices`) a field's settings are silently dropped the moment its type
+changes away from one that recognizes them -- retyping a Text field with
+a configured placeholder into a Number field discards it, the same as
+retyping away from a Choice type discards its choices.
+
+Same upgrade path as every other column here: `ensure_table()`'s
+fresh-CREATE block declares `settings` directly; an ALTER adds it for a
+table that predates it. `Model_Fields::all()` decodes it back into a
+plain PHP array (`[]` for a field with nothing stored, never `null`), and
+`POST`/`PUT .../fields` (`Model_Field_REST_Controller`) accepts a
+matching `settings` object param (default `{}`), threaded straight
+through to `add()`/`update()`. `Field_Type_Registry::describe_all()`
+exposes each type's own `presentation_fields()` list too, alongside
+`has_choices`/`is_multiple`/`relationship_type` -- what tells
+`FieldEditor`'s own Presentation tab which inputs to actually show for
+the currently-picked type, without a per-type list living in JavaScript.
+
+**The admin app.** `FieldEditor`'s Presentation tab renders one `<input>`
+(or, for `instructions`, one `<textarea>`) per key in the current type's
+own `presentation_fields()`, driven by a small local
+`PRESENTATION_FIELD_META` catalog (`{ placeholder: {...}, prepend:
+{...}, append: {...}, instructions: {...} }`) that just supplies each
+key's own label and control kind -- registered with React Hook Form as
+`settings.placeholder`/`settings.prepend`/etc. (dot-notation nested
+paths `register()` already supports natively), so they autosave exactly
+like Name/Label/Required already do, and the tab's own heading grows the
+same small green dot as General/Validation whenever any setting
+currently holds a non-blank value. A type that recognizes no
+presentation settings at all (everything except Text, today) shows a
+plain "This field type has no presentation settings yet." instead of an
+empty tab.
+
+`RecordForm` reads `field.settings` **generically**, not gated on
+`field.type === 'text'` specifically -- since the server-side whitelist
+above already guarantees every other type's `settings` is `{}`, there's
+nothing for a type-specific check here to protect against.
+`settings.instructions`, when present, renders as a small
+`.description`-styled note between a field's label and its own control,
+for any field type at all. `settings.placeholder`/`prepend`/`append`
+only ever have anything to show for the one plain `<input>` fallback
+branch at the very bottom of `RecordForm`'s own type-conditional chain
+(textarea/range/relate/select/radio/buttons/checkboxes/boolean each
+render their own dedicated control, none of which currently reads any of
+these three) -- `placeholder` passes straight through to the `<input>`'s
+own `placeholder` attribute, and `prepend`/`append` wrap it in a small
+inline group (`.gateway-record-form-input-group`, each addon a
+`.gateway-record-form-input-addon`) styled flush against the input's own
+border, matching the familiar prepended/appended-text input pattern.
 
 ### Relate fields in the Records screen: search, selection, and enriched responses
 

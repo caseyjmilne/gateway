@@ -156,4 +156,36 @@ interface Field_Type {
 	 * @return string|null
 	 */
 	public static function eloquent_cast();
+
+	/**
+	 * Which of the admin app's Field Editor's own generic "Presentation"
+	 * settings (`FieldEditor.jsx`'s own `PRESENTATION_FIELD_META` catalog
+	 * -- currently `placeholder`/`prepend`/`append`/`instructions`, a
+	 * fixed, small vocabulary this method only ever selects a subset of,
+	 * never invents new keys for) this type actually recognizes -- a
+	 * type declares this about *itself*, the same "no hardcoded per-type
+	 * list living somewhere else" reasoning `is_filterable()`/
+	 * `is_text_renderable()` already establish, rather than
+	 * `Model_Fields::sanitize_settings()` (the one place this is actually
+	 * enforced -- see that method's own docblock) hardcoding which types
+	 * get which settings.
+	 *
+	 * This is also the answer to "different field types will need
+	 * different extra data, stored how": `gateway_fields` gets one new
+	 * generic `settings` column (a JSON object, arbitrary shape, `{}` for
+	 * a field whose type recognizes none of the fixed catalog above) --
+	 * never one dedicated column per possible per-type option, which
+	 * would mean a schema migration every time any type anywhere gained
+	 * one more presentation setting. This method is what keeps that one
+	 * shared JSON blob from becoming a free-for-all: only a type's own
+	 * declared subset of the fixed key catalog ever survives
+	 * `sanitize_settings()`, whatever a request actually sends.
+	 *
+	 * `[]` for every built-in type except `Text_Field_Type`, which
+	 * returns all four -- the first (and, for now, only) type this
+	 * exists for at all.
+	 *
+	 * @return string[] Subset of `['placeholder', 'prepend', 'append', 'instructions']`.
+	 */
+	public static function presentation_fields();
 }

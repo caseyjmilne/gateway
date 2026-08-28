@@ -95,7 +95,7 @@
 	box-shadow: inset 3px 0 0 #2271b1;
 }
 
-.gateway-admin-app .gateway-field-editor-row-active td:nth-child(3) {
+.gateway-admin-app .gateway-field-editor-row-active td:nth-child(2) {
 	font-weight: 600;
 	color: #2271b1;
 }
@@ -266,6 +266,58 @@
 .gateway-admin-app .gateway-record-form-required {
 	color: #d63638;
 	font-weight: normal;
+}
+
+.gateway-admin-app .gateway-record-form-instructions {
+	display: block;
+	font-weight: normal;
+	margin-top: 2px;
+}
+
+.gateway-admin-app .gateway-record-form-input-group {
+	display: inline-flex;
+	align-items: stretch;
+	width: 100%;
+	max-width: 25em; /* matches .regular-text's own width */
+}
+
+.gateway-admin-app .gateway-record-form-input-group .regular-text {
+	flex: 1;
+	width: auto;
+	max-width: none;
+}
+
+.gateway-admin-app .gateway-record-form-input-group .regular-text:not(:first-child) {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+}
+
+.gateway-admin-app .gateway-record-form-input-group .regular-text:not(:last-child) {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.gateway-admin-app .gateway-record-form-input-addon {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 8px;
+	background: #f0f0f1;
+	border: 1px solid #8c8f94;
+	color: #646970;
+	font-weight: normal;
+	white-space: nowrap;
+}
+
+.gateway-admin-app .gateway-record-form-input-addon:first-child {
+	border-right: none;
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.gateway-admin-app .gateway-record-form-input-addon:last-child {
+	border-left: none;
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
 }
 
 .gateway-admin-app .gateway-relate-autocomplete {

@@ -94,7 +94,14 @@ class Field_Type_Registry extends Registry {
 	 * own value/control is a single selection (Buttons/Select/Radio) or a
 	 * set (Checkbox) -- neither hardcoded by key() anywhere in JavaScript.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool}>
+	 * `presentation_fields` (`Field_Type::presentation_fields()`) is what
+	 * tells `FieldEditor`'s own Presentation tab which of its fixed
+	 * `placeholder`/`prepend`/`append`/`instructions` inputs to actually
+	 * show for the currently-picked type -- `[]` for every type except
+	 * `Text_Field_Type` today, same "the type itself declares this, not a
+	 * per-type list living in JavaScript" reasoning as `has_choices`.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[]}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -107,13 +114,14 @@ class Field_Type_Registry extends Registry {
 			$has_choices = is_subclass_of( $class, Choice_Field_Type::class );
 
 			$described[] = array(
-				'key'               => $class::key(),
-				'label'             => $class::label(),
-				'input_type'        => $class::input_type(),
-				'is_sensitive'      => $class::is_sensitive(),
-				'relationship_type' => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
-				'has_choices'       => $has_choices,
-				'is_multiple'       => $has_choices ? $class::is_multiple() : null,
+				'key'                 => $class::key(),
+				'label'               => $class::label(),
+				'input_type'          => $class::input_type(),
+				'is_sensitive'        => $class::is_sensitive(),
+				'relationship_type'   => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
+				'has_choices'         => $has_choices,
+				'is_multiple'         => $has_choices ? $class::is_multiple() : null,
+				'presentation_fields' => $class::presentation_fields(),
 			);
 		}
 

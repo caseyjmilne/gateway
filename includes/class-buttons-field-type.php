@@ -84,4 +84,11 @@ class Buttons_Field_Type implements Choice_Field_Type {
 	public static function is_multiple() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function presentation_fields() {
+		return array();
+	}
 }

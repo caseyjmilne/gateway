@@ -74,4 +74,16 @@ class Text_Field_Type implements Field_Type {
 	public static function eloquent_cast() {
 		return null;
 	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * The first (and, for now, only) type any of these four apply to --
+	 * see this interface method's own docblock for the whole "different
+	 * types need different presentation data" design this is the first
+	 * real use of.
+	 */
+	public static function presentation_fields() {
+		return array( 'placeholder', 'prepend', 'append', 'instructions' );
+	}
 }

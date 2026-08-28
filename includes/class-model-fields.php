@@ -122,6 +122,12 @@ class Model_Fields {
 					// validate_required_fields()'s own docblock for what
 					// "empty" means per value shape.
 					$table->boolean( 'required' )->default( false );
+					// JSON-encoded object, arbitrary shape depending on
+					// $type -- see the upgrade-path ALTER below and
+					// sanitize_settings()'s own docblock for why this is
+					// one generic column rather than one dedicated column
+					// per possible per-type option.
+					$table->text( 'settings' )->nullable();
 					$table->timestamps();
 
 					// Belt-and-suspenders alongside validate()'s own uniqueness
@@ -190,6 +196,19 @@ class Model_Fields {
 				}
 			);
 		}
+
+		// Same upgrade-path reason as label/position/relationship_method --
+		// nullable, since an existing row (predating this column) has no
+		// real settings to backfill; all()'s own fallback treats a NULL
+		// the same as a freshly-added field with none configured yet: `[]`.
+		if ( ! $schema->hasColumn( self::TABLE, 'settings' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->text( 'settings' )->nullable();
+				}
+			);
+		}
 	}
 
 	/**
@@ -238,8 +257,17 @@ class Model_Fields {
 	 * docblock for what actually reads it and what "required" means per
 	 * value shape.
 	 *
+	 * `settings` is `[]` for every field whose type recognizes none of
+	 * the admin app's fixed presentation-settings catalog (see
+	 * `Field_Type::presentation_fields()`'s own docblock), or for one
+	 * that does but has none actually filled in yet -- otherwise a plain
+	 * associative array, JSON-decoded straight off the row's own raw
+	 * `settings` column (never re-validated against the field's own
+	 * *current* type here; that already happened once, in
+	 * `sanitize_settings()`, at the moment it was saved).
+	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool}>
+	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>}>
 	 */
 	public static function all( $class_name ) {
 		$relationships_by_method = array();
@@ -252,7 +280,7 @@ class Model_Fields {
 			->where( 'model', $class_name )
 			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method', 'required' ) );
+			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method', 'required', 'settings' ) );
 
 		$choices_by_field_id = Model_Field_Choices::for_fields( $rows->pluck( 'id' )->all() );
 
@@ -262,6 +290,8 @@ class Model_Fields {
 					$relationship_method = ! empty( $row->relationship_method ) ? $row->relationship_method : null;
 					$type_class          = Field_Type_Registry::get( $row->type );
 					$is_choice_type      = $type_class && is_subclass_of( $type_class, Choice_Field_Type::class );
+
+					$settings = ! empty( $row->settings ) ? json_decode( $row->settings, true ) : array();
 
 					return array(
 						'id'                   => (int) $row->id,
@@ -279,6 +309,7 @@ class Model_Fields {
 							: null,
 						'choices'              => $is_choice_type ? ( $choices_by_field_id[ (int) $row->id ] ?? array() ) : array(),
 						'required'             => (bool) $row->required,
+						'settings'             => is_array( $settings ) ? $settings : array(),
 					);
 				}
 			)
@@ -418,6 +449,59 @@ class Model_Fields {
 	}
 
 	/**
+	 * Filters+sanitizes a field's own raw "Presentation" settings (the
+	 * admin app's Field Editor own Presentation tab -- currently
+	 * `placeholder`/`prepend`/`append`/`instructions`) down to only the
+	 * keys $type's own `Field_Type::presentation_fields()` actually
+	 * recognizes, each `sanitize_text_field()`'d and trimmed the same way
+	 * a raw label already is (validate()'s own $label handling) -- an
+	 * empty-after-trimming value is dropped entirely rather than stored
+	 * as `''`, so a field with nothing actually filled in ends up with a
+	 * genuinely empty `[]`, not a settings object full of blank strings.
+	 *
+	 * This -- not a dedicated column per possible per-type setting, and
+	 * not trusting whatever keys a request happens to send -- is what
+	 * keeps `gateway_fields.settings` (one generic JSON column, arbitrary
+	 * shape) from becoming a free-for-all: a type that recognizes nothing
+	 * (`presentation_fields() === []`, true for every built-in type
+	 * except `Text_Field_Type` today) always ends up with `[]` here
+	 * regardless of what a request sends, the same "never trust the
+	 * client, the type itself decides what's meaningful" reasoning
+	 * `require_choices_for_field()` already applies to choices.
+	 *
+	 * @param string $type         One of Field_Type_Registry::keys().
+	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
+	 *                              request body's own `settings` object --
+	 *                              tolerated as anything (a non-array
+	 *                              value just yields `[]`, the same as an
+	 *                              empty object would).
+	 * @return array<string,string>
+	 */
+	public static function sanitize_settings( $type, $raw_settings ) {
+		$type_class = Field_Type_Registry::get( $type );
+
+		if ( ! $type_class || ! is_array( $raw_settings ) ) {
+			return array();
+		}
+
+		$sanitized = array();
+
+		foreach ( $type_class::presentation_fields() as $key ) {
+			if ( ! array_key_exists( $key, $raw_settings ) ) {
+				continue;
+			}
+
+			$value = sanitize_text_field( trim( (string) $raw_settings[ $key ] ) );
+
+			if ( '' !== $value ) {
+				$sanitized[ $key ] = $value;
+			}
+		}
+
+		return $sanitized;
+	}
+
+	/**
 	 * Add a new field: generates and runs an ADD COLUMN migration for it
 	 * first, and only records the field's metadata once that has
 	 * actually succeeded.
@@ -454,11 +538,17 @@ class Model_Fields {
 	 * @param bool          $required          Whether a record can be saved
 	 *                                           with this field left empty --
 	 *                                           see validate_required_fields().
-	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool}|\WP_Error
+	 * @param array         $settings          Raw "Presentation" settings --
+	 *                                           filtered down to whatever
+	 *                                           $type's own presentation_fields()
+	 *                                           actually recognizes (`[]` for
+	 *                                           every type that recognizes
+	 *                                           none) -- see sanitize_settings().
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
-	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null, $required = false ) {
+	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null, $required = false, $settings = array() ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -540,7 +630,8 @@ class Model_Fields {
 		$max_position       = self::table()->where( 'model', $class_name )->max( 'position' );
 		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
 
-		$required = (bool) $required;
+		$required          = (bool) $required;
+		$sanitized_settings = self::sanitize_settings( $field['type'], $settings );
 
 		$field_id = self::table()->insertGetId(
 			array(
@@ -551,6 +642,7 @@ class Model_Fields {
 				'position'            => $field['position'],
 				'relationship_method' => $relationship_method,
 				'required'            => $required,
+				'settings'            => empty( $sanitized_settings ) ? null : wp_json_encode( $sanitized_settings ),
 				'created_at'          => current_time( 'mysql' ),
 				'updated_at'          => current_time( 'mysql' ),
 			)
@@ -565,6 +657,7 @@ class Model_Fields {
 		$field['related_model']        = $related_model;
 		$field['choices']              = $validated_choices;
 		$field['required']             = $required;
+		$field['settings']             = $sanitized_settings;
 
 		// The table row above is already the recorded field -- rewriting
 		// the model file with the now-current, DB-sourced field list is a
@@ -612,9 +705,15 @@ class Model_Fields {
 	 *                              choices, applies uniformly regardless
 	 *                              of type -- always sent, never gated on
 	 *                              what $type resolves to.
-	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool}|\WP_Error
+	 * @param array         $settings Raw "Presentation" settings, filtered
+	 *                              down to whatever the (possibly new)
+	 *                              $type's own presentation_fields()
+	 *                              actually recognizes -- see
+	 *                              sanitize_settings(). Freely editable in
+	 *                              place, same as choices/required.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
 	 */
-	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false ) {
+	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false, $settings = array() ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -713,7 +812,10 @@ class Model_Fields {
 		$required         = (bool) $required;
 		$required_changed = $old_field['required'] !== $required;
 
-		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed && ! $required_changed ) {
+		$sanitized_settings = self::sanitize_settings( $new_field['type'], $settings );
+		$settings_changed   = $old_field['settings'] !== $sanitized_settings;
+
+		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed && ! $required_changed && ! $settings_changed ) {
 			return $old_field;
 		}
 
@@ -723,13 +825,13 @@ class Model_Fields {
 
 		$table = $model->getTable();
 
-		// A label-only (or choices-only, or required-only) change never
-		// touches the schema -- there's no column to rename/retype,
-		// nothing to migrate -- so it skips straight to recording the new
-		// metadata below, the same way a truly no-op update (caught
-		// above) skips it entirely.
+		// A label-only (or choices-only, required-only, or settings-only)
+		// change never touches the schema -- there's no column to rename/
+		// retype, nothing to migrate -- so it skips straight to recording
+		// the new metadata below, the same way a truly no-op update
+		// (caught above) skips it entirely.
 		if ( ! $name_changed && ! $type_changed ) {
-			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required );
+			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
 		}
 
 		$up   = array();
@@ -766,7 +868,7 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required );
+		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
 	}
 
 	/**
@@ -786,9 +888,10 @@ class Model_Fields {
 	 * @param bool     $is_choice_type Whether $new_field['type'] is a Choice_Field_Type.
 	 * @param string[] $choices       Already-validated choices -- only used/saved when $is_choice_type.
 	 * @param bool     $required      Whether this field is required -- applies unconditionally, unlike $choices.
-	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool}|\WP_Error
+	 * @param array    $settings      Already-sanitize_settings()'d Presentation settings -- applies unconditionally, same as $required.
+	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
 	 */
-	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required ) {
+	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required, array $settings = array() ) {
 		self::table()
 			->where( 'model', $class_name )
 			->where( 'name', $current_name )
@@ -798,6 +901,7 @@ class Model_Fields {
 					'label'      => $new_field['label'],
 					'type'       => $new_field['type'],
 					'required'   => (bool) $required,
+					'settings'   => empty( $settings ) ? null : wp_json_encode( $settings ),
 					'updated_at' => current_time( 'mysql' ),
 				)
 			);
@@ -817,6 +921,7 @@ class Model_Fields {
 		$new_field['id']       = $field_id;
 		$new_field['choices']  = $is_choice_type ? $choices : array();
 		$new_field['required'] = (bool) $required;
+		$new_field['settings'] = $settings;
 
 		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 

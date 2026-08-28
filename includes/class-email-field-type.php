@@ -80,4 +80,11 @@ class Email_Field_Type implements Field_Type {
 	public static function eloquent_cast() {
 		return null;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function presentation_fields() {
+		return array();
+	}
 }

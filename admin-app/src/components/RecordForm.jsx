@@ -45,6 +45,20 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * real JS boolean, not a string -- initialValues coming back as `0`/`1`/
  * `"0"`/`"1"` (a driver that doesn't apply Eloquent's own boolean cast
  * strictly) is coerced with `Boolean()` either way.
+ *
+ * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
+ * straight through by Model_Fields::all()/the fields REST route, same as
+ * `field.choices`) is read generically here, not gated on `field.type
+ * === 'text'` specifically: `[]`/`{}` for every field whose type doesn't
+ * recognize any of the fixed catalog (`Model_Fields::sanitize_settings()`
+ * already guarantees that server-side), so this component never needs
+ * its own per-type list to know when there's nothing to show.
+ * `settings.instructions` renders as a small note between the label and
+ * the actual control, for any field type; `settings.placeholder`/
+ * `prepend`/`append` only ever have anything to show for the one plain
+ * `<input>` fallback branch at the bottom (nothing else -- textarea,
+ * select, a relate autocomplete, ...) -- currently recognizes them at
+ * all.
  */
 export default function RecordForm( {
 	fields,
@@ -166,6 +180,11 @@ export default function RecordForm( {
 								</span>
 							) }
 						</label>
+						{ field.settings?.instructions && (
+							<span className="description gateway-record-form-instructions">
+								{ field.settings.instructions }
+							</span>
+						) }
 						<br />
 						{ 'textarea' === inputType && (
 							<textarea
@@ -281,15 +300,38 @@ export default function RecordForm( {
 							'radio' !== inputType &&
 							'buttons' !== inputType &&
 							'checkboxes' !== inputType &&
-							'boolean' !== inputType && (
+							'boolean' !== inputType &&
+							( field.settings?.prepend || field.settings?.append ? (
+								<span className="gateway-record-form-input-group">
+									{ field.settings.prepend && (
+										<span className="gateway-record-form-input-addon">
+											{ field.settings.prepend }
+										</span>
+									) }
+									<input
+										id={ inputId }
+										type={ inputType }
+										className="regular-text"
+										placeholder={ field.settings?.placeholder }
+										value={ values[ field.name ] }
+										onChange={ handleChange( field.name ) }
+									/>
+									{ field.settings.append && (
+										<span className="gateway-record-form-input-addon">
+											{ field.settings.append }
+										</span>
+									) }
+								</span>
+							) : (
 								<input
 									id={ inputId }
 									type={ inputType }
 									className="regular-text"
+									placeholder={ field.settings?.placeholder }
 									value={ values[ field.name ] }
 									onChange={ handleChange( field.name ) }
 								/>
-							) }
+							) ) }
 					</p>
 				);
 			} ) }
