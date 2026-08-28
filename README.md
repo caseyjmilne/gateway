@@ -2627,6 +2627,29 @@ later-page fetches) already had the card template's own parsed blocks in
 scope right where they call it, so this only ever needed one more
 argument passed through, not a new place to compute it.
 
+**A real bug, fixed: `gateway/card-field-text`'s own *editor* preview
+always showed a Related Field's label, never its real value.** That
+preview (`edit.js`) reads `record[fieldKey]` off a record fetched from
+`GET /gateway/v1/models/<class>/records` (`Records_REST_Controller::
+list_records()`) -- but that response never had a key literally named
+`"eventDetails.venue_name"` at all before this was fixed, so
+`Object.prototype.hasOwnProperty.call( record, fieldKey )` was always
+`false` for a Related Field specifically, no matter what, silently
+falling back to the field's own label (a deliberate "never render
+outright empty" fallback for a genuinely stale/removed field, not
+meant to be every related field's *permanent* state). Fixed in
+`Records_REST_Controller::enrich_records()`, which now also flattens
+every Related Field onto each record under its own exact dotted key
+(`Column_Registry::resolve_collection_value( $record, $key )`),
+right alongside its existing Relate to One/Many enrichment -- both
+kinds of relationship this method touches are eager-loaded together in
+one combined `Collection::load()` call. This only ever affects the
+admin app's own `RecordForm`/`RecordsCrud`/editor-preview REST
+responses -- the real front end (`gateway/card-field-text/render.php`)
+was never affected by this specific bug, since it resolves a Related
+Field's value directly off the actual Eloquent record injected into
+block context, never through this REST response at all.
+
 ## Laravel Models (Illuminate/Eloquent)
 
 Gateway's blocks currently read data exclusively from WordPress Custom Post
@@ -3202,55 +3225,83 @@ is the one source of truth, created/upgraded by
 `Model_Relationships::ensure_table()` the same way as `gateway_fields`;
 `Model_Relationships::all( $class_name )` always queries it fresh.
 
-**No migration against either model's own table, ever.** A relationship
-is pure metadata pointing at another model -- there's no column on
-*either side's own table* to create, rename, or drop, so `add()`/
-`remove()` skip straight from validating to writing the row and
-rewriting the model file. There's also no `update()` at all (unlike
-`Model_Fields`): every part of a relationship, including its method
-name, follows automatically from *which* related model and *what* type
-were picked, so "editing" one is really just removing it and adding a
-different one -- nothing to change in place.
+**A relationship's own *metadata* never depends on anything else, but
+every one of Eloquent's four relationship types genuinely cannot
+function at all without some real schema existing first** -- a column
+somewhere, or (for `belongsToMany`) a whole third table. `add()` now
+creates exactly that, automatically, the moment the relationship itself
+is added, for every type:
 
-**One exception: `belongsToMany` needs a third table Eloquent can't
-function without, so `add()` creates it automatically.** A many-to-many
-relationship's actual data lives in a pivot table, never a column on
-either model -- there's no way around that (the "no migration" rule
-above is scoped to "either model's own table" specifically because of
-this). `Model_Relationships::add()` creates it the first time a
-`belongsToMany` relationship is declared between two given models
-(`ensure_pivot_table()`), with the table/column names computed to match
-Eloquent's own default `belongsToMany()` convention exactly (confirmed
-against `HasRelationships::joiningTable()`/`joiningTableSegment()`):
-both models' class names, snake_cased, sorted alphabetically, joined
-with `_` for the table name (`Make` + `Model` -> `make_model`); each
-side's own snake_cased name + `_id` for its own pivot column. This is
-exactly what `$this->belongsToMany( \Model::class )` (no explicit
-table/key arguments -- `Model_Builder::relationship_method()` never adds
-any) resolves to on its own, so the generated relationship method
-doesn't need to know this table even exists. Idempotent: declaring the
-same `belongsToMany` a second time (e.g. from the opposite direction,
-`Model` `belongsToMany` `Make` after `Make` `belongsToMany` `Model`
-already created the table) reuses the existing table rather than
-erroring or trying to create it twice. `remove()` deliberately never
-drops it -- another relationship (from either model, either direction)
-could still depend on the exact same table, and Eloquent's own naming
-convention gives no way to tell whether it's actually safe to drop.
+- **`belongsTo`**: a real FK column (`Model_Relationships::
+  belongs_to_foreign_key( $method_name )` -- `Str::snake( $method_name )
+  . '_id'`, matching Eloquent's own `belongsTo()` default exactly) on
+  the *owning* model's own table.
+- **`hasOne`/`hasMany`**: the same kind of column, but on the *related*
+  model's own table instead (`Str::snake( $class_name ) . '_id'`) --
+  Eloquent's own default puts the FK on the "many"/"has" side's
+  *target*, not the owning side, for these two.
+- **`belongsToMany`**: a whole pivot table, since Eloquent genuinely
+  cannot function without a third table for this one -- never a column
+  on either side's own table (`ensure_pivot_table()`): both models'
+  class names, snake_cased, sorted alphabetically, joined with `_` for
+  the table name (`Make` + `Model` -> `make_model`, confirmed against
+  `HasRelationships::joiningTable()`/`joiningTableSegment()`); each
+  side's own snake_cased name + `_id` for its own pivot column. This is
+  exactly what `$this->belongsToMany( \Model::class )` (no explicit
+  table/key arguments -- `Model_Builder::relationship_method()` never
+  adds any) resolves to on its own, so the generated relationship method
+  doesn't need to know this table even exists.
 
-This runs as a real, generated-and-run migration -- a file under
+Every one of these (`ensure_foreign_key_column()`/`ensure_pivot_table()`)
+runs as a real, generated-and-run migration -- a file under
 `wp-content/gateway/migrations`, registered with `Migration_Registry`,
 executed via `Migration_Runner::run()`, the identical mechanism
 `Model_Fields::add()`/`update()`/`remove()` already use for a column
-change -- not a bare inline `Schema::create()` call. **A real bug here,
-fixed**: an earlier version of this method made exactly that inline
+change -- not a bare inline `Schema::table()`/`Schema::create()` call.
+Idempotent either way: a second thing that would need the exact same
+column/table (declaring the same `belongsToMany` a second time from the
+opposite direction; a `hasMany` and its own inverse `belongsTo` sharing
+the identical physical FK column, by Eloquent's own convention; a Relate
+to One field later bound to a `belongsTo` relationship -- see
+`Model_Fields`' own section below) reuses what's already there rather
+than erroring or trying to create it twice. `remove()` deliberately
+never drops any of it -- a relationship's own row can be removed
+independently of whatever schema it needed, and something else could
+still depend on the exact same column/table, with no reliable way to
+tell from here alone whether it's actually safe to drop. There's also no
+`update()` at all (unlike `Model_Fields`): every part of a relationship,
+including its method name, follows automatically from *which* related
+model and *what* type were picked, so "editing" one is really just
+removing it and adding a different one -- nothing to change in place.
+
+**Two real bugs here, fixed.** First: an earlier version of this method
+created the `belongsToMany` pivot table via a bare inline `Schema::create()`
 call, and its own caller didn't check whether it had even succeeded
 before recording the relationship -- together, a failure of any kind
 left a relationship that looked fully configured pointing at a pivot
-table that was never actually created (reported as a live
-`Base table or view not found` error the first time the relationship
-was queried, well after the fact). `add()` now checks `ensure_pivot_table()`'s
+table that was never actually created (reported as a live `Base table
+or view not found` error the first time the relationship was queried,
+well after the fact). Second, and broader: an even earlier version
+treated `belongsTo`/`hasOne`/`hasMany` as having no schema consequence
+at all -- the *only* way to get a `belongsTo`'s own real FK column into
+existence was a site owner separately remembering to add a matching
+"Relate to One" field afterward (`Model_Fields`' own
+`Relationship_Field_Type` handling, below), and `hasOne`/`hasMany` had
+no mechanism to get their own FK column at all, ever. Using either kind
+of relationship for anything -- eager-loading it (this feature's own
+"Related Fields," `Column_Registry::get_related_columns_for_collection()`,
+above) or simply calling the generated method -- before that manual
+step happened (for `belongsTo`) or with no possible manual step at all
+(for `hasOne`/`hasMany`) failed with a live, uncaught `Unknown column`
+SQL error. `add()` now checks every one of these schema-creation calls'
 own result and aborts (returning its `\WP_Error` instead of recording
-the relationship) if the migration failed for any reason.
+the relationship) if the migration failed for any reason, and every
+relationship type is immediately, fully functional the moment it's
+added, with no separate step required at all -- "Relate to One"/"Relate
+to Many" (`Model_Fields`' own section, below) are purely an optional
+admin-UI layer on top of a relationship that already works without
+them (autocomplete search-and-select), never required infrastructure
+for it.
 
 **Method names are never typed in -- always derived automatically,
 by design.** Relating a model to another via `belongsTo` or `hasOne`
@@ -3408,10 +3459,28 @@ now check `'' !== $type_class::blueprint_method()` before generating or
 running any migration at all -- for Relate to Many, that check is
 `false`, so adding or removing one of these fields never touches the
 schema, the same "pure metadata" territory a relationship itself already
-occupies. Relate to One, in contrast, is a completely ordinary column
-migration under the hood (`unsignedBigInteger`, nullable) -- only its
-name and the fact that a relationship, not a site owner, chose it are
-different from any other field.
+occupies.
+
+**Relate to One's own column is owned by the relationship, not the
+field -- so `add()` usually skips its own migration, and `remove()`
+never drops it at all.** Since `Model_Relationships::add()` now creates
+a `belongsTo`'s real FK column itself the moment the relationship is
+added (see "Relationships" above), by the time a Relate to One field
+gets bound to that relationship the column has almost always already
+been created -- both derive the exact same column name from the exact
+same shared `Model_Relationships::belongs_to_foreign_key( $method_name )`,
+so `add()` checks whether it already exists (`is_subclass_of( $type_class,
+Relationship_Field_Type::class ) && hasColumn(...)`) and skips
+generating/running its own ADD COLUMN migration entirely when it does --
+attempting one anyway would just fail outright. `remove()`'s own
+migration is skipped unconditionally for one of these two field types,
+never just when the column happens to already be gone: dropping it
+would silently break the relationship's own generated `belongsTo()`
+method, which keeps needing that column to function regardless of
+whether a Relate to One field is ever bound to it. Removing the field
+only ever forgets its own metadata; only `Model_Relationships::remove()`
+could ever drop the column, and -- like its own pivot table -- it
+deliberately doesn't.
 
 **Immutable once created -- matches how a relationship itself already
 works.** Neither the name nor the type of one of these two fields can

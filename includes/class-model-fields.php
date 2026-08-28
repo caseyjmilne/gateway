@@ -346,15 +346,29 @@ class Model_Fields {
 		// '' means this field type has no real column at all (Relate to
 		// Many -- its data lives in a pivot table Model_Relationships
 		// already manages, not a column here) -- nothing to migrate,
-		// straight to recording the metadata below.
+		// straight to recording the metadata below. A Relate to One
+		// field's own column is the other way a migration here can
+		// already be unnecessary: Model_Relationships::add() now creates
+		// a belongsTo's real FK column itself, the moment the
+		// relationship is added (the exact same column name this
+		// field's own derive_relationship_field_name() derives, by
+		// construction) -- so by the time a Relate to One field gets
+		// bound to it, the column usually already exists. Attempting to
+		// ADD COLUMN a second time would fail outright, so this is
+		// checked and skipped, not just left to error.
 		if ( '' !== $method ) {
-			$up_body   = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
-			$down_body = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
+			$column_already_exists = is_subclass_of( $type_class, Relationship_Field_Type::class )
+				&& \Illuminate\Database\Capsule\Manager::schema()->hasColumn( $table, $field['name'] );
 
-			$migration_result = self::generate_and_run_migration( "Add{$field['name']}To{$table}Table", $up_body, $down_body );
+			if ( ! $column_already_exists ) {
+				$up_body   = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
+				$down_body = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
 
-			if ( is_wp_error( $migration_result ) ) {
-				return $migration_result;
+				$migration_result = self::generate_and_run_migration( "Add{$field['name']}To{$table}Table", $up_body, $down_body );
+
+				if ( is_wp_error( $migration_result ) ) {
+					return $migration_result;
+				}
 			}
 		}
 
@@ -608,9 +622,22 @@ class Model_Fields {
 
 		// '' means this field never had a real column at all (Relate to
 		// Many) -- nothing to drop, straight to forgetting the metadata
-		// below. Its pivot table (Model_Relationships) is untouched --
-		// removing the field doesn't remove the relationship itself.
-		if ( '' !== $method ) {
+		// below. A Relate to One field's own column is never dropped
+		// here either, even though it does have one: that column is
+		// really owned by the relationship it's bound to, not the field
+		// -- Model_Relationships::add() creates it independently of
+		// whether a Relate to One field ever gets bound to it at all, and
+		// the relationship's own generated belongsTo() method keeps
+		// needing it to actually function regardless of this field's own
+		// fate. Dropping it here would silently break a still-live
+		// relationship the moment its Relate to One field was removed --
+		// exactly the "leaves it usable but pointing at schema that's
+		// gone" bug this whole ownership model was introduced to stop
+		// happening, just from the opposite direction. Model_Relationships
+		// itself is the only thing that could ever safely drop it -- and,
+		// like its own pivot table, it deliberately doesn't (see that
+		// class's own remove()).
+		if ( '' !== $method && ! is_subclass_of( $type_class, Relationship_Field_Type::class ) ) {
 			$up_body   = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
 			$down_body = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
 
@@ -998,11 +1025,18 @@ PHP;
 	 * so it's guaranteed to be exactly what Eloquent's own relationship
 	 * conventions expect:
 	 *
-	 * - `belongsTo` ("Relate to One"): `Str::snake( $method_name ) . '_id'`
-	 *   -- the real FK column Eloquent's own `belongsTo()` default
-	 *   convention looks for (confirmed against `Illuminate\Database\Eloquent\
-	 *   Concerns\HasRelationships::belongsTo()`: the foreign key defaults
-	 *   to the calling method's own name, snake-cased, plus "_id").
+	 * - `belongsTo` ("Relate to One"): `Model_Relationships::
+	 *   belongs_to_foreign_key( $method_name )` -- the real FK column
+	 *   Eloquent's own `belongsTo()` default convention looks for
+	 *   (confirmed against `Illuminate\Database\Eloquent\Concerns\
+	 *   HasRelationships::belongsTo()`: the foreign key defaults to the
+	 *   calling method's own name, snake-cased, plus "_id"). The one
+	 *   single place this is derived, shared with `Model_Relationships::
+	 *   add()`'s own eager FK-column creation for a `belongsTo` -- so a
+	 *   Relate to One field bound to a relationship always names itself
+	 *   after the exact column that relationship's own generated
+	 *   `belongsTo()` method already needs to function, by construction,
+	 *   never by two independent derivations happening to agree.
 	 * - `belongsToMany` ("Relate to Many"): the method_name itself, used
 	 *   only as this field's own metadata identity (gateway_fields'
 	 *   `name` column) -- there's no real column to name at all (see
@@ -1016,7 +1050,7 @@ PHP;
 	 */
 	private static function derive_relationship_field_name( array $relationship, $type_class ) {
 		if ( 'belongsTo' === $relationship['type'] ) {
-			return \Illuminate\Support\Str::snake( $relationship['method_name'] ) . '_id';
+			return Model_Relationships::belongs_to_foreign_key( $relationship['method_name'] );
 		}
 
 		return $relationship['method_name'];

@@ -10,29 +10,51 @@
  * into the model's .php file (see Model_Builder::model_template()/
  * relationships_literal()) every time add()/remove() changes something.
  *
- * Unlike a field, a relationship never touches EITHER model's own table
- * -- no migration against `model`'s or `related_model`'s own schema,
- * ever. It's pure metadata: which Eloquent relationship method
- * (hasOne/hasMany/belongsTo/belongsToMany -- see TYPES) a model gets,
- * pointing at which other model. add()/remove() here are accordingly
- * simpler than their Model_Fields counterparts: write the row, rewrite
- * the file, done.
- *
- * One exception: `belongsToMany` is the one relationship type Eloquent
- * genuinely cannot function without a THIRD table for at all -- a pivot
- * table, never a column on either side's own table (which is why the
- * "no migration" rule above is scoped to "either model's own table," not
- * schema in general). add() creates one automatically the first time a
- * `belongsToMany` relationship is added between two given models (see
- * ensure_pivot_table()) -- Gateway-managed infrastructure the same way
+ * Unlike a field, a relationship's own *metadata* (this table's row, the
+ * generated relationship method) never depends on anything else -- but
+ * every one of Eloquent's four relationship types genuinely cannot
+ * function without some real piece of schema existing first: a column
+ * somewhere, or (for `belongsToMany`) a whole third table. add() creates
+ * exactly that, automatically, the moment the relationship itself is
+ * added, for every type -- Gateway-managed infrastructure the same way
  * `gateway_fields`/`gateway_relationships` themselves are, not something
- * a site owner configures. remove() deliberately never drops it: a
- * relationship's own row can be removed independently of the pivot
- * table's data, and another `belongsToMany` relationship (from the
- * opposite direction, or a future one) could still be relying on the
- * exact same table -- Eloquent's own naming convention doesn't
- * distinguish direction, so there's no way to know it's safe to drop
- * without asking.
+ * a site owner configures or a separate step they need to remember:
+ *
+ * - `belongsTo`: a real FK column (`belongs_to_foreign_key( $method_name )`,
+ *   `unsignedBigInteger`, nullable) on `model`'s own table.
+ * - `hasOne`/`hasMany`: the same kind of column, but on `related_model`'s
+ *   own table instead (`Str::snake( $model ) . '_id'`) -- Eloquent's own
+ *   default puts the FK on the "many"/"has" side's *target*, not the
+ *   owning side, for these two.
+ * - `belongsToMany`: a whole pivot table, since Eloquent genuinely cannot
+ *   function without a THIRD table for this one -- never a column on
+ *   either side's own table (see `ensure_pivot_table()`).
+ *
+ * Every one of these is idempotent (see `ensure_foreign_key_column()`/
+ * `ensure_pivot_table()`'s own docblocks) and, once created, is never
+ * dropped by remove() -- a relationship's own row can be removed
+ * independently of whatever schema it needed, and something else (a
+ * Relate to One field later bound to this same `belongsTo`; another
+ * relationship, from the opposite direction, relying on the exact same
+ * pivot table) could still depend on it, with no reliable way to tell
+ * from here alone whether it's actually safe to drop.
+ *
+ * A real bug this fixes: an earlier version of this class treated
+ * `belongsTo`/`hasOne`/`hasMany` as pure metadata with no schema
+ * consequence at all -- the ONLY way to get a `belongsTo`'s own real FK
+ * column into existence was a site owner separately remembering to add a
+ * matching "Relate to One" field afterward (Model_Fields' own
+ * `Relationship_Field_Type` handling), and `hasOne`/`hasMany` had no
+ * mechanism to get their own FK column at all. Using the relationship
+ * for anything (eager-loading it -- e.g. this feature's own "Related
+ * Fields," `Column_Registry::get_related_columns_for_collection()` --
+ * or simply calling the generated method) before that manual step
+ * happened failed with a live `Unknown column` SQL error, not a caught,
+ * friendly one. Every relationship type is now immediately, fully
+ * functional the moment it's added, with no separate step required --
+ * "Relate to One"/"Relate to Many" are purely an optional admin-UI
+ * layer on top (autocomplete search-and-select for a relationship that
+ * already works without them), not required infrastructure.
  *
  * Method names are never typed in -- they're derived automatically from
  * the related model's own class name and the relationship's plurality
@@ -260,21 +282,47 @@ class Model_Relationships {
 		}
 
 		// Must exist before the relationship is usable at all -- see this
-		// class's own docblock for why this is the one exception to
-		// "never touches schema." Idempotent: a second belongsToMany
-		// between the same two models (e.g. declared from the other
-		// direction too) reuses the same table rather than erroring. A
+		// class's own docblock for why every one of these is an exception
+		// to "never touches EITHER model's own table" (a `belongsToMany`
+		// needs a third table; the other three need a real FK column
+		// somewhere). Every one of these is idempotent (a second
+		// relationship that would need the exact same table/column --
+		// e.g. the same `belongsToMany` declared from the other direction
+		// too -- reuses what's already there rather than erroring), and a
 		// failure here must actually stop the relationship from being
-		// recorded (checked, unlike an earlier version of this code that
-		// called this and ignored what it returned) -- otherwise a failed
-		// pivot table migration still leaves a relationship row behind
-		// that looks usable but points at a table that was never created.
+		// recorded (checked, never just called and ignored) -- otherwise
+		// a failed migration still leaves a relationship row behind that
+		// looks usable but points at schema that was never created; see
+		// this class's own docblock for the reported bug this fixes.
 		if ( 'belongsToMany' === $type ) {
-			$pivot_result = self::ensure_pivot_table( $class_name, $related_model );
+			$schema_result = self::ensure_pivot_table( $class_name, $related_model );
+		} elseif ( 'belongsTo' === $type ) {
+			// The FK column lives on $class_name's own table -- named
+			// after the relationship's own method_name (matching
+			// Eloquent's real `belongsTo()` default,
+			// `Str::snake( $relation ) . '_id'`, confirmed against
+			// `HasRelationships::belongsTo()`), exactly the same
+			// derivation Model_Fields::derive_relationship_field_name()
+			// uses for a Relate to One field bound to this relationship --
+			// guaranteed to match by sharing this one derivation, not by
+			// coincidence.
+			$schema_result = self::ensure_foreign_key_column( $class_name, self::belongs_to_foreign_key( $method_name ) );
+		} elseif ( in_array( $type, array( 'hasOne', 'hasMany' ), true ) ) {
+			// The FK column lives on $related_model's own table instead --
+			// named after $class_name's OWN class name (Eloquent's real
+			// `hasOne()`/`hasMany()` default, `Str::snake( class_basename(
+			// $this ) ) . '_id'`, confirmed against `HasRelationships::
+			// hasOneOrMany()`) -- independent of method_name entirely
+			// (unlike belongsTo above), and independent of whether the
+			// *other* side ever declares its own inverse `belongsTo` at
+			// all.
+			$schema_result = self::ensure_foreign_key_column( $related_model, \Illuminate\Support\Str::snake( $class_name ) . '_id' );
+		} else {
+			$schema_result = true;
+		}
 
-			if ( is_wp_error( $pivot_result ) ) {
-				return $pivot_result;
-			}
+		if ( is_wp_error( $schema_result ) ) {
+			return $schema_result;
 		}
 
 		self::table()->insert(
@@ -589,6 +637,81 @@ PHP;
 		sort( $segments );
 
 		return implode( '_', $segments );
+	}
+
+	/**
+	 * The real FK column name Eloquent's own `belongsTo()` default
+	 * convention expects for a relationship with this method name --
+	 * confirmed against `Illuminate\Database\Eloquent\Concerns\
+	 * HasRelationships::belongsTo()`: the foreign key defaults to the
+	 * calling method's own name, snake-cased, plus "_" and the related
+	 * model's own primary key name (always "id" here). The one single
+	 * place this is derived -- both ensure_foreign_key_column() (add()'s
+	 * own eager creation, above) and Model_Fields::
+	 * derive_relationship_field_name() (a Relate to One field's own real
+	 * column name) call this, so the two can never independently drift
+	 * apart into naming two different columns for what's supposed to be
+	 * the exact same one.
+	 *
+	 * @param string $method_name Relationship's method_name.
+	 * @return string
+	 */
+	public static function belongs_to_foreign_key( $method_name ) {
+		return \Illuminate\Support\Str::snake( $method_name ) . '_id';
+	}
+
+	/**
+	 * Creates the real FK column a `belongsTo`/`hasOne`/`hasMany`
+	 * relationship needs to actually be usable at all, on whichever
+	 * side Eloquent's own default convention puts it (see add()'s own
+	 * call sites for which side that is, per type) -- if it doesn't
+	 * already exist. Runs as a real, generated-and-run migration, the
+	 * same mechanism ensure_pivot_table() already uses (see that
+	 * method's own docblock for why -- the same reasoning applies here:
+	 * a bare inline Schema::table() call went unrecorded anywhere
+	 * Migration_Registry/the migrations directory could account for it).
+	 *
+	 * Idempotent for the same reason ensure_pivot_table() is: a second
+	 * thing that would need this exact same column (most likely: a
+	 * Relate to One field later bound to this exact `belongsTo`
+	 * relationship, via Model_Fields::add() -- see that method's own
+	 * migration guard for the other half of this) reuses it rather than
+	 * erroring. Nullable, like every other Gateway-managed column this
+	 * plugin ever adds on a site owner's behalf -- there's no way to
+	 * know in advance whether every existing row should be required to
+	 * already have a value.
+	 *
+	 * @param string $model_class Class name whose own table gets the column.
+	 * @param string $column_name Column name.
+	 * @return true|\WP_Error
+	 */
+	private static function ensure_foreign_key_column( $model_class, $column_name ) {
+		$model  = new $model_class();
+		$table  = $model->getTable();
+		$schema = \Illuminate\Database\Capsule\Manager::schema();
+
+		if ( $schema->hasColumn( $table, $column_name ) ) {
+			return true;
+		}
+
+		$up_body   = "\t\tSchema::table( '{$table}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {\n"
+			. "\t\t\t\$table->unsignedBigInteger( '{$column_name}' )->nullable();\n"
+			. "\t\t} );";
+		$down_body = "\t\tSchema::table( '{$table}', function ( \\Illuminate\\Database\\Schema\\Blueprint \$table ) {\n"
+			. "\t\t\t\$table->dropColumn( '{$column_name}' );\n"
+			. "\t\t} );";
+
+		$migration_result = self::generate_and_run_migration(
+			'Add' . \Illuminate\Support\Str::studly( $column_name ) . 'To' . \Illuminate\Support\Str::studly( $table ) . 'Table',
+			$up_body,
+			$down_body
+		);
+
+		if ( is_wp_error( $migration_result ) ) {
+			return $migration_result;
+		}
+
+		return true;
 	}
 
 	/**

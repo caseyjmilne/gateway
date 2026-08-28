@@ -498,12 +498,31 @@ class Records_REST_Controller {
 	 * visitor finds while typing and what they see once it's selected are
 	 * always the same field.
 	 *
-	 * Every relate field's own relationship is eager-loaded via one
-	 * `Collection::load()` call up front (one query per *field*, not per
-	 * record -- Eloquent's own lazy-eager-loading, batched regardless of
-	 * how many records are in $records) rather than resolving each
-	 * record's own relation lazily one at a time, so this stays cheap for
-	 * the Records list view (many rows), not just a single record.
+	 * Also flattens every Related Field (`Column_Registry::
+	 * get_related_columns_for_collection()` -- a hasOne/belongsTo
+	 * relationship's own related-model field, e.g. `Event belongsTo`
+	 * gives a `Ticket` record an `"event.title"` key) onto the record
+	 * under that exact same dotted key, resolved via `Column_Registry::
+	 * resolve_collection_value()`. This is what makes `gateway/card-field-text`'s
+	 * own *editor* preview (`record[fieldKey]`, in its `edit.js`) show
+	 * the real related value instead of always falling back to the
+	 * field's label for one of these -- the REST response this admin-app
+	 * fetch (and `RecordsCrud`'s own table) reads previously had no key
+	 * by that name at all, so `Object.prototype.hasOwnProperty.call(
+	 * record, fieldKey )` was always `false` for a related field, no
+	 * matter what. The real front end (`gateway/card-field-text/render.php`)
+	 * was never affected by this -- it resolves a Related Field's value
+	 * directly off the actual Eloquent record injected into block context,
+	 * not through this REST response at all.
+	 *
+	 * Every relate field's own relationship AND every Related Field's own
+	 * relationship are eager-loaded together via one `Collection::load()`
+	 * call up front (one query per distinct *relationship*, not per
+	 * record or per field -- Eloquent's own lazy-eager-loading, batched
+	 * regardless of how many records are in $records) rather than
+	 * resolving each record's own relation lazily one at a time, so this
+	 * stays cheap for the Records list view (many rows), not just a
+	 * single record.
 	 *
 	 * @param string                                     $class_name Model class name.
 	 * @param \Illuminate\Database\Eloquent\Collection $records    Records of $class_name.
@@ -518,7 +537,9 @@ class Records_REST_Controller {
 			}
 		}
 
-		if ( empty( $relate_fields ) || $records->isEmpty() ) {
+		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
+
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) ) || $records->isEmpty() ) {
 			return $records->map(
 				function ( $record ) {
 					return $record->toArray();
@@ -526,7 +547,16 @@ class Records_REST_Controller {
 			)->values()->all();
 		}
 
-		$records->load( wp_list_pluck( $relate_fields, 'relationship_method' ) );
+		$records->load(
+			array_values(
+				array_unique(
+					array_merge(
+						wp_list_pluck( $relate_fields, 'relationship_method' ),
+						wp_list_pluck( $related_columns, 'relationship_method' )
+					)
+				)
+			)
+		);
 
 		// Cached per related model class -- several Relate fields could
 		// point at the same related model (or the same field could, across
@@ -534,7 +564,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				foreach ( $relate_fields as $field ) {
@@ -562,6 +592,10 @@ class Records_REST_Controller {
 						// not null).
 						$array[ $field['name'] ] = null;
 					}
+				}
+
+				foreach ( $related_columns as $related_column ) {
+					$array[ $related_column['key'] ] = Column_Registry::resolve_collection_value( $record, $related_column['key'] );
 				}
 
 				return $array;
