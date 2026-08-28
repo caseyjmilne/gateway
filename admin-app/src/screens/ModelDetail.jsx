@@ -53,6 +53,13 @@ export default function ModelDetail() {
 	// window entirely.
 	const [ relationships, setRelationships ] = useState( [] );
 
+	// Which of Fields/Relationships is showing -- both FieldEditor and
+	// RelationshipEditor stay mounted the whole time (see the `hidden`
+	// attribute below, not conditional rendering), so switching tabs never
+	// loses an in-progress edit in the other one, and neither ever needs to
+	// re-fetch on switching back.
+	const [ activeTab, setActiveTab ] = useState( 'fields' );
+
 	useEffect( () => {
 		let cancelled = false;
 
@@ -310,19 +317,50 @@ export default function ModelDetail() {
 						</div>
 					) }
 
-					<FieldEditor
-						key={ model.class }
-						modelClass={ model.class }
-						initialFields={ model.fields }
-						relationships={ relationships }
-					/>
+					<h2 className="nav-tab-wrapper">
+						<button
+							type="button"
+							className={
+								'nav-tab' +
+								( 'fields' === activeTab
+									? ' nav-tab-active'
+									: '' )
+							}
+							onClick={ () => setActiveTab( 'fields' ) }
+						>
+							Fields
+						</button>
+						<button
+							type="button"
+							className={
+								'nav-tab' +
+								( 'relationships' === activeTab
+									? ' nav-tab-active'
+									: '' )
+							}
+							onClick={ () => setActiveTab( 'relationships' ) }
+						>
+							Relationships
+						</button>
+					</h2>
 
-					<RelationshipEditor
-						key={ model.class }
-						modelClass={ model.class }
-						relationships={ relationships }
-						onRelationshipsChange={ setRelationships }
-					/>
+					<div hidden={ 'fields' !== activeTab }>
+						<FieldEditor
+							key={ model.class }
+							modelClass={ model.class }
+							initialFields={ model.fields }
+							relationships={ relationships }
+						/>
+					</div>
+
+					<div hidden={ 'relationships' !== activeTab }>
+						<RelationshipEditor
+							key={ model.class }
+							modelClass={ model.class }
+							relationships={ relationships }
+							onRelationshipsChange={ setRelationships }
+						/>
+					</div>
 				</>
 			) }
 		</div>

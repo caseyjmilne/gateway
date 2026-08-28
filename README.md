@@ -3432,17 +3432,28 @@ would put it in direct conflict with `/fields/<field_name>`, which would
 just as happily match the literal string "order" as a field name.
 `admin-app/src/components/FieldEditor.jsx` is the UI: an editable,
 drag-to-reorder table of existing fields (each row swaps to an inline
-edit form; dragging one anywhere on the row -- not just the "⠿" handle
-cell -- calls `fields-order` via native HTML5 drag-and-drop, no library)
-plus an "Add Field" form below it, seeded from the model detail
-response's own `fields` array (`Model_REST_Controller::describe_model()`)
-so the page
-doesn't need a second request just to show them.
+edit panel; dragging one anywhere on the row -- not just the "⠿" handle
+cell -- calls `fields-order` via native HTML5 drag-and-drop, no library),
+seeded from the model detail response's own `fields` array
+(`Model_REST_Controller::describe_model()`) so the page doesn't need a
+second request just to show them. There is deliberately no separate
+"Add Field" form: a "+ Add Field" button appends a draft row (`{ name:
+'', label: '', type: 'text', choices: [] }`, no id yet) straight into
+the table and opens it in the exact same inline edit panel an existing
+row's own "Edit" button opens -- one editing surface either way, not two
+independently-built ones that could drift out of sync with each other.
+See "Choice field types" below for that panel's own General/Choices
+tabs.
 
 ### Relationships (`Model_Relationships`) -- real Eloquent relationship methods, printed the same way fields are
 
-Right below the Field Editor on a model's detail screen sits a
-Relationship Editor: pick another model, pick a relationship type, Add
+A model's detail screen has its own Fields/Relationships tabs (plain
+`nav-tab`/`nav-tab-active` -- core wp-admin classes, no extra CSS needed
+-- both `FieldEditor` and `RelationshipEditor` stay mounted the whole
+time via the `hidden` attribute rather than being conditionally
+rendered, so switching tabs never loses an edit in progress in the other
+one). Relationships is a Relationship Editor: pick another model, pick a
+relationship type, Add
 -- structurally the same `gateway_relationships` table +
 "DB row first, file second" design `Model_Fields` uses, applied to a
 different kind of thing. `gateway_relationships` (`model`,
@@ -3794,7 +3805,8 @@ case there, since a relate field's own removal has no such reverse
 dependency to worry about), then the relationship.
 
 **The admin app**: picking "Relate to One" or "Relate to Many" in
-`FieldEditor`'s Add Field form swaps the free-text Name `<input>` for a
+`FieldEditor`'s own inline edit panel (Add or Edit -- one shared panel,
+see "Fields" above) swaps the free-text Name `<input>` for a
 `<select>` of this model's own relationships (`GET .../relationships`,
 filtered client-side to the picked type's own `relationship_type`) and
 sends `relationship_method` instead of `name` in the request body; with
@@ -3979,14 +3991,20 @@ reads as "this field is unset" rather than "this is off" -- a dedicated
 block that prints an actual "Yes"/"No" is real, separate, undone work.
 Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 
-**The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)
-shows a new `ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`)
--- one text input per choice, "↑"/"↓" buttons to reorder, "Remove" to
-delete one, "Add Choice" to append a blank one -- whenever the picked
-type's own `has_choices` (a new key on `Field_Type_Registry::describe_all()`'s
-own output, alongside a Choice type's own `is_multiple`) is `true`, for
-both the "Add Field" form and an in-place field edit; Save/Add Field is
-disabled until at least one non-blank choice exists. `RecordForm`
+**The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)'s
+own inline edit panel gains a second "Choices" tab (alongside "General"
+-- plain `nav-tab`/`nav-tab-active`, the same core wp-admin classes the
+Fields/Relationships tabs above use) whenever the picked type's own
+`has_choices` (a new key on `Field_Type_Registry::describe_all()`'s own
+output, alongside a Choice type's own `is_multiple`) is `true` -- shown
+for both a brand new draft field and an existing one being edited, since
+there's only the one panel either way. That tab holds a new
+`ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`) -- one
+text input per choice, a "⠿" handle to drag-reorder it (the same native
+HTML5 drag-and-drop convention `FieldEditor`'s own fields table already
+uses, not a second different mechanism), "Remove" to delete one, "Add
+Choice" to append a blank one. Save/Add Field is disabled until at least
+one non-blank choice exists. `RecordForm`
 (`admin-app/src/components/RecordForm.jsx`) reads a field's own `choices`
 straight off the field object (already threaded through by
 `Model_Fields::all()`/the fields REST route) to render the right control
@@ -4200,12 +4218,13 @@ and carries the result -- including any `warnings`, e.g. the old table
 failing to drop -- through React Router's navigation `state` so they can
 still be shown once on arrival.
 
-Below the Title/Plural Title form, `ModelDetail` also renders
-`FieldEditor` (`admin-app/src/components/FieldEditor.jsx` -- see "Fields
-(`Model_Fields`)" above for what happens on the PHP side) -- an
-editable table of the model's fields plus an "Add Field" form, seeded
-from the same initial `GET /models/<class>` response so it doesn't need
-its own request just to render.
+Below the Title/Plural Title form, `ModelDetail` renders a Fields/
+Relationships tab strip, `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`
+-- see "Fields (`Model_Fields`)" above for what happens on the PHP side,
+and for its own single add-or-edit panel) under the first tab -- an
+editable table of the model's fields, seeded from the same initial
+`GET /models/<class>` response so it doesn't need its own request just
+to render.
 
 ### Database Connection screen
 

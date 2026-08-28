@@ -41,6 +41,68 @@
 	opacity: 0.5;
 }
 
+.gateway-admin-app .gateway-field-editor-edit-panel {
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	padding: 1em 1.25em;
+	margin: 4px 0;
+}
+
+.gateway-admin-app .gateway-field-editor-edit-panel .nav-tab-wrapper {
+	margin: 0 0 1.25em;
+}
+
+.gateway-admin-app .gateway-field-editor-form-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+	max-width: 480px;
+}
+
+.gateway-admin-app .gateway-field-editor-form-grid > label {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	font-weight: 600;
+}
+
+.gateway-admin-app .gateway-field-editor-form-grid > label .description {
+	font-weight: normal;
+}
+
+.gateway-admin-app .gateway-field-editor-form-actions {
+	margin: 1.5em 0 0;
+}
+
+.gateway-admin-app .gateway-choices-editor {
+	max-width: 480px;
+}
+
+.gateway-admin-app .gateway-choices-editor-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.gateway-admin-app .gateway-choices-editor-row input {
+	flex: 1;
+}
+
+.gateway-admin-app .gateway-choices-editor-drag-col {
+	cursor: grab;
+	color: #787c82;
+}
+
+.gateway-admin-app .gateway-choices-editor-row-dragging {
+	opacity: 0.5;
+}
+
+.gateway-admin-app .gateway-choices-editor .button {
+	margin-top: 6px;
+}
+
 .gateway-admin-app .gateway-relationship-editor table td:last-child {
 	white-space: nowrap;
 	width: 1%;
