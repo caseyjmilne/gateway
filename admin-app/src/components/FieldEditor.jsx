@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
+import ChoicesEditor from './ChoicesEditor.jsx';
 
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
@@ -46,6 +47,18 @@ import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
  * immutability guard (a relate field's relationship can't be changed once
  * created), editing one disables the Name and Type inputs -- only its
  * Label stays editable, same as every other field type.
+ *
+ * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
+ * type's own `has_choices` from useFieldTypes()) are a lighter special
+ * case: unlike a relate field, everything about the field (name, type,
+ * label) stays freely editable -- only one extra thing appears, a
+ * ChoicesEditor for the field's own orderable choice list
+ * (Gateway\\Model_Field_Choices on the server), required (at least one
+ * non-blank choice) whenever the picked type has one. Reordering,
+ * adding, or removing a choice is a normal in-place edit, submitted the
+ * same way a renamed field or a changed label is -- there's no
+ * "immutable once created" rule for choices the way there is for a
+ * relate field's own relationship.
  */
 export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
@@ -57,6 +70,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const [ newLabel, setNewLabel ] = useState( '' );
 	const [ newType, setNewType ] = useState( 'text' );
 	const [ newRelationshipMethod, setNewRelationshipMethod ] = useState( '' );
+	const [ newChoices, setNewChoices ] = useState( [] );
 	const [ adding, setAdding ] = useState( false );
 
 	// The field currently being edited, identified by its existing name
@@ -66,6 +80,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const [ editName, setEditName ] = useState( '' );
 	const [ editLabel, setEditLabel ] = useState( '' );
 	const [ editType, setEditType ] = useState( 'text' );
+	const [ editChoices, setEditChoices ] = useState( [] );
 	const [ savingEdit, setSavingEdit ] = useState( false );
 
 	const [ deletingName, setDeletingName ] = useState( null );
@@ -93,7 +108,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const relationshipTypeLabel = ( key ) =>
 		relationshipTypes.find( ( type ) => type.key === key )?.label || key;
 
+	const hasChoicesFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.has_choices );
+
 	const newRelationshipType = relationshipTypeFor( newType );
+	const newHasChoices = hasChoicesFor( newType );
+	const editHasChoices = hasChoicesFor( editType );
 	const matchingRelationships = newRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === newRelationshipType
@@ -116,6 +136,25 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ newType, relationships ] );
 
+	// A blank first row is a convenience, not a requirement -- ChoicesEditor
+	// itself renders an "Add Choice" button either way. Only seeds one when
+	// there's nothing there yet, so switching between two choice types
+	// (Select -> Radio, say) never discards whatever the site owner already
+	// typed.
+	useEffect( () => {
+		if ( newHasChoices ) {
+			setNewChoices( ( current ) => ( current.length > 0 ? current : [ '' ] ) );
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ newType ] );
+
+	useEffect( () => {
+		if ( editHasChoices ) {
+			setEditChoices( ( current ) => ( current.length > 0 ? current : [ '' ] ) );
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ editType ] );
+
 	const relationshipOptionLabel = ( relationship ) =>
 		`${ relationship.related_model } (${ relationship.method_name }())`;
 
@@ -133,6 +172,10 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				  }
 				: { name: newName, label: newLabel, type: newType };
 
+			if ( newHasChoices ) {
+				body.choices = newChoices;
+			}
+
 			const field = await apiFetch( basePath, {
 				method: 'POST',
 				body: JSON.stringify( body ),
@@ -142,6 +185,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			setNewLabel( '' );
 			setNewType( 'text' );
 			setNewRelationshipMethod( '' );
+			setNewChoices( [] );
 		} catch ( err ) {
 			setError( err.message );
 		} finally {
@@ -155,6 +199,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		setEditName( field.name );
 		setEditLabel( field.label );
 		setEditType( field.type );
+		setEditChoices( field.choices && field.choices.length > 0 ? field.choices : [] );
 	};
 
 	const cancelEdit = () => setEditingName( null );
@@ -172,15 +217,21 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		setSavingEdit( true );
 
 		try {
+			const body = {
+				name: editName,
+				label: editLabel,
+				type: editType,
+			};
+
+			if ( editHasChoices ) {
+				body.choices = editChoices;
+			}
+
 			const field = await apiFetch(
 				`${ basePath }/${ encodeURIComponent( editingName ) }`,
 				{
 					method: 'PUT',
-					body: JSON.stringify( {
-						name: editName,
-						label: editLabel,
-						type: editType,
-					} ),
+					body: JSON.stringify( body ),
 				}
 			);
 			setFields( ( current ) =>
@@ -357,7 +408,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 												className="button button-primary"
 												disabled={
 													savingEdit ||
-													! editName.trim()
+													! editName.trim() ||
+													( editHasChoices &&
+														0 ===
+															editChoices.filter(
+																( choice ) =>
+																	choice.trim()
+															).length )
 												}
 											>
 												{ savingEdit
@@ -381,6 +438,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 												new one instead if it needs to
 												point somewhere else.
 											</p>
+										) }
+										{ editHasChoices && (
+											<ChoicesEditor
+												choices={ editChoices }
+												onChange={ setEditChoices }
+											/>
 										) }
 									</td>
 								</tr>
@@ -522,11 +585,21 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						adding ||
 						( newRelationshipType
 							? ! newRelationshipMethod
-							: ! newName.trim() )
+							: ! newName.trim() ) ||
+						( newHasChoices &&
+							0 ===
+								newChoices.filter( ( choice ) => choice.trim() )
+									.length )
 					}
 				>
 					{ adding ? 'Adding…' : 'Add Field' }
 				</button>
+				{ newHasChoices && (
+					<ChoicesEditor
+						choices={ newChoices }
+						onChange={ setNewChoices }
+					/>
+				) }
 			</form>
 		</div>
 	);

@@ -85,7 +85,16 @@ class Field_Type_Registry extends Registry {
 	 * instead of the usual free-text Name input, without hardcoding
 	 * either type's own key there.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string}>
+	 * `has_choices`/`is_multiple` are the Choice_Field_Type counterpart to
+	 * `relationship_type` above: `has_choices` (`true` for Buttons/Select/
+	 * Radio/Checkbox) is what tells the admin app's Field Editor a type
+	 * needs its own orderable choices-list editor shown at all, and
+	 * `is_multiple` (`Choice_Field_Type::is_multiple()`, `null` for every
+	 * non-choice type) is what tells RecordForm.jsx whether that field's
+	 * own value/control is a single selection (Buttons/Select/Radio) or a
+	 * set (Checkbox) -- neither hardcoded by key() anywhere in JavaScript.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -95,12 +104,16 @@ class Field_Type_Registry extends Registry {
 				continue;
 			}
 
+			$has_choices = is_subclass_of( $class, Choice_Field_Type::class );
+
 			$described[] = array(
 				'key'               => $class::key(),
 				'label'             => $class::label(),
 				'input_type'        => $class::input_type(),
 				'is_sensitive'      => $class::is_sensitive(),
 				'relationship_type' => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
+				'has_choices'       => $has_choices,
+				'is_multiple'       => $has_choices ? $class::is_multiple() : null,
 			);
 		}
 

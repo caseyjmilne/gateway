@@ -588,17 +588,18 @@ class Model_Builder {
 	 */
 	private static function model_template( $class_name, $table_name, array $fields = array(), array $relationships = array() ) {
 		$fields_literal      = self::fields_literal( $fields );
+		$casts_literal       = self::casts_literal( $fields );
 		$relationships_block = self::relationships_block( $relationships );
 
 		return <<<PHP
 <?php
 /**
  * Gateway-generated Eloquent model -- created via the admin app's Models
- * screen. Safe to hand-edit (e.g. add casts, accessors, a relationship
- * of your own); regenerated (getFields()/getFillable()/every
- * relationship method included) every time a field or relationship is
- * added, edited, removed, or reordered via the admin app's Field/
- * Relationship Editors -- see Gateway\\Model_Fields/Gateway\\Model_Relationships.
+ * screen. Safe to hand-edit (e.g. add accessors, a relationship of your
+ * own); regenerated (getFields()/getFillable()/\$casts/every relationship
+ * method included) every time a field or relationship is added, edited,
+ * removed, or reordered via the admin app's Field/Relationship Editors --
+ * see Gateway\\Model_Fields/Gateway\\Model_Relationships.
  */
 
 class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
@@ -607,6 +608,17 @@ class {$class_name} extends \\Illuminate\\Database\\Eloquent\\Model {
 	 * @var string
 	 */
 	protected \$table = '{$table_name}';
+
+	/**
+	 * One entry per field whose own type needs Eloquent to actually do
+	 * something with its raw stored value beyond handing it back as-is --
+	 * see Gateway\\Field_Type::eloquent_cast(). Empty for a model with no
+	 * such field, same as getFields() below is `array()` for one with no
+	 * fields at all.
+	 *
+	 * @var array<string,string>
+	 */
+	protected \$casts = {$casts_literal};
 
 	/**
 	 * Field definitions managed via the admin app's Field Editor -- see
@@ -673,6 +685,48 @@ PHP;
 		}
 
 		return "array(\n" . implode( "\n", $lines ) . "\n\t\t)";
+	}
+
+	/**
+	 * Renders the `protected $casts = ...;` array literal for
+	 * model_template() -- one `'field_name' => 'cast_name'` entry for
+	 * every field whose own type declares a non-null Field_Type::
+	 * eloquent_cast() (e.g. Checkbox_Field_Type's "array",
+	 * True_False_Field_Type's "boolean"), skipping every field whose type
+	 * doesn't need one (returns `null`) or that isn't a currently
+	 * registered type at all (the same "degrade rather than fatal error"
+	 * tolerance get_related_columns_for_collection() etc. already extend
+	 * to an unregistered/removed type).
+	 *
+	 * @param array $fields Flat array of field arrays (see fields_literal()).
+	 * @return string PHP source for the array literal (no trailing
+	 *                 semicolon -- the caller's own property declaration
+	 *                 adds it).
+	 */
+	private static function casts_literal( array $fields ) {
+		$lines = array();
+
+		foreach ( $fields as $field ) {
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			if ( ! $type_class || ! class_exists( $type_class ) ) {
+				continue;
+			}
+
+			$cast = $type_class::eloquent_cast();
+
+			if ( null === $cast ) {
+				continue;
+			}
+
+			$lines[] = "\t\t" . var_export( $field['name'], true ) . ' => ' . var_export( $cast, true ) . ',';
+		}
+
+		if ( empty( $lines ) ) {
+			return 'array()';
+		}
+
+		return "array(\n" . implode( "\n", $lines ) . "\n\t)";
 	}
 
 	/**

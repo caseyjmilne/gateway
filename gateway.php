@@ -95,8 +95,15 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/interface-choice-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-buttons-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-select-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-radio-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-checkbox-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-true-false-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-choices.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationships.php';
@@ -139,6 +146,11 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\Password_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Buttons_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Select_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Radio_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Checkbox_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\True_False_Field_Type::class );
 	do_action( 'gateway_register_field_types' );
 
 	// Pick up every model/migration class living in wp-content/gateway --

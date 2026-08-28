@@ -107,4 +107,11 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	public static function relationship_type() {
 		return 'belongsTo';
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function eloquent_cast() {
+		return null;
+	}
 }

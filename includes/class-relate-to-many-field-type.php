@@ -115,4 +115,11 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	public static function relationship_type() {
 		return 'belongsToMany';
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function eloquent_cast() {
+		return null;
+	}
 }

@@ -207,8 +207,16 @@ class Model_Fields {
 	 * degrades safely if it ever does (e.g. hand-edited data) rather than
 	 * fatal-erroring on a null related_model somewhere downstream.
 	 *
+	 * `choices` is `[]` for every plain/relationship field, and for a
+	 * Choice_Field_Type field with none configured yet -- an ordered array
+	 * of strings (Model_Field_Choices::for_fields()'s own shape) for one
+	 * that has some. Batch-fetched once for every field on the model in a
+	 * single query (keyed by each row's own `id`), not one query per
+	 * Choice_Field_Type field -- the same "one query total" reasoning
+	 * relationship resolution above already follows.
+	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string}>
+	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[]}>
 	 */
 	public static function all( $class_name ) {
 		$relationships_by_method = array();
@@ -217,16 +225,23 @@ class Model_Fields {
 			$relationships_by_method[ $relationship['method_name'] ] = $relationship['related_model'];
 		}
 
-		return self::table()
+		$rows = self::table()
 			->where( 'model', $class_name )
 			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'name', 'label', 'type', 'position', 'relationship_method' ) )
+			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method' ) );
+
+		$choices_by_field_id = Model_Field_Choices::for_fields( $rows->pluck( 'id' )->all() );
+
+		return $rows
 			->map(
-				function ( $row ) use ( $relationships_by_method ) {
+				function ( $row ) use ( $relationships_by_method, $choices_by_field_id ) {
 					$relationship_method = ! empty( $row->relationship_method ) ? $row->relationship_method : null;
+					$type_class          = Field_Type_Registry::get( $row->type );
+					$is_choice_type      = $type_class && is_subclass_of( $type_class, Choice_Field_Type::class );
 
 					return array(
+						'id'                   => (int) $row->id,
 						'name'                 => $row->name,
 						// A row recorded before the label column existed
 						// (or saved with one left blank) has no label of
@@ -239,6 +254,7 @@ class Model_Fields {
 						'related_model'        => null !== $relationship_method && isset( $relationships_by_method[ $relationship_method ] )
 							? $relationships_by_method[ $relationship_method ]
 							: null,
+						'choices'              => $is_choice_type ? ( $choices_by_field_id[ (int) $row->id ] ?? array() ) : array(),
 					);
 				}
 			)
@@ -303,11 +319,18 @@ class Model_Fields {
 	 *                                           name -- see this class's own docblock.
 	 * @param string|null $relationship_method Required for a Relationship_Field_Type;
 	 *                                           ignored otherwise.
-	 * @return array{name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string}|\WP_Error
+	 * @param string[]|null $choices           Required (at least one
+	 *                                           non-empty, unique value)
+	 *                                           for a Choice_Field_Type
+	 *                                           ("Buttons"/"Select"/
+	 *                                           "Radio"/"Checkbox"); ignored
+	 *                                           otherwise -- see
+	 *                                           require_choices_for_field().
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[]}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
-	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null ) {
+	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -328,6 +351,17 @@ class Model_Fields {
 			$related_model = $relationship['related_model'];
 		} else {
 			$relationship_method = null;
+		}
+
+		$is_choice_type     = $type_class && is_subclass_of( $type_class, Choice_Field_Type::class );
+		$validated_choices  = array();
+
+		if ( $is_choice_type ) {
+			$validated_choices = self::require_choices_for_field( $choices );
+
+			if ( is_wp_error( $validated_choices ) ) {
+				return $validated_choices;
+			}
 		}
 
 		$field = self::validate( $class_name, $name, $type, null, $label );
@@ -378,7 +412,7 @@ class Model_Fields {
 		$max_position       = self::table()->where( 'model', $class_name )->max( 'position' );
 		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
 
-		self::table()->insert(
+		$field_id = self::table()->insertGetId(
 			array(
 				'model'               => $class_name,
 				'name'                => $field['name'],
@@ -391,8 +425,14 @@ class Model_Fields {
 			)
 		);
 
-		$field['relationship_method'] = $relationship_method;
-		$field['related_model']       = $related_model;
+		if ( $is_choice_type ) {
+			Model_Field_Choices::set( $field_id, $validated_choices );
+		}
+
+		$field['id']                   = $field_id;
+		$field['relationship_method']  = $relationship_method;
+		$field['related_model']        = $related_model;
+		$field['choices']              = $validated_choices;
 
 		// The table row above is already the recorded field -- rewriting
 		// the model file with the now-current, DB-sourced field list is a
@@ -424,9 +464,19 @@ class Model_Fields {
 	 * @param string $label        New display label; blank defaults to a
 	 *                              title-cased version of the (sanitized)
 	 *                              name -- see this class's own docblock.
-	 * @return array{name:string,label:string,type:string,position:int}|\WP_Error
+	 * @param string[]|null $choices Required (see require_choices_for_field())
+	 *                              whenever $type resolves to a Choice_Field_Type
+	 *                              -- freely editable in place, unlike a
+	 *                              relate field's relationship: replaces
+	 *                              the field's entire choice list (content
+	 *                              AND order), so this is also how a site
+	 *                              owner reorders/adds/removes choices.
+	 *                              Ignored (and any existing choices
+	 *                              forgotten) whenever $type is not a
+	 *                              Choice_Field_Type.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[]}|\WP_Error
 	 */
-	public static function update( $class_name, $current_name, $name, $type, $label = '' ) {
+	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -481,6 +531,31 @@ class Model_Fields {
 			);
 		}
 
+		// Unlike a relate field's relationship, a Choice_Field_Type field's
+		// own choices ARE freely editable in place -- there's no schema
+		// reason not to (they're never part of the migration at all, just
+		// rows in Model_Field_Choices), and reordering/adding/removing a
+		// choice is exactly the kind of routine edit a site owner needs to
+		// make without removing and re-adding the whole field. Required
+		// whenever the (possibly new) type is a choice type, the same
+		// "this type needs this extra thing" rule require_relationship_for_field()
+		// already enforces for relationship types.
+		$new_type_is_choice = is_subclass_of( Field_Type_Registry::get( $new_field['type'] ), Choice_Field_Type::class );
+		$validated_choices  = array();
+
+		if ( $new_type_is_choice ) {
+			$validated_choices = self::require_choices_for_field( $choices );
+
+			if ( is_wp_error( $validated_choices ) ) {
+				return $validated_choices;
+			}
+		}
+
+		// [] both when the old field was never a choice type at all, and
+		// when it was one with nothing configured yet -- either way, an
+		// empty array compares correctly against $validated_choices below.
+		$choices_changed = $old_field['choices'] !== $validated_choices;
+
 		// Compared against the *raw* stored label, not $old_field['label']
 		// -- that came from all(), which already substitutes a computed
 		// default for a NULL/blank one purely for display. Diffing
@@ -497,7 +572,7 @@ class Model_Fields {
 			->value( 'label' );
 		$label_changed = (string) $stored_label !== $new_field['label'];
 
-		if ( ! $name_changed && ! $type_changed && ! $label_changed ) {
+		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed ) {
 			return $old_field;
 		}
 
@@ -507,12 +582,12 @@ class Model_Fields {
 
 		$table = $model->getTable();
 
-		// A label-only change never touches the schema -- there's no
-		// column to rename, nothing to migrate -- so it skips straight to
-		// recording the new metadata below, the same way a truly no-op
-		// update (caught above) skips it entirely.
+		// A label-only (or choices-only) change never touches the schema --
+		// there's no column to rename/retype, nothing to migrate -- so it
+		// skips straight to recording the new metadata below, the same way
+		// a truly no-op update (caught above) skips it entirely.
 		if ( ! $name_changed && ! $type_changed ) {
-			return self::save_updated_field( $class_name, $table, $old_field['name'], $new_field );
+			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices );
 		}
 
 		$up   = array();
@@ -549,24 +624,28 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		return self::save_updated_field( $class_name, $table, $old_field['name'], $new_field );
+		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices );
 	}
 
 	/**
 	 * Shared tail end of update(): records the new name/label/type against
 	 * the field's existing row (found by its *current* name, which may
-	 * itself be one of the values changing) and rewrites the model file --
+	 * itself be one of the values changing), keeps its choice list
+	 * (Model_Field_Choices) in lock-step, and rewrites the model file --
 	 * used both after a schema-changing update (name and/or type changed,
-	 * migration already run) and for a label-only one (nothing to migrate
-	 * at all, see update()'s own early return for that case).
+	 * migration already run) and for a label-/choices-only one (nothing to
+	 * migrate at all, see update()'s own early return for that case).
 	 *
-	 * @param string $class_name   Model class name.
-	 * @param string $table        Table name.
-	 * @param string $current_name The field's existing row, found by name.
-	 * @param array  $new_field    {name, label, type} to save.
-	 * @return array{name:string,label:string,type:string}|\WP_Error
+	 * @param string   $class_name    Model class name.
+	 * @param string   $table         Table name.
+	 * @param int      $field_id      The field's own gateway_fields.id.
+	 * @param string   $current_name  The field's existing row, found by name.
+	 * @param array    $new_field     {name, label, type} to save.
+	 * @param bool     $is_choice_type Whether $new_field['type'] is a Choice_Field_Type.
+	 * @param string[] $choices       Already-validated choices -- only used/saved when $is_choice_type.
+	 * @return array{id:int,name:string,label:string,type:string,choices:string[]}|\WP_Error
 	 */
-	private static function save_updated_field( $class_name, $table, $current_name, array $new_field ) {
+	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices ) {
 		self::table()
 			->where( 'model', $class_name )
 			->where( 'name', $current_name )
@@ -578,6 +657,21 @@ class Model_Fields {
 					'updated_at' => current_time( 'mysql' ),
 				)
 			);
+
+		if ( $is_choice_type ) {
+			Model_Field_Choices::set( $field_id, $choices );
+		} else {
+			// Cheap no-op when the field was never a choice type -- but
+			// necessary cleanup when it just stopped being one (a real
+			// type change, e.g. Select -> Text): this same row id would
+			// otherwise silently resurrect its old, no-longer-relevant
+			// choices if the field were ever changed back to a choice
+			// type later.
+			Model_Field_Choices::forget( $field_id );
+		}
+
+		$new_field['id']      = $field_id;
+		$new_field['choices'] = $is_choice_type ? $choices : array();
 
 		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 
@@ -653,6 +747,10 @@ class Model_Fields {
 			->where( 'name', $field['name'] )
 			->delete();
 
+		// A removed field's own choices (if it had any) are meaningless
+		// orphans otherwise -- harmless no-op for every other field type.
+		Model_Field_Choices::forget( $field['id'] );
+
 		// Not surfaced as a warning here (unlike add()/update()) -- removing
 		// a field succeeded regardless, and there's no freshly-added field
 		// whose immediate usability depends on this the way there is there.
@@ -673,7 +771,14 @@ class Model_Fields {
 	 * @param string $class_name Model class name.
 	 */
 	public static function forget( $class_name ) {
+		$field_ids = self::table()->where( 'model', $class_name )->pluck( 'id' )->all();
+
 		self::table()->where( 'model', $class_name )->delete();
+
+		// Same "would otherwise inherit forgotten leftovers" reasoning as
+		// this method's own docblock, one level down: a field's own
+		// choices, not just the field row itself.
+		Model_Field_Choices::forget_for_fields( $field_ids );
 	}
 
 	/**
@@ -1017,6 +1122,64 @@ PHP;
 		}
 
 		return $relationship;
+	}
+
+	/**
+	 * Validates + sanitizes a Choice_Field_Type field's own choice list --
+	 * required for one of these (`add()`'s own $choices, or `update()`'s
+	 * whenever the resulting type is a choice type), the same "this type
+	 * needs this extra thing" role require_relationship_for_field() plays
+	 * for a relationship type.
+	 *
+	 * Each raw choice is `sanitize_text_field()`'d and trimmed the same
+	 * way a raw label already is (validate()'s own $label handling);
+	 * empty ones are silently dropped (a blank row in the admin app's own
+	 * orderable list editor, e.g. one added and left untyped, shouldn't
+	 * itself be an error) -- but the list as a whole must end up with at
+	 * least one real choice, and every one of them must be distinct
+	 * (case-sensitive, matching gateway_field_choices' own unique(field_id,
+	 * value) constraint), both surfaced as a clear error rather than
+	 * silently coerced (deduplicating instead, for instance, would make a
+	 * mistyped near-duplicate simply vanish with no feedback at all).
+	 *
+	 * @param mixed $raw_choices Raw choices from the request -- expected
+	 *                            to be an array of strings, but tolerated
+	 *                            as anything (a missing/non-array value
+	 *                            just yields the "add at least one choice"
+	 *                            error below, same as an empty array would).
+	 * @return string[]|\WP_Error Ordered, sanitized, de-duplicated-checked
+	 *                              choice values.
+	 */
+	private static function require_choices_for_field( $raw_choices ) {
+		$raw_choices = is_array( $raw_choices ) ? $raw_choices : array();
+
+		$sanitized = array();
+
+		foreach ( $raw_choices as $raw_choice ) {
+			$value = sanitize_text_field( trim( (string) $raw_choice ) );
+
+			if ( '' !== $value ) {
+				$sanitized[] = $value;
+			}
+		}
+
+		if ( empty( $sanitized ) ) {
+			return new \WP_Error(
+				'gateway_field_choices_required',
+				__( 'Add at least one choice for this field.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( count( array_unique( $sanitized ) ) !== count( $sanitized ) ) {
+			return new \WP_Error(
+				'gateway_field_choices_duplicate',
+				__( 'Choices must be unique -- remove the duplicate and try again.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		return array_values( $sanitized );
 	}
 
 	/**

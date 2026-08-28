@@ -1,7 +1,10 @@
 <?php
 /**
- * The "Text" field type -- a single-line string, rendered as a plain
- * text input.
+ * The "Buttons" field type -- a single choice from the field's own
+ * configured list (Model_Field_Choices), rendered as a row of toggle
+ * buttons (RecordForm.jsx) rather than a native `<select>`/radio group --
+ * the same underlying single-value string storage as Select_Field_Type/
+ * Radio_Field_Type, just a different admin-app control for it.
  *
  * @package Gateway
  */
@@ -10,20 +13,20 @@ namespace Gateway;
 
 defined( 'ABSPATH' ) || exit;
 
-class Text_Field_Type implements Field_Type {
+class Buttons_Field_Type implements Choice_Field_Type {
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function key() {
-		return 'text';
+		return 'buttons';
 	}
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function label() {
-		return __( 'Text', 'gateway' );
+		return __( 'Buttons', 'gateway' );
 	}
 
 	/**
@@ -37,7 +40,7 @@ class Text_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function input_type() {
-		return 'text';
+		return 'buttons';
 	}
 
 	/**
@@ -73,5 +76,12 @@ class Text_Field_Type implements Field_Type {
 	 */
 	public static function eloquent_cast() {
 		return null;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_multiple() {
+		return false;
 	}
 }

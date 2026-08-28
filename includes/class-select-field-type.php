@@ -1,7 +1,8 @@
 <?php
 /**
- * The "Text" field type -- a single-line string, rendered as a plain
- * text input.
+ * The "Select" field type -- a single choice from the field's own
+ * configured list (Model_Field_Choices), rendered as a native `<select>`
+ * dropdown.
  *
  * @package Gateway
  */
@@ -10,20 +11,20 @@ namespace Gateway;
 
 defined( 'ABSPATH' ) || exit;
 
-class Text_Field_Type implements Field_Type {
+class Select_Field_Type implements Choice_Field_Type {
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function key() {
-		return 'text';
+		return 'select';
 	}
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function label() {
-		return __( 'Text', 'gateway' );
+		return __( 'Select', 'gateway' );
 	}
 
 	/**
@@ -37,7 +38,7 @@ class Text_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function input_type() {
-		return 'text';
+		return 'select';
 	}
 
 	/**
@@ -73,5 +74,12 @@ class Text_Field_Type implements Field_Type {
 	 */
 	public static function eloquent_cast() {
 		return null;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_multiple() {
+		return false;
 	}
 }

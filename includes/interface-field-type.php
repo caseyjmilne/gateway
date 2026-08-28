@@ -129,4 +129,31 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function is_text_renderable();
+
+	/**
+	 * The Eloquent native cast name (`$casts`, e.g. "array"/"boolean") a
+	 * generated model's own column for this type needs declared against
+	 * it, or `null` for the default (no cast -- what every plain scalar
+	 * type, text or numeric, already worked correctly without).
+	 * `Model_Builder::rewrite_model_file()` prints whatever this returns
+	 * into the generated model's own `$casts` property, so an attribute
+	 * of this type is read back as the same real PHP type it was written
+	 * as (a genuine array, a genuine bool), not the raw string/int the
+	 * bare database driver would otherwise return it as.
+	 *
+	 * Not just a nicety for `Checkbox_Field_Type` ("Checkbox" -- multiple
+	 * selections stored as one JSON array in a single text column,
+	 * `blueprint_method() === 'text'`): without Eloquent's own 'array'
+	 * cast actually doing the JSON encode/decode around it, assigning a
+	 * genuine PHP array to that attribute at save time has nothing to
+	 * turn it into a string the database driver can bind at all.
+	 *
+	 * `null` for every other built-in type, including every other Choice
+	 * type (Buttons/Select/Radio each store one plain string -- their own
+	 * `blueprint_method()` column already round-trips that correctly with
+	 * no cast needed) and both relate field types (an id, or nothing).
+	 *
+	 * @return string|null
+	 */
+	public static function eloquent_cast();
 }

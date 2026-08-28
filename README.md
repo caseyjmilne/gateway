@@ -3814,13 +3814,15 @@ registered the same way a model or migration class is:
 
 ```php
 interface Field_Type {
-	public static function key();             // "text", "number", ...
-	public static function label();            // "Text", "Number", ...
-	public static function blueprint_method(); // "string", "double", ...
-	public static function input_type();       // the HTML <input type>
-	public static function cast( $value );     // e.g. "3" -> 3 for Number
-	public static function is_sensitive();     // mask in RecordsCrud's table? (Password only)
-	public static function is_filterable();    // ever a sensible facet/filter? (false for Password, Relate to One/Many)
+	public static function key();               // "text", "number", ...
+	public static function label();              // "Text", "Number", ...
+	public static function blueprint_method();   // "string", "double", ...
+	public static function input_type();         // the HTML <input type>
+	public static function cast( $value );       // e.g. "3" -> 3 for Number
+	public static function is_sensitive();       // mask in RecordsCrud's table? (Password only)
+	public static function is_filterable();      // ever a sensible facet/filter? (false for Password, Relate to One/Many, Checkbox)
+	public static function is_text_renderable(); // can gateway/card-field-text ever print this? (false for Password, Relate to One/Many, Checkbox, True/False)
+	public static function eloquent_cast();      // Eloquent's own $casts entry, e.g. "array"/"boolean" -- null for no cast needed
 }
 ```
 
@@ -3856,6 +3858,143 @@ registered type) -- both `FieldEditor` and the Records screen's own form
 (below) build their type dropdown/`<input>` rendering from this one
 request (`admin-app/src/hooks/useFieldTypes.js`) instead of each keeping
 a second, hardcoded copy of "text"/"number" in JavaScript.
+
+### Choice field types (Buttons/Select/Radio/Checkbox) and True/False
+
+Five more built-in `Field_Type`s, alongside Text/Number/TextArea/Range/
+Email/URL/Password/Relate to One/Relate to Many: **Buttons**, **Select**,
+**Radio**, **Checkbox**, and **True/False**. The first four each let a
+site owner define their own small, ordered set of options for the field
+-- e.g. a "Status" field offering "Open"/"In Progress"/"Closed" -- picked
+via a button-group, a native dropdown, a radio group, or (the one
+multi-select case) a group of independently-toggled checkboxes,
+respectively. True/False is simpler still: a plain on/off value, with no
+configured options at all.
+
+**`Choice_Field_Type extends Field_Type`** (`includes/interface-choice-field-type.php`)
+is the contract Buttons/Select/Radio/Checkbox each implement on top of
+the base `Field_Type` interface -- the same `is_subclass_of( $type_class,
+Choice_Field_Type::class )` pattern `Relationship_Field_Type` already
+established for Relate to One/Many, so every existing field type stays
+untouched; only a type that actually needs a configured choice list
+implements it. It adds exactly one thing:
+
+```php
+interface Choice_Field_Type extends Field_Type {
+	public static function is_multiple(); // true only for Checkbox
+}
+```
+
+True/False is **not** a `Choice_Field_Type` -- there's no options list to
+configure at all, just a fixed on/off value, so it implements the plain
+`Field_Type` contract directly, the same as Text/Number/etc.
+
+**A field's own choices live in their own table, `gateway_field_choices`
+(`Model_Field_Choices`, `includes/class-model-field-choices.php`), not a
+JSON blob squeezed onto `gateway_fields` itself** -- one row per choice
+(`field_id`, `value`, `position`), the same "a real column is what
+actually makes a list orderable" reasoning `gateway_fields`' own
+`position` column already established for the fields list itself. Every
+write replaces a field's *entire* choice list at once
+(`Model_Field_Choices::set( $field_id, $choices )` -- delete then
+re-insert in the given order) rather than editing one choice in place --
+the Field Editor's own choices list is a single orderable list a site
+owner edits as a whole and saves once (add a row, remove a row, drag/
+button-reorder, then Save), not a set of independent per-choice API
+calls. `for_fields( $field_ids )` batch-reads every choice for several
+fields at once, grouped by `field_id`, so `Model_Fields::all()` costs one
+extra query total per model, not one per Choice field on it.
+
+**`Model_Fields::require_choices_for_field( $raw_choices )`** is the
+validation gate, the direct counterpart to
+`require_relationship_for_field()`: sanitizes and trims each raw choice
+(dropping blanks -- a half-typed row in the admin app's own list editor
+shouldn't itself be an error), then requires at least one survives and
+that none are exact duplicates, returning a clear `WP_Error`
+(`gateway_field_choices_required`/`gateway_field_choices_duplicate`)
+otherwise. Required by `Model_Fields::add()`/`update()` whenever the
+(possibly new) `type` resolves to a `Choice_Field_Type` -- ignored
+otherwise, and any previously-recorded choices are forgotten
+(`Model_Field_Choices::forget()`) the moment a field's type changes away
+from one, so retyping it back into a choice type later starts from a
+clean slate rather than resurrecting a stale list. Unlike a relate
+field's relationship, a Choice field's own choices (and its name/type/
+label) stay freely editable in place for the whole life of the field --
+there's no "immutable once created" rule here; reordering, adding, or
+removing a choice is a normal `update()` call, and (like a label-only
+change) needs no migration at all, since nothing about the schema
+depends on *which* choices exist, only on the field's own column type.
+`Model_Fields::remove()`/`forget()` (the latter used when a model is
+retired via `Model_Builder::rename()`) both clean up a field's own
+choice rows too, via `Model_Field_Choices::forget()`/`forget_for_fields()`
+-- no orphaned rows left behind.
+
+`Model_Fields::all()` now returns an extra `id` key (the field's own
+`gateway_fields.id`, needed to address its own choices table) alongside
+a `choices` key -- `[]` for every non-Choice field, an ordered array of
+plain strings for one that has some, e.g. `['Open', 'In Progress',
+'Closed']`. `POST`/`PUT .../fields` (`Model_Field_REST_Controller`)
+accepts a matching `choices` array param, required exactly when
+`require_choices_for_field()` requires it.
+
+**Storage**: Buttons/Select/Radio all store one plain string --
+`blueprint_method() => 'string'`, no different from a Text field's own
+column. **Checkbox stores a JSON array in one `text` column** -- any
+number of the field's own choices at once, `[]` if none. Reading/writing
+a genuine PHP array through that one column is what `Field_Type::
+eloquent_cast()` (new, alongside `is_filterable()`/`is_text_renderable()`)
+is for: `Checkbox_Field_Type::eloquent_cast()` returns `'array'`, and
+`Model_Builder::casts_literal()` prints a matching `'topics' => 'array'`
+entry into the generated model's own `protected $casts = [...]` (a new
+property `model_template()` always prints now, `array()` for a model with
+no field that needs one) -- Eloquent's own cast machinery then handles
+the JSON encode/decode transparently, so `$record->topics` is always a
+real array, never a raw JSON string a caller would have to remember to
+decode. `True_False_Field_Type::eloquent_cast()` returns `'boolean'` the
+same way, for a real `boolean` column. Every other built-in type's
+`eloquent_cast()` is `null` -- no cast needed, unchanged from before this
+existed.
+
+**Validation, not just casting**: `Checkbox_Field_Type::cast( $value )`
+normalizes an incoming array (or a lone scalar, tolerated as a one-item
+selection) into a de-duplicated, trimmed, blanks-dropped array of
+strings -- never validated against the field's own *currently*-configured
+choices (`cast()` is stateless, with no access to which field this value
+is even for; a stale checked value from a since-removed choice is simply
+carried over as-is, the same tradeoff `update()`/`remove()` already
+accept elsewhere for name/type changes). `True_False_Field_Type::cast( $value
+)` accepts a real bool (the normal case) or the common truthy/falsy
+string spellings (`"1"`/`"0"`, `"true"`/`"false"`, `"yes"`/`"no"`,
+`"on"`/`"off"`) rather than PHP's own loose `(bool)` cast, which would
+make the literal string `"false"` cast to `true`.
+
+**Not filterable, not text-renderable**: Checkbox declares both
+`is_filterable()` and `is_text_renderable()` `false` -- there's no single
+scalar to compare a facet against (the same reasoning `Relate_To_Many_Field_Type`
+already gives), and `gateway/card-field-text` printing `(string)` an
+array would emit a PHP warning and print the literal word "Array".
+True/False declares `is_text_renderable()` `false` too, for a subtler
+reason: `(string) true` is `"1"`, but `(string) false` is `""`, which
+reads as "this field is unset" rather than "this is off" -- a dedicated
+block that prints an actual "Yes"/"No" is real, separate, undone work.
+Buttons/Select/Radio are ordinary single strings, so both stay `true`.
+
+**The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)
+shows a new `ChoicesEditor` (`admin-app/src/components/ChoicesEditor.jsx`)
+-- one text input per choice, "↑"/"↓" buttons to reorder, "Remove" to
+delete one, "Add Choice" to append a blank one -- whenever the picked
+type's own `has_choices` (a new key on `Field_Type_Registry::describe_all()`'s
+own output, alongside a Choice type's own `is_multiple`) is `true`, for
+both the "Add Field" form and an in-place field edit; Save/Add Field is
+disabled until at least one non-blank choice exists. `RecordForm`
+(`admin-app/src/components/RecordForm.jsx`) reads a field's own `choices`
+straight off the field object (already threaded through by
+`Model_Fields::all()`/the fields REST route) to render the right control
+per `input_type` -- `<select>` for "select", a radio group for "radio", a
+row of toggle buttons for "buttons", a group of checkboxes for
+"checkboxes" (form state and the submitted value both a plain string
+array), and a single native checkbox for "boolean" (form state and the
+submitted value both a real JS boolean).
 
 ## Records -- a CRUD UI for a model's actual rows
 

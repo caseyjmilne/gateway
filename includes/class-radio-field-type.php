@@ -1,7 +1,8 @@
 <?php
 /**
- * The "Text" field type -- a single-line string, rendered as a plain
- * text input.
+ * The "Radio" field type -- a single choice from the field's own
+ * configured list (Model_Field_Choices), rendered as a native group of
+ * `<input type="radio">` options, all sharing the field's own name.
  *
  * @package Gateway
  */
@@ -10,20 +11,20 @@ namespace Gateway;
 
 defined( 'ABSPATH' ) || exit;
 
-class Text_Field_Type implements Field_Type {
+class Radio_Field_Type implements Choice_Field_Type {
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function key() {
-		return 'text';
+		return 'radio';
 	}
 
 	/**
 	 * @inheritDoc
 	 */
 	public static function label() {
-		return __( 'Text', 'gateway' );
+		return __( 'Radio', 'gateway' );
 	}
 
 	/**
@@ -37,7 +38,7 @@ class Text_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function input_type() {
-		return 'text';
+		return 'radio';
 	}
 
 	/**
@@ -73,5 +74,12 @@ class Text_Field_Type implements Field_Type {
 	 */
 	public static function eloquent_cast() {
 		return null;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_multiple() {
+		return false;
 	}
 }

@@ -130,6 +130,20 @@ class Model_Field_REST_Controller {
 				'required' => false,
 				'type'     => 'string',
 			),
+			'choices'              => array(
+				// Required only for a Choice_Field_Type ("Buttons"/
+				// "Select"/"Radio"/"Checkbox") -- Model_Fields::add()/
+				// update() themselves enforce that (require_choices_for_field()),
+				// same reasoning as relationship_method above. Ordered --
+				// array element order is what the admin app's own
+				// orderable choices list editor actually sends, and what
+				// Model_Field_Choices::set() records as each choice's
+				// own `position`.
+				'required' => false,
+				'type'     => 'array',
+				'items'    => array( 'type' => 'string' ),
+				'default'  => array(),
+			),
 		);
 	}
 
@@ -169,7 +183,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'name' ),
 			$request->get_param( 'type' ),
 			(string) $request->get_param( 'label' ),
-			$request->get_param( 'relationship_method' )
+			$request->get_param( 'relationship_method' ),
+			$request->get_param( 'choices' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -189,7 +204,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'field_name' ),
 			$request->get_param( 'name' ),
 			$request->get_param( 'type' ),
-			(string) $request->get_param( 'label' )
+			(string) $request->get_param( 'label' ),
+			$request->get_param( 'choices' )
 		);
 
 		if ( is_wp_error( $result ) ) {
