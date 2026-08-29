@@ -15,6 +15,10 @@
  * own docblock, and Field_Type's own is_sensitive() docblock for exactly
  * what this does and doesn't cover.
  *
+ * Recognizes Placeholder/Prepend/Append under Presentation, same as
+ * Text -- but NOT a Default Value under General, unlike Text/Email/URL/
+ * Number/Range (see supports_default_value()'s own docblock below).
+ *
  * @package Gateway
  */
 
@@ -98,13 +102,26 @@ class Password_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * `instructions` plus Placeholder/Prepend/Append -- the same three
+	 * Text_Field_Type recognizes, and just as meaningful here (a
+	 * placeholder hinting at expected format, a prepend/append flanking
+	 * the masked input) -- deliberately NOT `supports_default_value()`
+	 * below, unlike Text/Email/URL: a default PASSWORD pre-filling every
+	 * new record raises the exact "is this actually secret" question a
+	 * default value doesn't raise for an ordinary string.
 	 */
 	public static function presentation_fields() {
-		return array( 'instructions' );
+		return array( 'instructions', 'placeholder', 'prepend', 'append' );
 	}
 
 	/**
 	 * @inheritDoc
+	 *
+	 * `false`, unlike Text/Number/Range/Email/URL -- a default PASSWORD
+	 * pre-filling every new record raises the exact "is this actually
+	 * secret if it's the same guessable value on every unfilled record"
+	 * question a default value doesn't raise for an ordinary string.
 	 */
 	public static function supports_default_value() {
 		return false;

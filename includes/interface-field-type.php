@@ -184,28 +184,30 @@ interface Field_Type {
 	 *
 	 * `['instructions']` -- and nothing else -- for every built-in type
 	 * except `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
-	 * `Email_Field_Type`/`URL_Field_Type` (`instructions` plus
-	 * `placeholder`/`prepend`/`append`, and, for Number/Range only,
-	 * `step` -- the HTML `<input type="number"|"range">` `step`
-	 * attribute; recognized by no other type, since it means nothing for
-	 * a plain string). Email recognizes the same three as Text (no
-	 * `step` -- a "step" between email addresses is meaningless), the
-	 * same "nothing about this type's own semantics changes what a
-	 * placeholder/prepend/append mean" reasoning that also gives it
-	 * `supports_default_value()` below. URL recognizes `placeholder`
-	 * ONLY, no `prepend`/`append` -- unlike an email address, flanking a
-	 * URL with a "$"/"USD"-style addon reads as nonsense, so those two
-	 * are deliberately left out of its own catalog rather than offered
-	 * and just never making sense in practice. `instructions` is
-	 * universal -- a short note under a field's own label is meaningful
-	 * for literally any field type, unlike the other four -- so unlike
-	 * them it's never gated by anything past this method simply always
-	 * including it. The order a type returns these in is the order the
-	 * Presentation tab renders them in, not just which ones appear --
-	 * `instructions` always comes first (`RecordForm` renders it as the
-	 * very first thing under a field's own label, before its control),
-	 * and `Number_Field_Type`/`Range_Field_Type` return `step` right
-	 * after `placeholder` and before `prepend` for the same reason.
+	 * `Email_Field_Type`/`URL_Field_Type`/`Password_Field_Type`
+	 * (`instructions` plus `placeholder`/`prepend`/`append`, and, for
+	 * Number/Range only, `step` -- the HTML `<input type="number"|"range">`
+	 * `step` attribute; recognized by no other type, since it means
+	 * nothing for a plain string). Email and Password both recognize the
+	 * same three as Text (no `step` -- meaningless for either), the same
+	 * "nothing about this type's own semantics changes what a
+	 * placeholder/prepend/append mean" reasoning -- Email also carries
+	 * that reasoning into `supports_default_value()` below, Password
+	 * deliberately does NOT (see that method's own docblock). URL
+	 * recognizes `placeholder` ONLY, no `prepend`/`append` -- unlike an
+	 * email address, flanking a URL with a "$"/"USD"-style addon reads as
+	 * nonsense, so those two are deliberately left out of its own catalog
+	 * rather than offered and just never making sense in practice.
+	 * `instructions` is universal -- a short note under a field's own
+	 * label is meaningful for literally any field type, unlike the other
+	 * four -- so unlike them it's never gated by anything past this
+	 * method simply always including it. The order a type returns these
+	 * in is the order the Presentation tab renders them in, not just
+	 * which ones appear -- `instructions` always comes first (`RecordForm`
+	 * renders it as the very first thing under a field's own label,
+	 * before its control), and `Number_Field_Type`/`Range_Field_Type`
+	 * return `step` right after `placeholder` and before `prepend` for
+	 * the same reason.
 	 *
 	 * @return string[] Subset of `['instructions', 'placeholder', 'step', 'prepend', 'append']`, in display order, always including `'instructions'`.
 	 */

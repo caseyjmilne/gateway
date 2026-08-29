@@ -4325,18 +4325,19 @@ A field's "Presentation" tab (previously an empty placeholder, alongside
 -- a note shown between the label and the control -- is universal: every
 built-in type recognizes it, and it's always the FIRST Presentation
 setting a type recognizes, regardless of what else it recognizes. On top
-of that, **Text**, **Number**, **Email**, and **URL** all also recognize
-a placeholder, and Text/Number/Range/Email recognize a prepended and/or
-appended string shown flush against their own input (e.g. a "$" prepend
-and a "USD" append on a price field). Two deliberate exceptions: Range
-does NOT get a placeholder the way Text/Number/Email/URL do -- a
-placeholder is text shown inside an empty `<input>` before a value is
-typed, which means nothing for `<input type="range">` (it always has a
-value, the slider's current position, never an empty state to hint at)
--- and URL does NOT get Prepend/Append the way Text/Number/Range/Email
-do, since flanking a URL with a "$"/"USD"-style addon reads as nonsense
-in a way it doesn't for an email address or a price. Number and Range
-instead share one setting of their own, **Step**, the HTML
+of that, **Text**, **Number**, **Email**, **URL**, and **Password** all
+also recognize a placeholder, and Text/Number/Range/Email/Password
+recognize a prepended and/or appended string shown flush against their
+own input (e.g. a "$" prepend and a "USD" append on a price field). Two
+deliberate exceptions: Range does NOT get a placeholder the way
+Text/Number/Email/URL/Password do -- a placeholder is text shown inside
+an empty `<input>` before a value is typed, which means nothing for
+`<input type="range">` (it always has a value, the slider's current
+position, never an empty state to hint at) -- and URL does NOT get
+Prepend/Append the way Text/Number/Range/Email/Password do, since
+flanking a URL with a "$"/"USD"-style addon reads as nonsense in a way
+it doesn't for an email address, a password, or a price. Number and
+Range instead share one setting of their own, **Step**, the HTML
 `<input type="number">`/`<input type="range">` `step` attribute -- e.g.
 `0.01` so a price field increments/decrements (and validates) by cents
 rather than whole units, or `5` so a quantity field or a slider only
@@ -4370,10 +4371,11 @@ type returns just `['instructions']` except `Text_Field_Type`
 after `placeholder` and before `prepend`, which is exactly where it
 renders), `Range_Field_Type` (the same as Number's, minus `placeholder`
 -- a slider always has a value, there's no empty state a placeholder
-could hint at), `Email_Field_Type` (the same as Text's exactly -- an
-email address is presentationally just another single-line string), and
-`URL_Field_Type` (`instructions` plus `placeholder` ONLY, no
-`prepend`/`append` -- unlike an email address, flanking a URL with a
+could hint at), `Email_Field_Type`/`Password_Field_Type` (both the same
+as Text's exactly -- an email address or a masked password is
+presentationally just another single-line string), and `URL_Field_Type`
+(`instructions` plus `placeholder` ONLY, no `prepend`/`append` --
+unlike an email address or a password, flanking a URL with a
 "$"/"USD"-style addon reads as nonsense). `step` is recognized by no
 other type -- it means nothing for a plain string. Adding a setting to
 another type later
@@ -4498,17 +4500,23 @@ control that otherwise always starts at whatever a bare
 Email/URL are presentationally just another single-line string, so a
 default there is the same idea again -- e.g. pre-filling a "Reply to"
 field with the site owner's own address, or a "Website" field with their
-own domain.
+own domain. **Password is the deliberate exception** despite being
+presentationally identical to Text/Email/URL otherwise (it gets
+Placeholder/Prepend/Append same as they do) -- a default PASSWORD
+pre-filling every new record raises the exact "is this actually secret
+if it's the same guessable value on every unfilled record" question a
+default value doesn't raise for an ordinary string, so
+`Password_Field_Type::supports_default_value()` stays `false`.
 
 **`Field_Type::supports_default_value()`** (new interface method) is a
 second, separate whitelist alongside `presentation_fields()` -- `true`
 for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
 `Email_Field_Type`/`URL_Field_Type` today,
-`false` for every other built-in type (a default makes little sense for
-a Choice type, whose own choices list already offers a natural "pick
-one," or a Relate field, where a default related record raises its own
-questions -- does it still exist, is it still valid -- this doesn't
-attempt to answer). The
+`false` for every other built-in type, including `Password_Field_Type`
+(per above) -- a default makes little sense for a Choice type, whose own
+choices list already offers a natural "pick one," or a Relate field,
+where a default related record raises its own questions -- does it
+still exist, is it still valid -- this doesn't attempt to answer. The
 two methods are kept separate because they answer different questions
 (which Presentation-tab inputs to show vs. whether a default value makes
 sense for this type at all) and render in different tabs, but a default
