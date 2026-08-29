@@ -462,20 +462,22 @@
 
 .gateway-admin-app .gateway-conditional-logic {
 	max-width: 640px;
+	margin-top: 24px;
 }
 
 .gateway-admin-app .gateway-conditional-logic-label {
 	font-weight: 500;
 	font-size: 13px;
 	color: rgb( 60, 67, 74 );
-	margin: 0 0 8px;
+	margin: 0 0 12px;
 }
 
 .gateway-admin-app .gateway-conditional-logic-group {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
-	padding: 16px;
+	gap: 16px;
+	padding: 24px;
+	margin-bottom: 12px;
 	background: #fff;
 	border: 1px solid #d0d5dd;
 	border-radius: 6px;
@@ -484,7 +486,7 @@
 .gateway-admin-app .gateway-conditional-logic-rule {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 12px;
 }
 
 .gateway-admin-app .gateway-conditional-logic-rule select,
@@ -527,7 +529,7 @@
 }
 
 .gateway-admin-app .gateway-conditional-logic-or {
-	margin: 8px 0;
+	margin: 4px 0 16px;
 	font-weight: 500;
 	color: rgb( 60, 67, 74 );
 }

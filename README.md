@@ -4583,7 +4583,12 @@ instead (removing a group's own last rule removes the whole group -- a
 "group with zero rules" isn't a state worth representing). "or" appears
 between groups; "Add rule group" appends a new OR'd one. Conditional
 Logic's own tab-heading dot lights up once it's switched on AND at least
-one rule actually has a field picked.
+one rule actually has a field picked. Each group renders as its own
+bordered, generously-padded card (`24px`, `16px` between its own rules)
+with real margin above "Show this field if", below each card, and around
+"or" -- a first pass had all of this packed tight against itself with no
+breathing room at all, corrected once actually seen rendered rather than
+just read as JSX.
 
 **`RecordForm`'s own client-side evaluation** (`fieldIsVisible()`, using
 the same five operators, the same OR-of-ANDs shape, and the same
