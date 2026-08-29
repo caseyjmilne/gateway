@@ -463,6 +463,25 @@
 	color: rgb( 60, 67, 74 );
 }
 
+.gateway-admin-app .gateway-record-form p {
+	/* Each field is a plain <p> (see RecordForm's own docblock) --
+	 * without this, they fall back to wp-admin's own default <p> margin
+	 * (1em, ~16px top+bottom -- ~16px of empty space between two
+	 * consecutive fields, half of it "belonging" to each), reading as
+	 * cramped once a field's own instructions/description line is
+	 * involved too. 32px total gap, the same figure FieldEditor's own
+	 * form grid already settled on for the same reason -- margin-bottom
+	 * only (not split top+bottom) so it's a single, predictable amount
+	 * of space between any two fields, not dependent on each one's own
+	 * margin-top collapsing against its neighbor's margin-bottom the way
+	 * adjoining block margins normally would. */
+	margin: 0 0 32px;
+}
+
+.gateway-admin-app .gateway-record-form p:last-of-type {
+	margin-bottom: 0;
+}
+
 .gateway-admin-app .gateway-record-form-required {
 	color: #d63638;
 	font-weight: normal;
@@ -502,7 +521,19 @@
 	align-items: center;
 	padding: 0 8px;
 	background: #f0f0f1;
-	border: 1px solid #8c8f94;
+	/* Same border-color/radius as `input.regular-text` itself -- the
+	 * whole point of this group is to read as ONE bordered control, not
+	 * three stacked boxes, so an addon's own border has to be visually
+	 * indistinguishable from the input's own. Every corner gets the
+	 * radius by default; `:first-child`/`:last-child` below then strip
+	 * it from whichever corners actually touch the input (or the OTHER
+	 * addon, in the middle of a three-piece group), leaving rounded
+	 * corners only at the group's own true left/right extremes --
+	 * whichever element (an addon, or the input itself, see its own
+	 * `:not(:first-child)`/`:not(:last-child)` rules below) happens to
+	 * sit there. */
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
 	color: #646970;
 	font-weight: normal;
 	white-space: nowrap;

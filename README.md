@@ -4465,8 +4465,11 @@ the server or stored anywhere.
 above already guarantees every other type's `settings` is `{}`, there's
 nothing for a type-specific check here to protect against.
 `settings.instructions`, when present, renders as a small
-`.description`-styled note between a field's label and its own control,
-for any field type at all. `settings.placeholder` only ever has anything
+`.description`-styled note UNDER a field's own control (not between the
+label and it -- ACF's own convention this mirrors, and where every other
+per-field description already lives here: Default Value's "Appears when
+creating a new record.", Character Limit's "Leave blank for no limit.",
+etc.), for any field type at all. `settings.placeholder` only ever has anything
 to show for the one plain `<input>` fallback branch at the very bottom
 of `RecordForm`'s own type-conditional chain (textarea/range/relate/
 select/radio/buttons/checkboxes/boolean each render their own dedicated
@@ -4493,6 +4496,39 @@ what's configured. Setting `step` on a non-numeric `<input>` is a
 harmless no-op in every browser regardless, so neither branch needs to
 gate it on the field's own type beyond already being one of the two
 types that recognize it.
+
+**Every field is a plain `<p>`, given a flat 32px `margin-bottom`**
+(`.gateway-record-form p`) -- the same figure `FieldEditor`'s own form
+grid already settled on, for the same reason: left to wp-admin's own
+default `<p>` margin (`1em`, ~16px), two consecutive fields read as
+cramped once a field's own instructions/description line is in the mix
+too. `margin-bottom` only, not split top-and-bottom, so the gap between
+any two fields is a single predictable amount rather than depending on
+adjoining block margins collapsing against each other. The very last
+field's own trailing margin is zeroed out again (`p:last-of-type`) --
+that selector actually lands on the Save/Cancel buttons' own `<p>` (the
+true last one, after every field), tidying up the form's own bottom
+edge rather than leaving 32px of dead space below the buttons.
+
+**Prepend/Append addons read as ONE continuously-bordered control, not
+three stacked boxes.** `.gateway-record-form-input-addon` shares the
+input's own border-color (`#d0d5dd`) and border-radius (`6px`) as its
+own BASE style -- previously a plain flat square in a visibly different
+gray (`#8c8f94`), which is what a screenshot showing a Password field
+with BOTH a Prepend and an Append configured (`PASS: [_____] WORD`)
+surfaced: no corner anywhere in the group was ever rounded, since the
+addon never had a `border-radius` at all, only the input did (and the
+input, sandwiched between two addons, has its OWN radius zeroed out on
+every side that touches one -- correctly, since it's never the group's
+own outer edge in that configuration). `:first-child`/`:last-child`
+selectors on both the addon and the input then strip radius/border from
+whichever sides face INWARD (an addon's side touching the input, or the
+input's side touching an addon), leaving a rounded corner only at the
+group's own true left and right extremes -- whichever element actually
+sits there for a given field (an addon when configured, the input
+itself otherwise) -- the same "single pill, one border, correct corner
+wherever the group actually ends" shape regardless of whether a field
+has a Prepend, an Append, both, or neither.
 
 ### A real bug: settings silently never saving, for a genuinely empty field only
 

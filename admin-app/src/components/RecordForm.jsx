@@ -53,8 +53,12 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * recognize any of the fixed catalog (`Model_Fields::sanitize_settings()`
  * already guarantees that server-side), so this component never needs
  * its own per-type list to know when there's nothing to show.
- * `settings.instructions` renders as a small note between the label and
- * the actual control, for any field type. `settings.placeholder`/`step`
+ * `settings.instructions` renders as a small note UNDER the control (not
+ * between the label and it -- ACF's own convention this mirrors, and
+ * matching where every other per-field description here already lives:
+ * Default Value's "Appears when creating a new record.", Character
+ * Limit's "Leave blank for no limit.", etc., all sit under their own
+ * control too), for any field type. `settings.placeholder`/`step`
  * only ever have anything to show for the one plain `<input>` fallback
  * branch at the bottom (nothing else -- textarea, select, a relate
  * autocomplete, ...) -- currently recognizes them at all -- with one
@@ -390,11 +394,6 @@ export default function RecordForm( {
 								</span>
 							) }
 						</label>
-						{ field.settings?.instructions && (
-							<span className="description gateway-record-form-instructions">
-								{ field.settings.instructions }
-							</span>
-						) }
 						<br />
 						{ 'textarea' === inputType && (
 							<textarea
@@ -574,6 +573,11 @@ export default function RecordForm( {
 									onChange={ handleChange( field.name ) }
 								/>
 							) ) }
+						{ field.settings?.instructions && (
+							<span className="description gateway-record-form-instructions">
+								{ field.settings.instructions }
+							</span>
+						) }
 					</p>
 				);
 			} ) }
