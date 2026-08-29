@@ -824,12 +824,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	const renderEditPanel = () => (
 		<div className="gateway-field-editor-edit-panel">
-			<div className="nav-tab-wrapper gateway-field-editor-subtabs">
+			<div className="gateway-field-editor-subtabs">
 				<button
 					type="button"
 					className={
-						'nav-tab' +
-						( 'general' === editTab ? ' nav-tab-active' : '' )
+						'gateway-subtab' +
+						( 'general' === editTab ? ' gateway-subtab-active' : '' )
 					}
 					onClick={ () => setEditTab( 'general' ) }
 				>
@@ -845,8 +845,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				<button
 					type="button"
 					className={
-						'nav-tab' +
-						( 'validation' === editTab ? ' nav-tab-active' : '' )
+						'gateway-subtab' +
+						( 'validation' === editTab ? ' gateway-subtab-active' : '' )
 					}
 					onClick={ () => setEditTab( 'validation' ) }
 				>
@@ -862,8 +862,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				<button
 					type="button"
 					className={
-						'nav-tab' +
-						( 'presentation' === editTab ? ' nav-tab-active' : '' )
+						'gateway-subtab' +
+						( 'presentation' === editTab ? ' gateway-subtab-active' : '' )
 					}
 					onClick={ () => setEditTab( 'presentation' ) }
 				>
@@ -879,9 +879,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				<button
 					type="button"
 					className={
-						'nav-tab' +
+						'gateway-subtab' +
 						( 'conditional_logic' === editTab
-							? ' nav-tab-active'
+							? ' gateway-subtab-active'
 							: '' )
 					}
 					onClick={ () => setEditTab( 'conditional_logic' ) }
@@ -1235,7 +1235,12 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								</tr>,
 								isEditingThisRow && (
 									<tr key={ `${ field.id ?? 'draft' }-panel` }>
-										<td colSpan={ 4 }>{ renderEditPanel() }</td>
+										<td
+											colSpan={ 4 }
+											className="gateway-field-editor-panel-cell"
+										>
+											{ renderEditPanel() }
+										</td>
 									</tr>
 								),
 							];

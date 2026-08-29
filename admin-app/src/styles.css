@@ -9,6 +9,20 @@
 	max-width: 720px;
 }
 
+.gateway-admin-app input.regular-text,
+.gateway-admin-app textarea.regular-text,
+.gateway-admin-app select {
+	border-color: #d0d5dd;
+	border-radius: 6px;
+}
+
+.gateway-admin-app input.regular-text:focus,
+.gateway-admin-app textarea.regular-text:focus,
+.gateway-admin-app select:focus {
+	border-color: #399ccb;
+	box-shadow: 0 0 0 1px #399ccb;
+}
+
 .gateway-admin-app input[readonly] {
 	background: #f0f0f1;
 	color: #646970;
@@ -100,6 +114,16 @@
 	color: #2271b1;
 }
 
+.gateway-admin-app .gateway-field-editor-panel-cell {
+	/* Overrides .widefat's own default cell padding -- without this, the
+	 * panel's own border-left (below) sits inset from the table's actual
+	 * left edge by that padding, breaking what should read as one
+	 * continuous blue line running from the active row's own box-shadow
+	 * (flush with the table's real edge) straight down the side of the
+	 * edit panel underneath it. */
+	padding: 0;
+}
+
 .gateway-admin-app .gateway-field-editor-edit-panel {
 	background: #f6f7f7;
 	border-left: 3px solid #2271b1;
@@ -108,7 +132,31 @@
 }
 
 .gateway-admin-app .gateway-field-editor-edit-panel .gateway-field-editor-subtabs {
+	display: flex;
+	gap: 24px;
+	border-bottom: 1px solid #dcdcde;
 	margin: 0 0 1.25em;
+}
+
+.gateway-admin-app .gateway-subtab {
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px;
+	padding: 0 0 10px;
+	font-size: 14px;
+	color: #50575e;
+	cursor: pointer;
+}
+
+.gateway-admin-app .gateway-subtab:hover {
+	color: #1d2327;
+}
+
+.gateway-admin-app .gateway-subtab-active,
+.gateway-admin-app .gateway-subtab-active:hover {
+	color: #2271b1;
+	border-bottom-color: #2271b1;
 }
 
 .gateway-admin-app .gateway-field-editor-choices-inline {
@@ -202,7 +250,9 @@
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 4px;
-	font-weight: 600;
+	font-weight: 500;
+	font-size: 13px;
+	color: rgb( 60, 67, 74 );
 }
 
 .gateway-admin-app .gateway-field-editor-form-grid > label .description {
@@ -264,7 +314,9 @@
 }
 
 .gateway-admin-app .gateway-record-form label {
-	font-weight: 600;
+	font-weight: 500;
+	font-size: 13px;
+	color: rgb( 60, 67, 74 );
 }
 
 .gateway-admin-app .gateway-record-form-required {

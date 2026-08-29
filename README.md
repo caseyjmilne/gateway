@@ -4064,12 +4064,44 @@ Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 
 **The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)'s
 own edit panel has four ALWAYS-present tabs -- "General", "Validation",
-"Presentation", "Conditional Logic" -- plain `nav-tab`/`nav-tab-active`,
-the same core wp-admin classes the Fields/Relationships tabs use, and
-the same four ACF's own field-settings screen has ("Conditional Logic"
-is still an empty placeholder, not backed by anything on the PHP side
-yet; see "Presentation field settings" below for what Presentation
-actually does). Name/Label/Type live in General; a `ChoicesEditor`
+"Presentation", "Conditional Logic" -- the same four ACF's own
+field-settings screen has ("Conditional Logic" is still an empty
+placeholder, not backed by anything on the PHP side yet; see
+"Presentation field settings" below for what Presentation actually
+does). Unlike the top-level Fields/Relationships tabs on a model's
+detail screen (still plain `nav-tab`/`nav-tab-active`, core wp-admin's
+own boxed tab look), these four render as flat, text-only tabs with a
+thin bottom border under the whole strip and a blue underline under
+whichever one is active (`.gateway-subtab`/`.gateway-subtab-active`,
+this component's own small addition to `styles.css` -- wp-admin has no
+built-in "underline tabs" style of its own to reach for instead). Every
+`.regular-text`/`<select>` across the whole admin app (not just this
+panel) gets the same small visual treatment on top of wp-admin's own
+plain-square default: a `#d0d5dd` border, a `6px` border-radius, and a
+`#399ccb` border (plus a matching 1px "glow" via `box-shadow`) on focus.
+Every label in this panel's own form grid, and in `RecordForm`'s, is
+`13px`/`500`-weight/`rgb(60, 67, 74)` -- consistent, smaller, and less
+heavy than a bare `<label>`'s browser default, without touching a
+label's own `.description` hint underneath it (already its own separate,
+lighter rule; unaffected either way since a direct rule on a specific
+element always wins over an inherited one from its parent).
+
+**The active row's own left-edge accent and the panel's own `border-left`
+line up into one continuous straight line, not two offset segments.**
+The active row's own blue accent (`.gateway-field-editor-row-active`'s
+`box-shadow: inset 3px 0 0 #2271b1`, on the summary `<tr>` itself) sits
+flush with the table's real left edge, ignoring cell padding the way an
+inset box-shadow on a row always does; the panel's own `border-left`
+(above) is a real border on a `<div>` one level *inside* its own
+`<td>`, which -- with `.widefat`'s own default cell padding still
+in effect -- would otherwise start a few pixels further right than the
+row's own accent above it, breaking what should read as one line into
+two visibly offset ones. Fixed with one more class, `.gateway-field-editor-panel-cell`,
+on that specific `<td>` (`colSpan={4}`, wrapping `renderEditPanel()`)
+zeroing out its own padding, so the panel's own border-left starts at
+the exact same x-position the row's own box-shadow already does.
+
+Name/Label/Type live in General; a `ChoicesEditor`
 (`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
 them, in that same tab, only when the picked type's own `has_choices` (a
 key on `Field_Type_Registry::describe_all()`'s own output, alongside a
