@@ -88,15 +88,26 @@ class Media_REST_Controller {
 	}
 
 	/**
-	 * Same gate as the rest of the Models/Fields/Records admin API.
+	 * Same gate as the rest of the Models/Fields/Records admin API --
+	 * `manage_options`, not `upload_files`: every route here (image
+	 * sizes, an attachment's own enriched shape) is metadata for the
+	 * Gateway admin screen itself, which is already only ever reached by
+	 * someone who can `manage_options` (see `Admin_Page::init()`'s own
+	 * `add_menu_page()` call) -- gating on `upload_files` instead would
+	 * make this one route silently unusable for anyone who reaches the
+	 * screen at all but happens to lack that separate, narrower media
+	 * -library capability (a real role/capability split some sites do
+	 * have), with the failure invisible client-side: `useImageSizes()`
+	 * fails silently on a rejected fetch, so a 403 here reads as nothing
+	 * more than an empty Preview Size `<select>`, not an obvious error.
 	 *
 	 * @return true|\WP_Error
 	 */
 	public static function permissions_check() {
-		if ( ! current_user_can( 'upload_files' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			return new \WP_Error(
 				'gateway_forbidden',
-				__( 'You are not allowed to manage media.', 'gateway' ),
+				__( 'You are not allowed to manage Gateway models.', 'gateway' ),
 				array( 'status' => rest_authorization_required_code() )
 			);
 		}
