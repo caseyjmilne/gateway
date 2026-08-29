@@ -4101,7 +4101,12 @@ on that specific `<td>` (`colSpan={4}`, wrapping `renderEditPanel()`)
 zeroing out its own padding, so the panel's own border-left starts at
 the exact same x-position the row's own box-shadow already does.
 
-Name/Label/Type live in General; a `ChoicesEditor`
+Type/Name/Label live in General, **Type first** -- deliberately, not
+Name/Label/Type: it's both the more natural order to fill the form out
+in, and what the other fields' own type-dependent rendering (Name
+becoming a relationship picker for a relate type; Default Value, below,
+switching between a text and a number input) already assumes; a
+`ChoicesEditor`
 (`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
 them, in that same tab, only when the picked type's own `has_choices` (a
 key on `Field_Type_Registry::describe_all()`'s own output, alongside a

@@ -148,14 +148,20 @@ const PRESENTATION_FIELD_META = {
  * as every other field type.
  *
  * Four tabs, always all present, mirroring ACF's own field-settings
- * layout: **General** (Name/Label/Type; directly under Label, when the
- * picked type's own `supports_default_value` is true -- Text and Number
- * only, today -- a Default Value input, applied by `RecordForm` as the
- * initial value of its own "Add New" form and nowhere else, with its own
- * small "Appears when creating a new record." note underneath; plus --
- * further below, never a tab of its own -- a ChoicesEditor for the
- * field's own orderable choice list, Gateway\\Model_Field_Choices on the
- * server, shown only when the picked type's own `has_choices` is true),
+ * layout: **General** (Type/Name/Label, in that order -- Type comes
+ * FIRST, not last: picking it before typing a Name/Label/Default Value
+ * is both the more natural order for a site owner filling this out top
+ * to bottom, and what those other inputs' own type-dependent rendering
+ * (the relationship picker in place of Name for a relate type, the
+ * Default Value input switching between text/number below) already
+ * implicitly assumes; directly under Label, when the picked type's own
+ * `supports_default_value` is true -- Text and Number only, today -- a
+ * Default Value input, applied by `RecordForm` as the initial value of
+ * its own "Add New" form and nowhere else, with its own small "Appears
+ * when creating a new record." note underneath; plus -- further below,
+ * never a tab of its own -- a ChoicesEditor for the field's own
+ * orderable choice list, Gateway\\Model_Field_Choices on the server,
+ * shown only when the picked type's own `has_choices` is true),
  * then **Validation** (a "Required" toggle, Gateway\\Model_Fields::
  * validate_required_fields() on the server -- applies to every field
  * regardless of type; plus, when the picked type's own
@@ -893,6 +899,23 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			<div hidden={ 'general' !== editTab }>
 				<div className="gateway-field-editor-form-grid">
 					<label>
+						<span>Type</span>
+						<select disabled={ editingIsRelate } { ...register( 'type' ) }>
+							{ fieldTypes.map( ( type ) => (
+								<option key={ type.key } value={ type.key }>
+									{ type.label }
+								</option>
+							) ) }
+						</select>
+					</label>
+					{ editingIsRelate && (
+						<p className="description">
+							This field&rsquo;s relationship can&rsquo;t be
+							changed -- remove it and add a new one instead if
+							it needs to point somewhere else.
+						</p>
+					) }
+					<label>
 						<span>Name</span>
 						{ editRelationshipType ? (
 							matchingRelationships.length > 0 ? (
@@ -958,23 +981,6 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								Appears when creating a new record.
 							</span>
 						</label>
-					) }
-					<label>
-						<span>Type</span>
-						<select disabled={ editingIsRelate } { ...register( 'type' ) }>
-							{ fieldTypes.map( ( type ) => (
-								<option key={ type.key } value={ type.key }>
-									{ type.label }
-								</option>
-							) ) }
-						</select>
-					</label>
-					{ editingIsRelate && (
-						<p className="description">
-							This field&rsquo;s relationship can&rsquo;t be
-							changed -- remove it and add a new one instead if
-							it needs to point somewhere else.
-						</p>
 					) }
 				</div>
 
