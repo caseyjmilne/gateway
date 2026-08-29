@@ -293,6 +293,12 @@ class Records_REST_Controller {
 			return $required_check;
 		}
 
+		$character_limit_check = Model_Fields::validate_character_limits( $class, $data );
+
+		if ( is_wp_error( $character_limit_check ) ) {
+			return $character_limit_check;
+		}
+
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
@@ -355,6 +361,12 @@ class Records_REST_Controller {
 
 		if ( is_wp_error( $required_check ) ) {
 			return $required_check;
+		}
+
+		$character_limit_check = Model_Fields::validate_character_limits( $class, $data );
+
+		if ( is_wp_error( $character_limit_check ) ) {
+			return $character_limit_check;
 		}
 
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );

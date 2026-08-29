@@ -418,6 +418,81 @@ class Model_Fields {
 	}
 
 	/**
+	 * Checks every one of a model's fields with a configured
+	 * `character_limit` (`Field_Type::supports_character_limit()`,
+	 * `Model_Fields::sanitize_settings()`'s own doing -- always a positive
+	 * whole number by the time it's stored, never an arbitrary string)
+	 * against $data, the same way validate_required_fields() checks
+	 * `required` -- called by Records_REST_Controller::create_record()/
+	 * update_record() right alongside it, straight after
+	 * sanitize_record_data() casts the request body.
+	 *
+	 * Unlike validate_required_fields(), this needs no $is_create
+	 * distinction: a key the request simply doesn't mention has nothing
+	 * to check a length against either way, on a create or an update, so
+	 * a field this method skips entirely whenever `array_key_exists()`
+	 * fails is correct for both call sites without a separate case for
+	 * each. Only a string value is ever checked (a `character_limit`
+	 * setting only ever exists on Text_Field_Type/Text_Area_Field_Type in
+	 * the first place, both plain strings) -- `mb_strlen()` when available
+	 * (a multi-byte UTF-8 character is one character, not two or three,
+	 * against a limit meant to describe how much a person actually typed),
+	 * falling back to `strlen()` on a build without the `mbstring`
+	 * extension enabled, same trade-off PHP itself expects call sites to
+	 * make.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $data       sanitize_record_data()'s own output.
+	 * @return true|\WP_Error
+	 */
+	public static function validate_character_limits( $class_name, array $data ) {
+		$too_long = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( ! array_key_exists( $field['name'], $data ) ) {
+				continue;
+			}
+
+			$limit = isset( $field['settings']['character_limit'] ) ? (int) $field['settings']['character_limit'] : 0;
+
+			if ( $limit <= 0 ) {
+				continue;
+			}
+
+			$value = $data[ $field['name'] ];
+
+			if ( ! is_string( $value ) ) {
+				continue;
+			}
+
+			$length = function_exists( 'mb_strlen' ) ? mb_strlen( $value ) : strlen( $value );
+
+			if ( $length > $limit ) {
+				$too_long[] = sprintf(
+					/* translators: 1: field label, 2: character limit */
+					__( '%1$s (limit %2$d)', 'gateway' ),
+					$field['label'],
+					$limit
+				);
+			}
+		}
+
+		if ( empty( $too_long ) ) {
+			return true;
+		}
+
+		return new \WP_Error(
+			'gateway_record_character_limit_exceeded',
+			sprintf(
+				/* translators: %s: comma-separated list of "field label (limit N)" */
+				__( 'The following fields exceed their character limit: %s.', 'gateway' ),
+				implode( ', ', $too_long )
+			),
+			array( 'status' => 400 )
+		);
+	}
+
+	/**
 	 * Filters a raw, arbitrary-keyed array (e.g. straight off a REST
 	 * request body) down to just this model's own known fields, casting
 	 * each surviving value through its field type's own cast() -- used by
@@ -449,25 +524,45 @@ class Model_Fields {
 	}
 
 	/**
-	 * Filters+sanitizes a field's own raw "Presentation" settings (the
-	 * admin app's Field Editor own Presentation tab -- currently
-	 * `placeholder`/`prepend`/`append`/`instructions`) down to only the
-	 * keys $type's own `Field_Type::presentation_fields()` actually
-	 * recognizes, each `sanitize_text_field()`'d and trimmed the same way
-	 * a raw label already is (validate()'s own $label handling) -- an
-	 * empty-after-trimming value is dropped entirely rather than stored
-	 * as `''`, so a field with nothing actually filled in ends up with a
-	 * genuinely empty `[]`, not a settings object full of blank strings.
+	 * Filters+sanitizes a field's own raw "settings" -- its Presentation
+	 * tab (`placeholder`/`step`/`prepend`/`append`/`instructions`, per
+	 * `Field_Type::presentation_fields()`), its General tab's own
+	 * `default` value (`Field_Type::supports_default_value()`), and its
+	 * Validation tab's own `character_limit` (`Field_Type::
+	 * supports_character_limit()`) -- down to only the keys $type
+	 * actually recognizes, each `sanitize_text_field()`'d and trimmed the
+	 * same way a raw label already is (validate()'s own $label handling)
+	 * -- an empty-after-trimming value is dropped entirely rather than
+	 * stored as `''`, so a field with nothing actually filled in ends up
+	 * with a genuinely empty `[]`, not a settings object full of blank
+	 * strings. `character_limit` gets one further check on top: it's
+	 * meaningless as an arbitrary string the way the others are, so
+	 * anything left after trimming that isn't a positive whole number is
+	 * dropped too, same as if it had been left blank ("Leave blank for no
+	 * limit").
+	 *
+	 * All three live in the one `settings` column together (none of them
+	 * are a different *shape* of data than a placeholder is, just a
+	 * different tab, or -- `character_limit` -- an actual constraint
+	 * instead of a display/default concern) -- `presentation_fields()`/
+	 * `supports_default_value()`/`supports_character_limit()` stay three
+	 * separate methods on `Field_Type` because they answer three different
+	 * questions (which Presentation-tab inputs to show; whether a default
+	 * makes sense for this type at all; whether a maximum length does),
+	 * merged back into one combined whitelist only here.
 	 *
 	 * This -- not a dedicated column per possible per-type setting, and
 	 * not trusting whatever keys a request happens to send -- is what
 	 * keeps `gateway_fields.settings` (one generic JSON column, arbitrary
 	 * shape) from becoming a free-for-all: a type that recognizes nothing
-	 * (`presentation_fields() === []`, true for every built-in type
-	 * except `Text_Field_Type` today) always ends up with `[]` here
-	 * regardless of what a request sends, the same "never trust the
-	 * client, the type itself decides what's meaningful" reasoning
-	 * `require_choices_for_field()` already applies to choices.
+	 * at all (true for every built-in type except `Text_Field_Type`/
+	 * `Number_Field_Type`/`Text_Area_Field_Type` today) always ends up
+	 * with `[]` here regardless of what a request sends, the same "never
+	 * trust the client, the type itself decides what's meaningful"
+	 * reasoning `require_choices_for_field()` already applies to choices.
+	 * `character_limit` itself is only ever *recorded* here -- actually
+	 * enforcing it against real record data is
+	 * `validate_character_limits()`'s own job, below.
 	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
@@ -484,18 +579,41 @@ class Model_Fields {
 			return array();
 		}
 
+		$recognized_keys = $type_class::presentation_fields();
+
+		if ( $type_class::supports_default_value() ) {
+			$recognized_keys[] = 'default';
+		}
+
+		if ( $type_class::supports_character_limit() ) {
+			$recognized_keys[] = 'character_limit';
+		}
+
 		$sanitized = array();
 
-		foreach ( $type_class::presentation_fields() as $key ) {
+		foreach ( $recognized_keys as $key ) {
 			if ( ! array_key_exists( $key, $raw_settings ) ) {
 				continue;
 			}
 
 			$value = sanitize_text_field( trim( (string) $raw_settings[ $key ] ) );
 
-			if ( '' !== $value ) {
-				$sanitized[ $key ] = $value;
+			if ( '' === $value ) {
+				continue;
 			}
+
+			// Unlike every other key here, 'character_limit' is meaningless
+			// as an arbitrary string -- "Leave blank for no limit" is the
+			// blank case (already handled above); anything present has to
+			// actually be a positive whole number, or it's dropped the same
+			// as a blank one, rather than stored as something
+			// validate_character_limits() would otherwise have to guard
+			// against separately.
+			if ( 'character_limit' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
+				continue;
+			}
+
+			$sanitized[ $key ] = $value;
 		}
 
 		return $sanitized;

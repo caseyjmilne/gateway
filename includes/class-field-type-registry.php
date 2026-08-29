@@ -96,12 +96,25 @@ class Field_Type_Registry extends Registry {
 	 *
 	 * `presentation_fields` (`Field_Type::presentation_fields()`) is what
 	 * tells `FieldEditor`'s own Presentation tab which of its fixed
-	 * `placeholder`/`prepend`/`append`/`instructions` inputs to actually
-	 * show for the currently-picked type -- `[]` for every type except
-	 * `Text_Field_Type` today, same "the type itself declares this, not a
-	 * per-type list living in JavaScript" reasoning as `has_choices`.
+	 * `placeholder`/`step`/`prepend`/`append`/`instructions` inputs to
+	 * actually show for the currently-picked type -- `[]` for every type
+	 * except `Text_Field_Type`/`Number_Field_Type` today, same "the type
+	 * itself declares this, not a per-type list living in JavaScript"
+	 * reasoning as `has_choices`.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[]}>
+	 * `supports_default_value` (`Field_Type::supports_default_value()`) is
+	 * the same idea for a different tab: whether `FieldEditor`'s own
+	 * General tab should show a Default Value input at all for the
+	 * currently-picked type -- `true` only for `Text_Field_Type`/
+	 * `Number_Field_Type` today.
+	 *
+	 * `supports_character_limit` (`Field_Type::supports_character_limit()`)
+	 * is the same idea again for Validation: whether `FieldEditor`'s own
+	 * Validation tab should show a Character Limit input at all for the
+	 * currently-picked type -- `true` only for `Text_Field_Type`/
+	 * `Text_Area_Field_Type` today.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -114,14 +127,16 @@ class Field_Type_Registry extends Registry {
 			$has_choices = is_subclass_of( $class, Choice_Field_Type::class );
 
 			$described[] = array(
-				'key'                 => $class::key(),
-				'label'               => $class::label(),
-				'input_type'          => $class::input_type(),
-				'is_sensitive'        => $class::is_sensitive(),
-				'relationship_type'   => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
-				'has_choices'         => $has_choices,
-				'is_multiple'         => $has_choices ? $class::is_multiple() : null,
-				'presentation_fields' => $class::presentation_fields(),
+				'key'                      => $class::key(),
+				'label'                    => $class::label(),
+				'input_type'               => $class::input_type(),
+				'is_sensitive'             => $class::is_sensitive(),
+				'relationship_type'        => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
+				'has_choices'              => $has_choices,
+				'is_multiple'              => $has_choices ? $class::is_multiple() : null,
+				'presentation_fields'      => $class::presentation_fields(),
+				'supports_default_value'   => $class::supports_default_value(),
+				'supports_character_limit' => $class::supports_character_limit(),
 			);
 		}
 

@@ -85,4 +85,22 @@ class Text_Area_Field_Type implements Field_Type {
 	public static function presentation_fields() {
 		return array();
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_default_value() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * One of the two types (alongside Text_Field_Type) a character limit
+	 * actually makes sense for -- see this interface method's own
+	 * docblock.
+	 */
+	public static function supports_character_limit() {
+		return true;
+	}
 }

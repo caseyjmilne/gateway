@@ -152,4 +152,18 @@ class Checkbox_Field_Type implements Choice_Field_Type {
 	public static function presentation_fields() {
 		return array();
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_default_value() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_character_limit() {
+		return false;
+	}
 }

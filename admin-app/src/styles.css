@@ -120,6 +120,10 @@
 	margin: 0 0 0.5em;
 }
 
+.gateway-admin-app .gateway-field-editor-character-limit {
+	margin-top: 1.5em;
+}
+
 .gateway-admin-app .gateway-field-editor-save-status {
 	color: #646970;
 	font-style: italic;

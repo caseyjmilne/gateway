@@ -64,6 +64,26 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * unconditionally -- setting `step` on a non-numeric `<input type>` is a
  * silent no-op in every browser, so there's no need to gate it on
  * `inputType === 'number'` here as well.
+ *
+ * `settings.default` (`Field_Type::supports_default_value()`, currently
+ * Text/Number only -- FieldEditor's own General tab, not Presentation)
+ * is different from the rest of `settings` in one way: it only ever
+ * applies to a brand new record, never an existing one being edited, so
+ * `initialValues` state's own initializer above checks `!initialValues`
+ * (true only for "Add New" -- editing always passes a real, even if
+ * blank, `initialValues`) before falling back to it, rather than reading
+ * it unconditionally the way `instructions`/`placeholder`/etc. do.
+ *
+ * `settings.character_limit` (`Field_Type::supports_character_limit()`,
+ * Text/Text Area only -- FieldEditor's own Validation tab) passes
+ * straight through to the plain `<input>` fallback branch's/`<textarea>`'s
+ * own `maxLength` -- a client-side convenience only, stopping a visitor
+ * from typing past the limit rather than letting them submit and then
+ * rejecting it; the actual enforcement, which this convenience can never
+ * substitute for (a request built by hand, bypassing this form entirely,
+ * skips it too), is `Model_Fields::validate_character_limits()` on the
+ * server, the same "client hint, server enforces" split `required`'s own
+ * red `*` above already has.
  */
 export default function RecordForm( {
 	fields,
@@ -98,6 +118,18 @@ export default function RecordForm( {
 					: [];
 			} else if ( 'boolean' === inputType ) {
 				initial[ field.name ] = Boolean( existing );
+			} else if (
+				null === existing &&
+				! initialValues &&
+				field.settings?.default
+			) {
+				// `!initialValues` -- not just `null === existing` -- is
+				// what actually confines this to "Add New": editing an
+				// existing record always passes a real (even if blank)
+				// `initialValues`, so a field that's genuinely empty on
+				// that record still ends up '' below, never silently
+				// replaced by its own type's configured default.
+				initial[ field.name ] = field.settings.default;
 			} else {
 				initial[ field.name ] =
 					null === existing ? '' : String( existing );
@@ -196,6 +228,7 @@ export default function RecordForm( {
 								id={ inputId }
 								className="regular-text"
 								rows={ 4 }
+								maxLength={ field.settings?.character_limit || undefined }
 								value={ values[ field.name ] }
 								onChange={ handleChange( field.name ) }
 							/>
@@ -319,6 +352,7 @@ export default function RecordForm( {
 										className="regular-text"
 										placeholder={ field.settings?.placeholder }
 										step={ field.settings?.step || undefined }
+										maxLength={ field.settings?.character_limit || undefined }
 										value={ values[ field.name ] }
 										onChange={ handleChange( field.name ) }
 									/>
@@ -335,6 +369,7 @@ export default function RecordForm( {
 									className="regular-text"
 									placeholder={ field.settings?.placeholder }
 									step={ field.settings?.step || undefined }
+									maxLength={ field.settings?.character_limit || undefined }
 									value={ values[ field.name ] }
 									onChange={ handleChange( field.name ) }
 								/>

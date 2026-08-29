@@ -148,13 +148,22 @@ const PRESENTATION_FIELD_META = {
  * as every other field type.
  *
  * Four tabs, always all present, mirroring ACF's own field-settings
- * layout: **General** (Name/Label/Type, plus -- inline, below those,
- * never a tab of its own -- a ChoicesEditor for the field's own
- * orderable choice list, Gateway\\Model_Field_Choices on the server,
- * shown only when the picked type's own `has_choices` is true), then
- * **Validation** (currently just a "Required" toggle, Gateway\\Model_Fields::
+ * layout: **General** (Name/Label/Type; directly under Label, when the
+ * picked type's own `supports_default_value` is true -- Text and Number
+ * only, today -- a Default Value input, applied by `RecordForm` as the
+ * initial value of its own "Add New" form and nowhere else, with its own
+ * small "Appears when creating a new record." note underneath; plus --
+ * further below, never a tab of its own -- a ChoicesEditor for the
+ * field's own orderable choice list, Gateway\\Model_Field_Choices on the
+ * server, shown only when the picked type's own `has_choices` is true),
+ * then **Validation** (a "Required" toggle, Gateway\\Model_Fields::
  * validate_required_fields() on the server -- applies to every field
- * regardless of type), then **Presentation** (one `<input>`/`<textarea>`
+ * regardless of type; plus, when the picked type's own
+ * `supports_character_limit` is true -- Text and Text Area only, today --
+ * a Character Limit number input with its own small "Leave blank for no
+ * limit." note underneath, actually enforced server-side by
+ * Gateway\\Model_Fields::validate_character_limits(), not just recorded),
+ * then **Presentation** (one `<input>`/`<textarea>`
  * per key in the picked type's own `presentation_fields` -- see
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
  * own docblock on the PHP side for the whole "different types need
@@ -166,13 +175,23 @@ const PRESENTATION_FIELD_META = {
  * in); a plain note instead for every other type, which recognizes
  * none), and **Conditional Logic**, still an intentionally empty
  * placeholder -- a reserved tab, not yet backed by anything on the PHP
- * side. A small green dot on a tab's own heading (General/Validation/
- * Presentation) marks that it currently holds real content (a non-blank
- * choice; Required switched on; a non-blank presentation setting) --
- * based on the live, already-autosaved values, not a "changed since this
- * session started" diff, so it's still showing the next time this same
- * field is opened for editing, not just while it's being actively typed
- * into.
+ * side. Default Value, Character Limit, and every Presentation setting
+ * all live in the SAME `settings` object/RHF field (`settings.default`/
+ * `settings.character_limit` alongside `settings.placeholder`/etc.) --
+ * `Field_Type::supports_default_value()`/`supports_character_limit()`
+ * and `presentation_fields()` are what keep them from being confused for
+ * each other despite sharing one object: which tab's dot lights up for a
+ * given key (General/Validation/Presentation, see `generalTabHasContent`/
+ * `validationTabHasContent`/`presentationTabHasContent` below) is decided
+ * by which of those methods actually recognizes it, not by where the
+ * value happens to live. A small green dot on a tab's own heading
+ * (General/Validation/Presentation) marks that it currently holds real
+ * content (a non-blank choice or Default Value; Required switched on
+ * and/or a configured Character Limit; a non-blank presentation setting)
+ * -- based on the live, already-autosaved values, not a "changed since
+ * this session started" diff, so it's still showing the next time this
+ * same field is opened for editing, not just while it's being actively
+ * typed into.
  *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
  * type's own `has_choices` from useFieldTypes()) are the one case where
@@ -284,9 +303,17 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const presentationFieldsFor = ( typeKey ) =>
 		fieldTypes.find( ( type ) => type.key === typeKey )?.presentation_fields || [];
 
+	const supportsDefaultFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_default_value );
+
+	const supportsCharacterLimitFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_character_limit );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
+	const editSupportsDefault = supportsDefaultFor( editType );
+	const editSupportsCharacterLimit = supportsCharacterLimitFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -310,10 +337,33 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	// against this session's own starting point, so it's still showing
 	// the next time this field is reopened for editing, not just while
 	// it's being actively typed into.
+	//
+	// General's own dot covers both things that can live there: inline
+	// Choices, and (like Choices, only for a type that recognizes it) a
+	// Default Value -- `settings.default`, checked directly rather than
+	// via `Object.values( editSettings )` (see presentationTabHasContent
+	// below for why that broader check would wrongly light up a tab this
+	// value doesn't actually belong to).
 	const choicesTabHasContent = editChoices.some( ( choice ) => choice.trim() );
-	const requiredTabHasContent = Boolean( editRequired );
-	const presentationTabHasContent = Object.values( editSettings ).some(
-		( value ) => value && String( value ).trim()
+	const defaultValueTabHasContent = Boolean(
+		editSettings.default && String( editSettings.default ).trim()
+	);
+	const generalTabHasContent = choicesTabHasContent || defaultValueTabHasContent;
+	// Validation's own dot covers both things that can live there:
+	// Required, and (like Default Value above, checked directly for the
+	// same reason) a configured Character Limit.
+	const characterLimitTabHasContent = Boolean(
+		editSettings.character_limit && String( editSettings.character_limit ).trim()
+	);
+	const validationTabHasContent = Boolean( editRequired ) || characterLimitTabHasContent;
+	// Checked only against the current type's OWN presentation keys, not
+	// every key `editSettings` happens to hold -- `settings.default`
+	// lives in the same object but belongs to General, not here, so a
+	// blanket `Object.values( editSettings )` scan would wrongly light up
+	// this tab's dot for a Default Value someone set with nothing actually
+	// filled in on the Presentation tab itself.
+	const presentationTabHasContent = editPresentationFields.some(
+		( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
 	);
 
 	const arraysEqual = ( a, b ) =>
@@ -784,11 +834,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					onClick={ () => setEditTab( 'general' ) }
 				>
 					General
-					{ choicesTabHasContent && (
+					{ generalTabHasContent && (
 						<span
 							className="gateway-tab-changed-dot"
-							title="Has choices configured"
-							aria-label="Has choices configured"
+							title="Has choices and/or a default value configured"
+							aria-label="Has choices and/or a default value configured"
 						/>
 					) }
 				</button>
@@ -801,11 +851,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					onClick={ () => setEditTab( 'validation' ) }
 				>
 					Validation
-					{ requiredTabHasContent && (
+					{ validationTabHasContent && (
 						<span
 							className="gateway-tab-changed-dot"
-							title="Required is on"
-							aria-label="Required is on"
+							title="Required is on and/or a character limit is configured"
+							aria-label="Required is on and/or a character limit is configured"
 						/>
 					) }
 				</button>
@@ -887,6 +937,28 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							{ ...register( 'label' ) }
 						/>
 					</label>
+					{ editSupportsDefault && (
+						<label>
+							<span>Default Value</span>
+							{ 'number' === editType ? (
+								<input
+									type="number"
+									step="any"
+									className="regular-text"
+									{ ...register( 'settings.default' ) }
+								/>
+							) : (
+								<input
+									type="text"
+									className="regular-text"
+									{ ...register( 'settings.default' ) }
+								/>
+							) }
+							<span className="description">
+								Appears when creating a new record.
+							</span>
+						</label>
+					) }
 					<label>
 						<span>Type</span>
 						<select disabled={ editingIsRelate } { ...register( 'type' ) }>
@@ -933,6 +1005,23 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					If enabled, a record can&rsquo;t be created without this
 					field, and it can&rsquo;t be cleared on an existing one.
 				</p>
+				{ editSupportsCharacterLimit && (
+					<div className="gateway-field-editor-form-grid gateway-field-editor-character-limit">
+						<label>
+							<span>Character Limit</span>
+							<input
+								type="number"
+								min="1"
+								step="1"
+								className="regular-text"
+								{ ...register( 'settings.character_limit' ) }
+							/>
+							<span className="description">
+								Leave blank for no limit.
+							</span>
+						</label>
+					</div>
+				) }
 			</div>
 
 			<div hidden={ 'presentation' !== editTab }>

@@ -97,4 +97,22 @@ class Number_Field_Type implements Field_Type {
 	public static function presentation_fields() {
 		return array( 'placeholder', 'step', 'prepend', 'append', 'instructions' );
 	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * One of the two types (alongside Text_Field_Type) a configurable
+	 * default value actually makes sense for -- see this interface
+	 * method's own docblock.
+	 */
+	public static function supports_default_value() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_character_limit() {
+		return false;
+	}
 }

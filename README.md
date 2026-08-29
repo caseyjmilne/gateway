@@ -4323,6 +4323,119 @@ place, since it's the only type that recognizes it), and `prepend`/
 `.gateway-record-form-input-addon`) styled flush against the input's own
 border, matching the familiar prepended/appended-text input pattern.
 
+### Default value
+
+A Text or Number field can be given a default value -- what a brand new
+record starts out with, not how the field is displayed, which is why it
+lives in **General**, directly under Label, rather than alongside
+placeholder/step/prepend/append/instructions in Presentation. It's shown
+with its own small note underneath, "Appears when creating a new
+record.", and only ever actually applies there: editing an existing
+record always shows that record's own real (even if blank) value, never
+silently replaced by the field's configured default.
+
+**`Field_Type::supports_default_value()`** (new interface method) is a
+second, separate whitelist alongside `presentation_fields()` -- `true`
+only for `Text_Field_Type`/`Number_Field_Type` today, `false` for every
+other built-in type (a default makes little sense for a Choice type,
+whose own choices list already offers a natural "pick one," or a Relate
+field, where a default related record raises its own questions -- does
+it still exist, is it still valid -- this doesn't attempt to answer). The
+two methods are kept separate because they answer different questions
+(which Presentation-tab inputs to show vs. whether a default value makes
+sense for this type at all) and render in different tabs, but a default
+value is stored no differently a *shape* of data than a placeholder is --
+so `Model_Fields::sanitize_settings()` merges both into one combined
+whitelist (`presentation_fields()`'s own list, plus `'default'` when
+`supports_default_value()` is true) before filtering a field's raw
+`settings`, and the same one `gateway_fields.settings` JSON column holds
+`default` right alongside placeholder/step/prepend/append/instructions.
+`Field_Type_Registry::describe_all()` exposes `supports_default_value`
+per type, the same way it exposes `presentation_fields`.
+
+**The admin app.** `FieldEditor`'s General tab shows the Default Value
+input only when the currently-picked type's own `supports_default_value`
+is true, registered as `settings.default` -- the same RHF field object
+Presentation's own inputs live in, just a different key -- so it
+autosaves exactly like everything else here, and switches between a
+plain text input and a real `<input type="number" step="any">` right
+along with the picked Type, same as every other type-dependent part of
+this form. General's own tab-heading dot now reflects *either* a
+non-blank Default Value *or* a non-blank Choices list (previously just
+Choices) -- and, in the other direction, Presentation's own dot is
+computed only from the keys `presentation_fields()` actually returns for
+the current type, not every key `settings` happens to hold, so a
+Default Value configured on a Text field never falsely lights up its
+Presentation tab too.
+
+`RecordForm` applies `field.settings.default` as a field's initial value
+only when `initialValues` itself is entirely absent -- true "Add New,"
+never an edit of an existing record, which always passes a real (even if
+blank) `initialValues` object of its own.
+
+### Character limit
+
+A Text or Text Area field can be given a maximum character length --
+shown under **Validation**, alongside Required, with its own small
+"Leave blank for no limit." note underneath. Unlike Default Value and
+every Presentation setting, this one is an actual constraint on what can
+be saved, the same kind of thing Required already is -- not a display or
+new-record-default concern -- which is why it lives in Validation rather
+than General or Presentation, and why it's genuinely *enforced*, not just
+recorded.
+
+**`Field_Type::supports_character_limit()`** (new interface method) is a
+third whitelist alongside `presentation_fields()`/`supports_default_value()`
+-- `true` only for `Text_Field_Type`/`Text_Area_Field_Type` today, `false`
+for every other built-in type (including `Number_Field_Type`: a
+"character limit" on a number is a category error -- a numeric range
+belongs to a future min/max setting of its own, not this one). Stored the
+same way as everything else `settings` holds -- one more key
+(`'character_limit'`) in the same generic JSON column, merged in by
+`Model_Fields::sanitize_settings()` alongside the other two methods' own
+keys -- but with one extra check on top: a `character_limit` value is
+meaningless as an arbitrary string the way a placeholder is, so anything
+left after trimming that isn't a genuine positive whole number is dropped
+too, the same as leaving it blank ("Leave blank for no limit" is the
+blank case; a non-numeric or zero value is treated identically rather
+than stored as something enforcement would have to guard against
+separately).
+
+**`Model_Fields::validate_character_limits( $class_name, $data )`** is
+the actual enforcement -- the direct counterpart to
+`validate_required_fields()`, called by `Records_REST_Controller::
+create_record()`/`update_record()` right alongside it. It needs no
+`$is_create` distinction the way the required check does: a field the
+request doesn't mention has nothing to check a length against either
+way, on a create or an update, so it's simply skipped, the same for both
+call sites. Only a string value already present in the (sanitized,
+already-cast) request data is ever checked, measured with `mb_strlen()`
+when available (a multi-byte UTF-8 character is one character against
+the limit, not two or three) and falling back to `strlen()` otherwise. A
+rejected request gets a single `gateway_record_character_limit_exceeded`
+`WP_Error` (400) naming every offending field by its own label and its
+configured limit, not just the first one found -- same "don't make a
+site owner fix one problem at a time" reasoning `validate_required_fields()`'s
+own error already follows.
+
+**The admin app.** `FieldEditor`'s Validation tab shows the Character
+Limit input (`<input type="number" min="1" step="1">`, registered as
+`settings.character_limit` -- the same RHF field object General's own
+Default Value and Presentation's own settings all share, just a
+different key) only when the currently-picked type's own
+`supports_character_limit` is true, autosaving exactly like Required
+already does. Validation's own tab-heading dot now reflects *either*
+Required being on *or* a non-blank Character Limit (previously just
+Required).
+
+`RecordForm` passes `field.settings.character_limit` straight through to
+the plain `<input>` fallback branch's and `<textarea>`'s own `maxLength`
+attribute -- a client-side convenience only (stopping a visitor from
+typing past the limit rather than letting them submit and then rejecting
+it), never a substitute for the server-side enforcement above, which a
+request built by hand and bypassing this form entirely would still have
+to pass.
+
 ### Relate fields in the Records screen: search, selection, and enriched responses
 
 A Relate to One/Relate to Many field's own value is never a plain

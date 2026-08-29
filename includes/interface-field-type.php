@@ -194,4 +194,66 @@ interface Field_Type {
 	 * @return string[] Subset of `['placeholder', 'step', 'prepend', 'append', 'instructions']`, in display order.
 	 */
 	public static function presentation_fields();
+
+	/**
+	 * Whether a field of this type can be given a configurable default
+	 * value -- shown in `FieldEditor.jsx`'s own **General** tab, directly
+	 * under Label (not Presentation, unlike everything `presentation_fields()`
+	 * governs above: a default is what a new record starts out with, not
+	 * how the field is displayed), and applied by `RecordForm` as the
+	 * initial value of its own "Add New" form -- never on an existing
+	 * record being edited, which already has a real value of its own to
+	 * show instead.
+	 *
+	 * Stored the same way as everything `presentation_fields()` recognizes:
+	 * one more key (`'default'`) in the same generic `settings` JSON
+	 * column, gated by this method rather than added to
+	 * `presentation_fields()` itself -- the two are deliberately separate
+	 * because they answer different questions (which Presentation-tab
+	 * inputs to show vs. whether a default value even makes sense for
+	 * this type at all) and render in different tabs;
+	 * `Model_Fields::sanitize_settings()` is what actually merges both
+	 * into the one set of keys a given type's `settings` may ever contain.
+	 *
+	 * `true` only for `Text_Field_Type` and `Number_Field_Type` today --
+	 * a default makes little sense for a Choice type (its own choices list
+	 * already offers a natural "pick one" default the UI doesn't have yet)
+	 * or a Relate field (a default related record raises its own set of
+	 * questions -- does it still exist, is it still valid -- this doesn't
+	 * attempt to answer). `false` for every other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function supports_default_value();
+
+	/**
+	 * Whether a field of this type can be given a configurable maximum
+	 * character length -- shown in `FieldEditor.jsx`'s own **Validation**
+	 * tab, alongside Required (not Presentation or General: a character
+	 * limit is an actual constraint on what can be saved, the same kind
+	 * of thing Required already is, not a display or new-record-default
+	 * concern), with its own "Leave blank for no limit." note underneath.
+	 * Unlike Required, this is meaningless for every type except a plain
+	 * multi- or single-line string -- `Text_Field_Type`/`Text_Area_Field_Type`
+	 * only -- so it's a per-type opt-in the same way
+	 * `supports_default_value()` is, not a column that applies uniformly
+	 * everywhere the way `required` does.
+	 *
+	 * Stored the same way as everything else `settings` holds: one more
+	 * key (`'character_limit'`) in the same generic JSON column, gated by
+	 * this method and merged in by `Model_Fields::sanitize_settings()`
+	 * alongside `presentation_fields()`/`supports_default_value()`'s own
+	 * keys. Actually enforced -- not just recorded -- by
+	 * `Model_Fields::validate_character_limits()`, called by
+	 * `Records_REST_Controller::create_record()`/`update_record()` the
+	 * same way `validate_required_fields()` already is.
+	 *
+	 * `true` only for `Text_Field_Type` and `Text_Area_Field_Type` today.
+	 * `false` for every other built-in type, including `Number_Field_Type`
+	 * (a "character limit" on a number is a category error -- a numeric
+	 * range belongs to a future min/max setting of its own, not this one).
+	 *
+	 * @return bool
+	 */
+	public static function supports_character_limit();
 }
