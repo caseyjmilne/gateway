@@ -99,15 +99,17 @@ class Field_Type_Registry extends Registry {
 	 * `instructions`/`placeholder`/`step`/`prepend`/`append` inputs to
 	 * actually show for the currently-picked type -- `['instructions']`
 	 * for every type except `Text_Field_Type`/`Number_Field_Type`/
-	 * `Range_Field_Type` today (which recognize more), same "the type
-	 * itself declares this, not a per-type list living in JavaScript"
-	 * reasoning as `has_choices`.
+	 * `Range_Field_Type`/`Email_Field_Type`/`URL_Field_Type` today (which
+	 * recognize more -- `URL_Field_Type` only `placeholder`, no
+	 * `prepend`/`append`), same "the type itself declares this, not a
+	 * per-type list living in JavaScript" reasoning as `has_choices`.
 	 *
 	 * `supports_default_value` (`Field_Type::supports_default_value()`) is
 	 * the same idea for a different tab: whether `FieldEditor`'s own
 	 * General tab should show a Default Value input at all for the
 	 * currently-picked type -- `true` only for `Text_Field_Type`/
-	 * `Number_Field_Type`/`Range_Field_Type` today.
+	 * `Number_Field_Type`/`Range_Field_Type`/`Email_Field_Type`/
+	 * `URL_Field_Type` today.
 	 *
 	 * `supports_character_limit` (`Field_Type::supports_character_limit()`)
 	 * is the same idea again for Validation: whether `FieldEditor`'s own

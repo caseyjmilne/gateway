@@ -6,6 +6,12 @@
  * hinting/keyboard on mobile. Same "no validation in cast()" trade-off
  * as Email_Field_Type -- see that class's own docblock.
  *
+ * Unlike Email_Field_Type, this recognizes a Default Value and a
+ * Placeholder ONLY -- no Prepend/Append: a "$" or "USD" flanking a URL
+ * reads as nonsense in a way it doesn't for an email address, so those
+ * two are deliberately left out of the presentation catalog here rather
+ * than offered and just never making sense in practice.
+ *
  * @package Gateway
  */
 
@@ -80,16 +86,24 @@ class URL_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * `instructions` plus a Placeholder (e.g. "https://example.com") --
+	 * NOT `prepend`/`append`, unlike Text/Number/Range/Email -- see this
+	 * class's own docblock for why.
 	 */
 	public static function presentation_fields() {
-		return array( 'instructions' );
+		return array( 'instructions', 'placeholder' );
 	}
 
 	/**
 	 * @inheritDoc
+	 *
+	 * A default URL makes just as much sense here as it does for a plain
+	 * Text field -- e.g. pre-filling a "Website" field with the site
+	 * owner's own domain.
 	 */
 	public static function supports_default_value() {
-		return false;
+		return true;
 	}
 
 	/**

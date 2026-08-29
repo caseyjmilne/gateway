@@ -183,20 +183,29 @@ interface Field_Type {
 	 * `sanitize_settings()`, whatever a request actually sends.
 	 *
 	 * `['instructions']` -- and nothing else -- for every built-in type
-	 * except `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`
-	 * (`instructions` plus `placeholder`/`prepend`/`append`, and, for
-	 * Number/Range only, `step` -- the HTML `<input type="number"|"range">`
-	 * `step` attribute; recognized by no other type, since it means
-	 * nothing for a plain string). `instructions` is universal -- a short
-	 * note under a field's own label is meaningful for literally any
-	 * field type, unlike the other four -- so unlike them it's never
-	 * gated by anything past this method simply always including it. The
-	 * order a type returns these in is the order the Presentation tab
-	 * renders them in, not just which ones appear -- `instructions`
-	 * always comes first (`RecordForm` renders it as the very first thing
-	 * under a field's own label, before its control), and
-	 * `Number_Field_Type`/`Range_Field_Type` return `step` right after
-	 * `placeholder` and before `prepend` for the same reason.
+	 * except `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
+	 * `Email_Field_Type`/`URL_Field_Type` (`instructions` plus
+	 * `placeholder`/`prepend`/`append`, and, for Number/Range only,
+	 * `step` -- the HTML `<input type="number"|"range">` `step`
+	 * attribute; recognized by no other type, since it means nothing for
+	 * a plain string). Email recognizes the same three as Text (no
+	 * `step` -- a "step" between email addresses is meaningless), the
+	 * same "nothing about this type's own semantics changes what a
+	 * placeholder/prepend/append mean" reasoning that also gives it
+	 * `supports_default_value()` below. URL recognizes `placeholder`
+	 * ONLY, no `prepend`/`append` -- unlike an email address, flanking a
+	 * URL with a "$"/"USD"-style addon reads as nonsense, so those two
+	 * are deliberately left out of its own catalog rather than offered
+	 * and just never making sense in practice. `instructions` is
+	 * universal -- a short note under a field's own label is meaningful
+	 * for literally any field type, unlike the other four -- so unlike
+	 * them it's never gated by anything past this method simply always
+	 * including it. The order a type returns these in is the order the
+	 * Presentation tab renders them in, not just which ones appear --
+	 * `instructions` always comes first (`RecordForm` renders it as the
+	 * very first thing under a field's own label, before its control),
+	 * and `Number_Field_Type`/`Range_Field_Type` return `step` right
+	 * after `placeholder` and before `prepend` for the same reason.
 	 *
 	 * @return string[] Subset of `['instructions', 'placeholder', 'step', 'prepend', 'append']`, in display order, always including `'instructions'`.
 	 */
@@ -222,12 +231,13 @@ interface Field_Type {
 	 * `Model_Fields::sanitize_settings()` is what actually merges both
 	 * into the one set of keys a given type's `settings` may ever contain.
 	 *
-	 * `true` only for `Text_Field_Type` and `Number_Field_Type` today --
-	 * a default makes little sense for a Choice type (its own choices list
-	 * already offers a natural "pick one" default the UI doesn't have yet)
-	 * or a Relate field (a default related record raises its own set of
-	 * questions -- does it still exist, is it still valid -- this doesn't
-	 * attempt to answer). `false` for every other built-in type.
+	 * `true` for `Text_Field_Type`, `Number_Field_Type`, `Range_Field_Type`,
+	 * `Email_Field_Type`, and `URL_Field_Type` today -- a default makes
+	 * little sense for a Choice type (its own choices list already offers
+	 * a natural "pick one" default the UI doesn't have yet) or a Relate
+	 * field (a default related record raises its own set of questions --
+	 * does it still exist, is it still valid -- this doesn't attempt to
+	 * answer). `false` for every other built-in type.
 	 *
 	 * @return bool
 	 */

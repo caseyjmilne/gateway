@@ -169,13 +169,23 @@
 	color: #2271b1;
 }
 
-.gateway-admin-app .gateway-field-editor-panel-cell {
-	/* Overrides .widefat's own default cell padding -- without this, the
-	 * panel's own border-left (below) sits inset from the table's actual
-	 * left edge by that padding, breaking what should read as one
-	 * continuous blue line running from the active row's own box-shadow
-	 * (flush with the table's real edge) straight down the side of the
-	 * edit panel underneath it. */
+.gateway-admin-app .gateway-field-editor-table tbody td.gateway-field-editor-panel-cell {
+	/* Overrides .widefat's own default cell padding AND this file's own
+	 * `.gateway-field-editor-table tbody td` padding (added later, for
+	 * the taller top-aligned rows above) -- without the extra
+	 * `tbody td.` compound selector here to match its specificity, that
+	 * later, more specific rule silently won regardless of which one
+	 * comes second in the file (a real regression this shape once
+	 * caused: `.gateway-field-editor-panel-cell` alone has LOWER
+	 * specificity than `.gateway-field-editor-table tbody td`, two
+	 * classes plus two elements beating two classes plus none, so
+	 * source order alone was never enough to guarantee this wins).
+	 * Padding here needs to stay zero, full stop -- the panel's own
+	 * border-left (below) sitting inset from the table's actual left
+	 * edge by even a few pixels of cell padding breaks what should read
+	 * as one continuous blue line running from the active row's own
+	 * box-shadow (flush with the table's real edge) straight down the
+	 * side of the edit panel underneath it. */
 	padding: 0;
 }
 

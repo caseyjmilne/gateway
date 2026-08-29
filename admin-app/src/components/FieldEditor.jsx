@@ -1068,8 +1068,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							/>
 						) }
 						<span className="description">
-							Always stored lowercase -- it becomes the real
-							column name.
+							Lowercase and underscores only.
 						</span>
 					</label>
 					<label>

@@ -4129,6 +4129,21 @@ on that specific `<td>` (`colSpan={4}`, wrapping `renderEditPanel()`)
 zeroing out its own padding, so the panel's own border-left starts at
 the exact same x-position the row's own box-shadow already does.
 
+**This fix regressed once, silently, when the Fields table rows were
+later made taller/top-aligned (see below) -- a real CSS specificity
+lesson, not just a one-off bug.** `.gateway-field-editor-table tbody td`
+gained its own `padding` rule at that point (needed for the taller
+rows), and `.gateway-field-editor-table tbody td` (two classes plus two
+element selectors) is MORE specific than `.gateway-field-editor-panel-cell`
+alone (two classes, no elements) -- so the later rule silently won
+regardless of which one came first in the file, undoing the zero-padding
+fix above and reintroducing the exact same visual break. Fixed by
+bumping `.gateway-field-editor-panel-cell`'s own selector to
+`.gateway-field-editor-table tbody td.gateway-field-editor-panel-cell`
+(the same two classes plus two elements, PLUS a third class on the same
+element), so it wins outright rather than depending on which rule
+happens to come second.
+
 **Panel content lines up with the row's own chevron above it, not flush
 against the panel's own border.** `.gateway-field-editor-edit-panel`'s
 own `padding-left` (`32px`) is set high enough on purpose that its
@@ -4310,15 +4325,18 @@ A field's "Presentation" tab (previously an empty placeholder, alongside
 -- a note shown between the label and the control -- is universal: every
 built-in type recognizes it, and it's always the FIRST Presentation
 setting a type recognizes, regardless of what else it recognizes. On top
-of that, **Text** and **Number** also recognize a placeholder, and all
-three of Text/Number/Range recognize a prepended and/or appended string
-shown flush against their own input (e.g. a "$" prepend and a "USD"
-append on a price field). Range deliberately does NOT get a placeholder
-the way Text/Number do -- a placeholder is text shown inside an empty
-`<input>` before a value is typed, which means nothing for
-`<input type="range">` (it always has a value, the slider's current
-position, never an empty state to hint at). Number and Range instead
-share one setting of their own, **Step**, the HTML
+of that, **Text**, **Number**, **Email**, and **URL** all also recognize
+a placeholder, and Text/Number/Range/Email recognize a prepended and/or
+appended string shown flush against their own input (e.g. a "$" prepend
+and a "USD" append on a price field). Two deliberate exceptions: Range
+does NOT get a placeholder the way Text/Number/Email/URL do -- a
+placeholder is text shown inside an empty `<input>` before a value is
+typed, which means nothing for `<input type="range">` (it always has a
+value, the slider's current position, never an empty state to hint at)
+-- and URL does NOT get Prepend/Append the way Text/Number/Range/Email
+do, since flanking a URL with a "$"/"USD"-style addon reads as nonsense
+in a way it doesn't for an email address or a price. Number and Range
+instead share one setting of their own, **Step**, the HTML
 `<input type="number">`/`<input type="range">` `step` attribute -- e.g.
 `0.01` so a price field increments/decrements (and validates) by cents
 rather than whole units, or `5` so a quantity field or a slider only
@@ -4350,10 +4368,15 @@ type returns just `['instructions']` except `Text_Field_Type`
 (`instructions` plus placeholder/prepend/append, no `step`),
 `Number_Field_Type` (the same set plus its own `step`, returned right
 after `placeholder` and before `prepend`, which is exactly where it
-renders), and `Range_Field_Type` (the same as Number's, minus
-`placeholder` -- a slider always has a value, there's no empty state a
-placeholder could hint at). `step` is recognized by no other type -- it
-means nothing for a plain string. Adding a setting to another type later
+renders), `Range_Field_Type` (the same as Number's, minus `placeholder`
+-- a slider always has a value, there's no empty state a placeholder
+could hint at), `Email_Field_Type` (the same as Text's exactly -- an
+email address is presentationally just another single-line string), and
+`URL_Field_Type` (`instructions` plus `placeholder` ONLY, no
+`prepend`/`append` -- unlike an email address, flanking a URL with a
+"$"/"USD"-style addon reads as nonsense). `step` is recognized by no
+other type -- it means nothing for a plain string. Adding a setting to
+another type later
 means adding its key to the fixed catalog and to that one static method,
 not a schema migration or a new column.
 
@@ -4460,22 +4483,27 @@ types that recognize it.
 
 ### Default value
 
-A Text, Number, or Range field can be given a default value -- what a
-brand new record starts out with, not how the field is displayed, which
-is why it lives in **General**, directly under Label, rather than
-alongside instructions/placeholder/step/prepend/append in Presentation.
-It's shown with its own small note underneath, "Appears when creating a
-new record.", and only ever actually applies there: editing an existing
-record always shows that record's own real (even if blank) value, never
-silently replaced by the field's configured default. For Range
-specifically, this is a starting position for the slider -- exactly the
-same idea as a Number field's own default, just for a control that
-otherwise always starts at whatever a bare `<input type="range">`
-defaults to (`0`, or its own `min` if higher).
+A Text, Number, Range, Email, or URL field can be given a default value
+-- what a brand new record starts out with, not how the field is
+displayed, which is why it lives in **General**, directly under Label,
+rather than alongside instructions/placeholder/step/prepend/append in
+Presentation. It's shown with its own small note underneath, "Appears
+when creating a new record.", and only ever actually applies there:
+editing an existing record always shows that record's own real (even if
+blank) value, never silently replaced by the field's configured default.
+For Range specifically, this is a starting position for the slider --
+exactly the same idea as a Number field's own default, just for a
+control that otherwise always starts at whatever a bare
+`<input type="range">` defaults to (`0`, or its own `min` if higher).
+Email/URL are presentationally just another single-line string, so a
+default there is the same idea again -- e.g. pre-filling a "Reply to"
+field with the site owner's own address, or a "Website" field with their
+own domain.
 
 **`Field_Type::supports_default_value()`** (new interface method) is a
 second, separate whitelist alongside `presentation_fields()` -- `true`
-only for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type` today,
+for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
+`Email_Field_Type`/`URL_Field_Type` today,
 `false` for every other built-in type (a default makes little sense for
 a Choice type, whose own choices list already offers a natural "pick
 one," or a Relate field, where a default related record raises its own
