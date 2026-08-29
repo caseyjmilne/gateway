@@ -892,7 +892,7 @@ class Records_REST_Controller {
 			),
 		);
 
-		foreach ( array_keys( wp_get_registered_image_sizes() ) as $size_name ) {
+		foreach ( array_keys( wp_get_registered_image_subsizes() ) as $size_name ) {
 			$src = wp_get_attachment_image_src( $attachment_id, $size_name );
 
 			if ( is_array( $src ) ) {

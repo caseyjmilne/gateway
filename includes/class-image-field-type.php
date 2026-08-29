@@ -116,7 +116,7 @@ class Image_Field_Type implements Field_Type {
 	 *
 	 * `instructions` plus `preview_size` -- a `<select>` of this site's
 	 * own registered image sizes (`GET /gateway/v1/image-sizes`,
-	 * `wp_get_registered_image_sizes()` plus a synthetic "Full Size"),
+	 * `wp_get_registered_image_subsizes()` plus a synthetic "Full Size"),
 	 * controlling how large a thumbnail `RecordForm` shows while editing.
 	 * Deliberately not `placeholder`/`prepend`/`append` -- none of those
 	 * mean anything for a media picker, there's no text `<input>` here

@@ -5016,7 +5016,7 @@ same as Character Limit's own client hint).
 **Presentation tab.** Recognizes one setting, **Preview Size**
 (`settings.preview_size`, a `<select>` of this site's own registered
 image sizes -- `GET /gateway/v1/image-sizes`, a new
-`Media_REST_Controller` route wrapping `wp_get_registered_image_sizes()`
+`Media_REST_Controller` route wrapping `wp_get_registered_image_subsizes()`
 plus a synthetic "Full Size" entry always offered first, the same way
 ACF's own Image field does) -- which of this field's own available sizes
 `ImagePicker`'s preview renders at. Its options come from a small new

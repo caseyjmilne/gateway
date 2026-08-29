@@ -4,7 +4,7 @@
  * needs that no other route already covers:
  *
  * - `GET /gateway/v1/image-sizes` -- every image size this site has
- *   registered (`wp_get_registered_image_sizes()`, core sizes and any
+ *   registered (`wp_get_registered_image_subsizes()`, core sizes and any
  *   `add_image_size()`'d by a theme/plugin alike) plus a synthetic "Full
  *   Size" entry -- what `FieldEditor.jsx`'s own Presentation tab builds
  *   an Image field's "Preview Size" `<select>` from, instead of a
@@ -121,7 +121,7 @@ class Media_REST_Controller {
 	public static function list_image_sizes() {
 		$sizes = array();
 
-		foreach ( wp_get_registered_image_sizes() as $name => $dimensions ) {
+		foreach ( wp_get_registered_image_subsizes() as $name => $dimensions ) {
 			$sizes[] = array(
 				'key'   => $name,
 				'label' => sprintf(
@@ -134,7 +134,7 @@ class Media_REST_Controller {
 			);
 		}
 
-		// Not one of wp_get_registered_image_sizes()'s own entries --
+		// Not one of wp_get_registered_image_subsizes()'s own entries --
 		// "Full Size" (the original, unresized upload) is always
 		// available regardless of what's registered, the same way ACF's
 		// own Image field always offers it first.

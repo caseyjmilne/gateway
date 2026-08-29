@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 
 /**
- * Fetches this site's own registered image sizes (`wp_get_registered_image_sizes()`
+ * Fetches this site's own registered image sizes (`wp_get_registered_image_subsizes()`
  * plus a synthetic "Full Size" entry, via GET /gateway/v1/image-sizes)
  * once on mount -- what `FieldEditor.jsx`'s own Presentation tab builds
  * an Image field's "Preview Size" `<select>` from, instead of a
