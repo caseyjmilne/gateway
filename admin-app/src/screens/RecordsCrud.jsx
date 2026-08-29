@@ -27,6 +27,20 @@ const PER_PAGE = 20;
  * (Gateway\Model_Fields, fetched as part of the model detail response) --
  * there's no separate "which columns to show" configuration here at all.
  *
+ * Delete opens its own small confirmation `Modal` too, rather than
+ * deleting the instant the row's own Delete button is clicked -- a
+ * genuinely destructive, unrecoverable action deserves a second click
+ * (matching wp-admin's own convention for e.g. trashing a post), unlike
+ * Edit's modal, which just holds a form nothing has committed yet.
+ * `deleteConfirmId` (which record is being asked about) and `deletingId`
+ * (whether that record's own DELETE request is actually in flight) are
+ * deliberately two different pieces of state, the same "asking" vs.
+ * "doing" split every other action here already has between its own
+ * `showAddForm`/`addSubmitting` or `editingId`/`editSubmitting` pair -- a
+ * failed delete leaves the confirmation modal open with the error shown
+ * inside it (same as Edit's own `editError`) rather than silently
+ * closing as if it had succeeded.
+ *
  * A field whose type is_sensitive() (Password_Field_Type, currently the
  * only one) has its value masked in this table -- the record's own
  * response still carries the real value (there's no reason to hide it
@@ -57,6 +71,11 @@ export default function RecordsCrud() {
 
 	const [ deletingId, setDeletingId ] = useState( null );
 	const [ deleteError, setDeleteError ] = useState( '' );
+	// The record a Delete click is asking to confirm -- distinct from
+	// `deletingId` below, which only tracks the DELETE request actually
+	// in flight (after that confirmation), the same "asking" vs. "doing"
+	// split `editingId`/`editSubmitting` already have.
+	const [ deleteConfirmId, setDeleteConfirmId ] = useState( null );
 
 	const basePath = `/models/${ encodeURIComponent( className ) }/records`;
 
@@ -152,6 +171,12 @@ export default function RecordsCrud() {
 
 		try {
 			await apiFetch( `${ basePath }/${ id }`, { method: 'DELETE' } );
+			// Only closes the confirm modal on SUCCESS -- an error leaves
+			// it open with `deleteError` shown inside it, the same "stay
+			// open and show what went wrong" behavior the Edit modal's
+			// own `editError` already has, rather than silently
+			// dismissing a failed delete as if it had gone through.
+			setDeleteConfirmId( null );
 			loadRecords( page );
 		} catch ( err ) {
 			setDeleteError( err.message );
@@ -169,6 +194,14 @@ export default function RecordsCrud() {
 	// just means no modal shows.
 	const editingRecord =
 		records.find( ( record ) => record.id === editingId ) || null;
+
+	// Same "null means no modal" shape as `editingRecord` above, and the
+	// same reasoning: looking the record back up by id (rather than just
+	// checking `null !== deleteConfirmId`) means a reload racing the
+	// confirm click harmlessly closes this modal instead of confirming
+	// against a record that's no longer in `records` at all.
+	const deleteConfirmRecord =
+		records.find( ( record ) => record.id === deleteConfirmId ) || null;
 
 	const isSensitive = ( type ) =>
 		fieldTypes.find( ( fieldType ) => fieldType.key === type )
@@ -353,11 +386,12 @@ export default function RecordsCrud() {
 													<button
 														type="button"
 														className="button"
-														onClick={ () =>
-															handleDelete(
+														onClick={ () => {
+															setDeleteError( '' );
+															setDeleteConfirmId(
 																record.id
-															)
-														}
+															);
+														} }
 														disabled={
 															deletingId ===
 															record.id
@@ -428,6 +462,52 @@ export default function RecordsCrud() {
 							</div>
 						) }
 					</div>
+				</Modal>
+			) }
+
+			{ deleteConfirmRecord && (
+				<Modal
+					title="Delete Record"
+					onClose={ () => setDeleteConfirmId( null ) }
+				>
+					<p>
+						Are you sure you want to delete{ ' ' }
+						<code>
+							{ model.class } #{ deleteConfirmRecord.id }
+						</code>
+						? This cannot be undone.
+					</p>
+					{ deleteError && (
+						<div className="notice notice-error">
+							<p>{ deleteError }</p>
+						</div>
+					) }
+					<p>
+						<button
+							type="button"
+							className="button button-primary"
+							onClick={ () =>
+								handleDelete( deleteConfirmRecord.id )
+							}
+							disabled={
+								deletingId === deleteConfirmRecord.id
+							}
+						>
+							{ deletingId === deleteConfirmRecord.id
+								? 'Deleting…'
+								: 'Delete' }
+						</button>{ ' ' }
+						<button
+							type="button"
+							className="button"
+							onClick={ () => setDeleteConfirmId( null ) }
+							disabled={
+								deletingId === deleteConfirmRecord.id
+							}
+						>
+							Cancel
+						</button>
+					</p>
 				</Modal>
 			) }
 		</div>
