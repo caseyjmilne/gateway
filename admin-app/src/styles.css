@@ -105,7 +105,7 @@
 
 .gateway-admin-app .gateway-field-editor-row-active,
 .gateway-admin-app .gateway-field-editor-row-active:hover {
-	background: #e5f2fa;
+	background: #d8ebf5;
 	box-shadow: inset 3px 0 0 #2271b1;
 }
 
@@ -458,4 +458,89 @@
 .gateway-admin-app .gateway-relate-autocomplete-empty {
 	padding: 6px 10px;
 	color: #646970;
+}
+
+.gateway-admin-app .gateway-conditional-logic {
+	max-width: 640px;
+}
+
+.gateway-admin-app .gateway-conditional-logic-label {
+	font-weight: 500;
+	font-size: 13px;
+	color: rgb( 60, 67, 74 );
+	margin: 0 0 8px;
+}
+
+.gateway-admin-app .gateway-conditional-logic-group {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 16px;
+	background: #fff;
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
+}
+
+.gateway-admin-app .gateway-conditional-logic-rule {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.gateway-admin-app .gateway-conditional-logic-rule select,
+.gateway-admin-app .gateway-conditional-logic-rule input {
+	flex: 1;
+	min-width: 0;
+}
+
+.gateway-admin-app .gateway-conditional-logic-value-placeholder {
+	flex: 1;
+}
+
+.gateway-admin-app .gateway-conditional-logic-and {
+	flex-shrink: 0;
+	background: #fff;
+	border: 1px solid #2271b1;
+	border-radius: 6px;
+	color: #2271b1;
+	padding: 6px 14px;
+	cursor: pointer;
+}
+
+.gateway-admin-app .gateway-conditional-logic-and:hover {
+	background: #f0f6fb;
+}
+
+.gateway-admin-app .gateway-conditional-logic-remove {
+	flex-shrink: 0;
+	background: none;
+	border: none;
+	color: #787c82;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 4px 8px;
+}
+
+.gateway-admin-app .gateway-conditional-logic-remove:hover {
+	color: #b32d2e;
+}
+
+.gateway-admin-app .gateway-conditional-logic-or {
+	margin: 8px 0;
+	font-weight: 500;
+	color: rgb( 60, 67, 74 );
+}
+
+.gateway-admin-app .gateway-conditional-logic-remove-group {
+	background: none;
+	border: none;
+	color: #2271b1;
+	cursor: pointer;
+	padding: 8px 0;
+	text-decoration: underline;
+}
+
+.gateway-admin-app .gateway-conditional-logic-remove-group:hover {
+	color: #135e96;
 }

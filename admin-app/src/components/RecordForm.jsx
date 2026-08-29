@@ -84,6 +84,35 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * skips it too), is `Model_Fields::validate_character_limits()` on the
  * server, the same "client hint, server enforces" split `required`'s own
  * red `*` above already has.
+ *
+ * `field.conditional_logic` (`{enabled, groups}` or `null`, threaded
+ * straight through by `Model_Fields::all()`/the fields REST route, same
+ * as `field.choices`/`field.settings`) decides whether a field renders
+ * at all -- `fieldIsVisible()` evaluates it against the CURRENT live
+ * `values` state on every render (OR across `groups`, AND within a
+ * group's own `rules`), so a field with a configured condition appears
+ * and disappears live as whichever OTHER field it depends on changes,
+ * with no server round-trip. A rule referencing a relate field compares
+ * against that OTHER record's own *label*, not its numeric id -- the
+ * only thing meaningful to type a comparison value against; a rule
+ * referencing a field that no longer exists on this model at all never
+ * blocks its own group (the same graceful-degradation `Model_Fields::
+ * is_field_visible_for_data()` already applies server-side, not a
+ * second, different rule invented here).
+ *
+ * A hidden field is genuinely absent, not just visually collapsed:
+ * `handleSubmit()` omits it from the submitted payload entirely, so its
+ * own already-stored value (if any) is left exactly as it was rather
+ * than this form's own blank/default local state for it silently
+ * overwriting something real the next time any OTHER field on the same
+ * record is saved. This is this component's own half of "as if the
+ * field doesn't exist for this record" -- `Model_Fields::
+ * validate_required_fields()`/`validate_character_limits()` are the
+ * other half, independently reaching the same conclusion server-side
+ * (never trusting that a hidden field client-side was actually omitted
+ * by every possible caller) before a required-but-hidden field could
+ * ever be rejected as missing, or a character-limited-but-hidden one
+ * rejected as too long.
  */
 export default function RecordForm( {
 	fields,
@@ -97,6 +126,114 @@ export default function RecordForm( {
 	const inputTypeFor = ( type ) => {
 		const found = fieldTypes.find( ( fieldType ) => fieldType.key === type );
 		return found ? found.input_type : 'text';
+	};
+
+	// --- Conditional Logic (Gateway\\Field_Type::validate_required_fields()/
+	// validate_character_limits()'s own client-side counterpart -- see
+	// this component's own docblock's final paragraph) -------------------
+
+	const isEmptyForConditionalLogic = ( value ) => {
+		if ( Array.isArray( value ) ) {
+			return 0 === value.length;
+		}
+		if ( 'boolean' === typeof value ) {
+			return false === value;
+		}
+		if ( null === value || undefined === value ) {
+			return true;
+		}
+		return '' === String( value ).trim();
+	};
+
+	// A rule's own `field` names some OTHER field on this model; its
+	// CURRENT value in `liveValues` needs converting to something
+	// comparable against a rule's own plain-string `value` first -- most
+	// field types already are (a plain string, or an already-normalized
+	// array of strings), but a relate field's own value is `{id, label}`/
+	// `[{id, label}, ...]` (see this component's own docblock), so it's
+	// that OTHER record's own *label* that's actually meaningful to type
+	// a comparison value against, never its numeric id. `undefined` means
+	// the referenced field doesn't exist among this model's own current
+	// fields at all -- the caller treats that as "can't evaluate this
+	// rule," not as an empty value.
+	const comparableValueFor = ( fieldName, liveValues ) => {
+		const targetField = fields.find( ( field ) => field.name === fieldName );
+
+		if ( ! targetField ) {
+			return undefined;
+		}
+
+		const targetInputType = inputTypeFor( targetField.type );
+		const value = liveValues[ fieldName ];
+
+		if ( 'relate_one' === targetInputType ) {
+			return value ? value.label : '';
+		}
+		if ( 'relate_many' === targetInputType ) {
+			return ( value || [] ).map( ( item ) => item.label );
+		}
+		return value;
+	};
+
+	// `null` (not `false`) means "couldn't evaluate this one rule" -- the
+	// referenced field no longer exists -- which fieldIsVisible() below
+	// treats as vacuously true (never blocking its own group), the same
+	// "a dangling rule degrades to not being evaluated, rather than
+	// permanently hiding the field" reasoning
+	// Gateway\\Model_Fields::is_field_visible_for_data() already applies
+	// server-side.
+	const ruleMatches = ( rule, liveValues ) => {
+		const value = comparableValueFor( rule.field, liveValues );
+
+		if ( undefined === value ) {
+			return null;
+		}
+
+		const ruleValue = rule.value || '';
+
+		switch ( rule.operator ) {
+			case 'has_any_value':
+				return ! isEmptyForConditionalLogic( value );
+			case 'has_no_value':
+				return isEmptyForConditionalLogic( value );
+			case 'value_equals':
+				return Array.isArray( value )
+					? value.some( ( item ) => String( item ) === ruleValue )
+					: String( value ?? '' ) === ruleValue;
+			case 'value_not_equals':
+				return Array.isArray( value )
+					? ! value.some( ( item ) => String( item ) === ruleValue )
+					: String( value ?? '' ) !== ruleValue;
+			case 'value_contains':
+				return Array.isArray( value )
+					? value.some( ( item ) =>
+							String( item ).toLowerCase().includes( ruleValue.toLowerCase() )
+					  )
+					: String( value ?? '' )
+							.toLowerCase()
+							.includes( ruleValue.toLowerCase() );
+			default:
+				return true; // An operator that isn't one of the five recognized ones never blocks a field from showing.
+		}
+	};
+
+	// OR across `conditional_logic.groups`, AND within a group's own
+	// `rules` -- a field with no Conditional Logic configured at all
+	// (`null`, or `enabled` false, or no groups) is always visible, the
+	// common case for every field that's never had this configured.
+	const fieldIsVisible = ( field, liveValues ) => {
+		const cl = field.conditional_logic;
+
+		if ( ! cl || ! cl.enabled || ! Array.isArray( cl.groups ) || 0 === cl.groups.length ) {
+			return true;
+		}
+
+		return cl.groups.some( ( group ) =>
+			( group.rules || [] ).every( ( rule ) => {
+				const result = ruleMatches( rule, liveValues );
+				return null === result ? true : result;
+			} )
+		);
 	};
 
 	const [ values, setValues ] = useState( () => {
@@ -176,6 +313,17 @@ export default function RecordForm( {
 
 		const payload = {};
 		fields.forEach( ( field ) => {
+			// A hidden field is omitted from the payload entirely, not
+			// just skipped visually -- "as if the field doesn't exist for
+			// this record" means its own already-stored value (if any)
+			// stays exactly as it was, rather than this form's own blank/
+			// default local state for it silently overwriting a real
+			// value the moment any OTHER field on the same record is
+			// saved.
+			if ( ! fieldIsVisible( field, values ) ) {
+				return;
+			}
+
 			const inputType = inputTypeFor( field.type );
 
 			if ( 'relate_one' === inputType ) {
@@ -200,6 +348,10 @@ export default function RecordForm( {
 	return (
 		<form onSubmit={ handleSubmit } className="gateway-record-form">
 			{ fields.map( ( field ) => {
+				if ( ! fieldIsVisible( field, values ) ) {
+					return null;
+				}
+
 				const inputType = inputTypeFor( field.type );
 				const inputId = `gateway-record-field-${ field.name }`;
 

@@ -168,6 +168,18 @@ class Model_Field_REST_Controller {
 				'type'     => 'object',
 				'default'  => array(),
 			),
+			// Raw Conditional Logic ({enabled, groups}) -- same "accept
+			// broadly here, validate for real in Model_Fields" reasoning as
+			// `settings`/`choices`: which OTHER field names/operators are
+			// actually valid depends on this model's own current fields,
+			// not something a fixed REST schema here could express, so
+			// Model_Fields::sanitize_conditional_logic() is what actually
+			// enforces it.
+			'conditional_logic'    => array(
+				'required' => false,
+				'type'     => 'object',
+				'default'  => array(),
+			),
 		);
 	}
 
@@ -210,7 +222,8 @@ class Model_Field_REST_Controller {
 			$request->get_param( 'relationship_method' ),
 			$request->get_param( 'choices' ),
 			(bool) $request->get_param( 'required' ),
-			(array) $request->get_param( 'settings' )
+			(array) $request->get_param( 'settings' ),
+			(array) $request->get_param( 'conditional_logic' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -233,7 +246,8 @@ class Model_Field_REST_Controller {
 			(string) $request->get_param( 'label' ),
 			$request->get_param( 'choices' ),
 			(bool) $request->get_param( 'required' ),
-			(array) $request->get_param( 'settings' )
+			(array) $request->get_param( 'settings' ),
+			(array) $request->get_param( 'conditional_logic' )
 		);
 
 		if ( is_wp_error( $result ) ) {

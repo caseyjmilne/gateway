@@ -354,16 +354,29 @@ class Records_REST_Controller {
 
 		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
 
+		// What this record will actually look like once $data's own
+		// changes are applied -- the record's own current attributes,
+		// with $data's own (possibly partial) changes layered on top --
+		// used ONLY to evaluate a field's own Conditional Logic against
+		// (never to decide whether a required/character-limited value
+		// itself is missing/too long -- that's still $data alone). A
+		// partial update that never touches the field a rule references
+		// still evaluates against that field's real, already-stored
+		// value this way, rather than being unable to evaluate the rule
+		// at all -- see Model_Fields::validate_required_fields()'s own
+		// docblock.
+		$effective_data = array_merge( $record->toArray(), $data );
+
 		// $is_create = false: a required field this request simply
 		// doesn't mention is left alone, not rejected -- only a required
 		// field explicitly present-but-empty in this request is.
-		$required_check = Model_Fields::validate_required_fields( $class, $data, false );
+		$required_check = Model_Fields::validate_required_fields( $class, $data, false, $effective_data );
 
 		if ( is_wp_error( $required_check ) ) {
 			return $required_check;
 		}
 
-		$character_limit_check = Model_Fields::validate_character_limits( $class, $data );
+		$character_limit_check = Model_Fields::validate_character_limits( $class, $data, $effective_data );
 
 		if ( is_wp_error( $character_limit_check ) ) {
 			return $character_limit_check;

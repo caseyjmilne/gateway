@@ -5,6 +5,7 @@ import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
+import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -179,9 +180,31 @@ const PRESENTATION_FIELD_META = {
  * 'number'`, in between Placeholder and Prepend -- the order a type's own
  * `presentation_fields` lists a key in is the order this tab renders it
  * in); a plain note instead for every other type, which recognizes
- * none), and **Conditional Logic**, still an intentionally empty
- * placeholder -- a reserved tab, not yet backed by anything on the PHP
- * side. Default Value, Character Limit, and every Presentation setting
+ * none), and **Conditional Logic** -- a "Conditional Logic" toggle
+ * (`conditional_logic.enabled`, its own separate RHF field, NOT part of
+ * the `settings` object the other three tabs share -- this one is a
+ * genuinely nested tree, not a flat set of strings, so
+ * `Gateway\\Model_Fields` gives it its own `gateway_fields.conditional_logic`
+ * column entirely) and, once switched on, a `ConditionalLogicEditor`
+ * (`admin-app/src/components/ConditionalLogicEditor.jsx`) for building
+ * "Show this field if ..." -- OR'd groups of AND'd `{field, operator,
+ * value}` rules, `field` limited to this model's OTHER already-saved
+ * fields (never this one -- a field can't meaningfully condition on
+ * itself), `operator` one of Has any value/Has no value/Value is equal
+ * to/Value is not equal to/Value contains. Switching the toggle on with
+ * no rules configured yet seeds one blank rule immediately, so the
+ * builder is never shown genuinely empty. Applies uniformly regardless
+ * of type, like Required -- there's no `Field_Type` method gating which
+ * types get to have this. Actually enforced, not just recorded:
+ * `Gateway\\Model_Fields::validate_required_fields()`/
+ * `validate_character_limits()` both skip a field entirely -- required or
+ * character-limited or not -- the moment its own Conditional Logic
+ * evaluates to "hidden" for the record being saved, treating it as if
+ * that field doesn't exist for that record at all; `RecordForm`'s own
+ * client-side evaluation (see that component's own docblock) is what
+ * actually hides the field's own input in the UI to begin with.
+ *
+ * Default Value, Character Limit, and every Presentation setting
  * all live in the SAME `settings` object/RHF field (`settings.default`/
  * `settings.character_limit` alongside `settings.placeholder`/etc.) --
  * `Field_Type::supports_default_value()`/`supports_character_limit()`
@@ -191,13 +214,14 @@ const PRESENTATION_FIELD_META = {
  * `validationTabHasContent`/`presentationTabHasContent` below) is decided
  * by which of those methods actually recognizes it, not by where the
  * value happens to live. A small green dot on a tab's own heading
- * (General/Validation/Presentation) marks that it currently holds real
- * content (a non-blank choice or Default Value; Required switched on
- * and/or a configured Character Limit; a non-blank presentation setting)
- * -- based on the live, already-autosaved values, not a "changed since
- * this session started" diff, so it's still showing the next time this
- * same field is opened for editing, not just while it's being actively
- * typed into.
+ * (General/Validation/Presentation/Conditional Logic) marks that it
+ * currently holds real content (a non-blank choice or Default Value;
+ * Required switched on and/or a configured Character Limit; a non-blank
+ * presentation setting; Conditional Logic switched on with at least one
+ * rule that actually has a field picked) -- based on the live,
+ * already-autosaved values, not a "changed since this session started"
+ * diff, so it's still showing the next time this same field is opened
+ * for editing, not just while it's being actively typed into.
  *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
  * type's own `has_choices` from useFieldTypes()) are the one case where
@@ -264,6 +288,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			choices: [],
 			required: false,
 			settings: {},
+			conditional_logic: { enabled: false, groups: [] },
 		},
 	} );
 
@@ -275,6 +300,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editChoices = watched.choices;
 	const editRequired = watched.required;
 	const editSettings = watched.settings || {};
+	const editConditionalLogic =
+		watched.conditional_logic || { enabled: false, groups: [] };
 
 	const [ editTab, setEditTab ] = useState( 'general' );
 
@@ -338,6 +365,17 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		? Boolean( relationshipTypeFor( editingOriginalField.type ) )
 		: false;
 
+	// Every OTHER field on this model -- a field can never meaningfully
+	// condition on its own value, so whichever row is currently open
+	// (by index, not name -- a still-unsaved draft has no name yet to
+	// exclude by) is left out of what ConditionalLogicEditor's own Field
+	// dropdown offers. Only already-saved fields are ever real options
+	// here; a brand new draft isn't itself referenceable by anything yet
+	// either, consistent with that.
+	const conditionalLogicOtherFields = fields
+		.filter( ( _field, index ) => index !== editingIndex )
+		.map( ( field ) => ( { name: field.name, label: field.label || field.name } ) );
+
 	// A tab's own dot reflects whether it currently holds real content --
 	// the live (already-autosaved-or-about-to-be) values, not a diff
 	// against this session's own starting point, so it's still showing
@@ -372,6 +410,16 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
 	);
 
+	// "Has real content" here means at least one rule with a field
+	// actually picked -- an enabled toggle with nothing configured yet
+	// (the state right after switching it on, before a first field is
+	// even chosen) doesn't count as content worth flagging.
+	const conditionalLogicTabHasContent =
+		Boolean( editConditionalLogic.enabled ) &&
+		( editConditionalLogic.groups || [] ).some( ( group ) =>
+			( group.rules || [] ).some( ( rule ) => rule.field )
+		);
+
 	const arraysEqual = ( a, b ) =>
 		a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
 
@@ -385,6 +433,16 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		);
 	};
 
+	// Conditional logic is a nested tree (groups of rules), not a flat
+	// set of keys the way `settings` is -- JSON.stringify()'d comparison
+	// is a pragmatic stand-in for a real deep-equal here, safe because
+	// this component is the only thing that ever constructs this shape
+	// (a stable, consistent key order every time), not arbitrary JSON
+	// from somewhere else that could reorder keys and produce a false
+	// "changed" reading.
+	const conditionalLogicEqual = ( a, b ) =>
+		JSON.stringify( a || {} ) === JSON.stringify( b || {} );
+
 	const snapshotsEqual = ( a, b ) =>
 		null !== a &&
 		null !== b &&
@@ -394,7 +452,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		a.relationshipMethod === b.relationshipMethod &&
 		a.required === b.required &&
 		arraysEqual( a.choices, b.choices ) &&
-		settingsEqual( a.settings, b.settings );
+		settingsEqual( a.settings, b.settings ) &&
+		conditionalLogicEqual( a.conditional_logic, b.conditional_logic );
 
 	const isValidToSaveValues = ( values ) => {
 		const relationshipType = relationshipTypeFor( values.type );
@@ -436,6 +495,14 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		// session briefly picked and moved on from, say) is harmless,
 		// never stored for a type that doesn't recognize a given key.
 		body.settings = values.settings || {};
+
+		// Same again -- always sent regardless of type (unlike choices);
+		// Model_Fields::sanitize_conditional_logic() is what actually
+		// filters a rule referencing an unknown field/operator back out.
+		body.conditional_logic = values.conditional_logic || {
+			enabled: false,
+			groups: [],
+		};
 
 		return body;
 	};
@@ -595,6 +662,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 				choices: [],
 				required: false,
 				settings: {},
+				conditional_logic: null,
 			},
 		] );
 
@@ -606,6 +674,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			choices: [],
 			required: false,
 			settings: {},
+			conditional_logic: { enabled: false, groups: [] },
 		};
 		reset( defaults );
 		lastSavedRef.current = null; // nothing saved yet at all -- anything valid should autosave.
@@ -629,6 +698,10 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			choices: field.choices && field.choices.length > 0 ? field.choices : [],
 			required: Boolean( field.required ),
 			settings: field.settings || {},
+			conditional_logic: field.conditional_logic || {
+				enabled: false,
+				groups: [],
+			},
 		};
 		reset( defaults );
 		lastSavedRef.current = defaults;
@@ -893,6 +966,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					onClick={ () => setEditTab( 'conditional_logic' ) }
 				>
 					Conditional Logic
+					{ conditionalLogicTabHasContent && (
+						<span
+							className="gateway-tab-changed-dot"
+							title="Has conditional logic configured"
+							aria-label="Has conditional logic configured"
+						/>
+					) }
 				</button>
 			</div>
 
@@ -1078,7 +1158,67 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			</div>
 
 			<div hidden={ 'conditional_logic' !== editTab }>
-				<p className="description">Nothing here yet.</p>
+				<label className="gateway-toggle">
+					<Controller
+						control={ control }
+						name="conditional_logic.enabled"
+						render={ ( { field } ) => (
+							<input
+								type="checkbox"
+								checked={ field.value }
+								onChange={ ( event ) => {
+									const checked = event.target.checked;
+									field.onChange( checked );
+
+									// Turning it on with nothing configured
+									// yet seeds one blank rule straight
+									// away, matching what the toggle's own
+									// "Show this field if" section looks
+									// like once it's actually usable --
+									// there's no reason to make a site
+									// owner click "Add rule group" a
+									// second time immediately after
+									// switching this on.
+									if (
+										checked &&
+										0 === ( getValues( 'conditional_logic.groups' ) || [] ).length
+									) {
+										setValue( 'conditional_logic.groups', [
+											{
+												rules: [
+													{
+														field: conditionalLogicOtherFields[ 0 ]?.name || '',
+														operator: 'value_equals',
+														value: '',
+													},
+												],
+											},
+										] );
+									}
+								} }
+							/>
+						) }
+					/>
+					<span className="gateway-toggle-slider" aria-hidden="true" />
+					<span>Conditional Logic</span>
+				</label>
+				<p className="description">
+					If enabled, this field only appears when the rules
+					below are met.
+				</p>
+				{ editConditionalLogic.enabled && (
+					<Controller
+						control={ control }
+						name="conditional_logic.groups"
+						render={ ( { field } ) => (
+							<ConditionalLogicEditor
+								groups={ field.value || [] }
+								onChange={ field.onChange }
+								otherFields={ conditionalLogicOtherFields }
+							/>
+						) }
+					/>
+				) }
 			</div>
 
 			{ ( savingEdit || justSaved ) && (

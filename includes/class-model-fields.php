@@ -128,6 +128,14 @@ class Model_Fields {
 					// one generic column rather than one dedicated column
 					// per possible per-type option.
 					$table->text( 'settings' )->nullable();
+					// JSON-encoded {enabled, groups} -- NULL when disabled
+					// or never configured. Applies uniformly regardless of
+					// $type (like `required`, unlike `settings`), but is a
+					// genuinely nested structure (OR'd groups of AND'd
+					// rules) rather than a flat set of strings, so it gets
+					// its own column instead of one more `settings` key --
+					// see sanitize_conditional_logic()'s own docblock.
+					$table->text( 'conditional_logic' )->nullable();
 					$table->timestamps();
 
 					// Belt-and-suspenders alongside validate()'s own uniqueness
@@ -209,6 +217,20 @@ class Model_Fields {
 				}
 			);
 		}
+
+		// Same upgrade-path reason as every column above -- nullable, since
+		// an existing row (predating this column) never had any
+		// conditional logic configured at all; all()'s own fallback treats
+		// a NULL the same as a freshly-added field with none configured
+		// yet: `null` (never shown/hidden, always visible).
+		if ( ! $schema->hasColumn( self::TABLE, 'conditional_logic' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->text( 'conditional_logic' )->nullable();
+				}
+			);
+		}
 	}
 
 	/**
@@ -266,8 +288,17 @@ class Model_Fields {
 	 * *current* type here; that already happened once, in
 	 * `sanitize_settings()`, at the moment it was saved).
 	 *
+	 * `conditional_logic` is `null` for a field with none configured, or
+	 * `{enabled: true, groups: [...]}` -- JSON-decoded straight off the
+	 * row's own raw `conditional_logic` column, then passed through
+	 * `prune_conditional_logic_rules()` against this SAME call's own list
+	 * of current field names, dropping any rule that now references a
+	 * field since renamed or removed (see that method's own docblock for
+	 * why this happens here, on every read, rather than once at save
+	 * time).
+	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>}>
+	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}>
 	 */
 	public static function all( $class_name ) {
 		$relationships_by_method = array();
@@ -280,18 +311,21 @@ class Model_Fields {
 			->where( 'model', $class_name )
 			->orderBy( 'position' )
 			->orderBy( 'id' )
-			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method', 'required', 'settings' ) );
+			->get( array( 'id', 'name', 'label', 'type', 'position', 'relationship_method', 'required', 'settings', 'conditional_logic' ) );
 
 		$choices_by_field_id = Model_Field_Choices::for_fields( $rows->pluck( 'id' )->all() );
+		$all_field_names     = $rows->pluck( 'name' )->all();
 
 		return $rows
 			->map(
-				function ( $row ) use ( $relationships_by_method, $choices_by_field_id ) {
+				function ( $row ) use ( $relationships_by_method, $choices_by_field_id, $all_field_names ) {
 					$relationship_method = ! empty( $row->relationship_method ) ? $row->relationship_method : null;
 					$type_class          = Field_Type_Registry::get( $row->type );
 					$is_choice_type      = $type_class && is_subclass_of( $type_class, Choice_Field_Type::class );
 
-					$settings = ! empty( $row->settings ) ? json_decode( $row->settings, true ) : array();
+					$settings           = ! empty( $row->settings ) ? json_decode( $row->settings, true ) : array();
+					$conditional_logic  = ! empty( $row->conditional_logic ) ? json_decode( $row->conditional_logic, true ) : null;
+					$other_field_names  = array_values( array_diff( $all_field_names, array( $row->name ) ) );
 
 					return array(
 						'id'                   => (int) $row->id,
@@ -310,6 +344,7 @@ class Model_Fields {
 						'choices'              => $is_choice_type ? ( $choices_by_field_id[ (int) $row->id ] ?? array() ) : array(),
 						'required'             => (bool) $row->required,
 						'settings'             => is_array( $settings ) ? $settings : array(),
+						'conditional_logic'    => self::prune_conditional_logic_rules( $conditional_logic, $other_field_names ),
 					);
 				}
 			)
@@ -347,17 +382,47 @@ class Model_Fields {
 	 *   empty only if `null` -- `0`/`0.0` are real, present values a
 	 *   required Number field must accept.
 	 *
-	 * @param string $class_name Model class name.
-	 * @param array  $data       sanitize_record_data()'s own output, not
-	 *                            yet passed through extract_relate_many_data().
-	 * @param bool   $is_create  True for create_record(), false for update_record().
+	 * A field whose own Conditional Logic evaluates to "hidden" for this
+	 * record (`Model_Fields::is_field_visible_for_data()`, against
+	 * `$effective_data`) is skipped entirely here, required or not -- a
+	 * hidden field is treated as if it doesn't exist for this record at
+	 * all, the same as a field this model doesn't have.
+	 *
+	 * @param string     $class_name     Model class name.
+	 * @param array      $data           sanitize_record_data()'s own
+	 *                                     output, not yet passed through
+	 *                                     extract_relate_many_data().
+	 * @param bool       $is_create      True for create_record(), false
+	 *                                     for update_record().
+	 * @param array|null $effective_data `[field_name => value]` used ONLY
+	 *                                     to evaluate each field's own
+	 *                                     Conditional Logic against (never
+	 *                                     to decide whether a value itself
+	 *                                     is missing -- that's still
+	 *                                     $data) -- defaults to $data
+	 *                                     itself (correct for create(),
+	 *                                     where every field is always
+	 *                                     present regardless); update()
+	 *                                     passes `$record`'s own current
+	 *                                     attributes merged with $data
+	 *                                     instead, so a rule referencing a
+	 *                                     field this particular request
+	 *                                     didn't touch still evaluates
+	 *                                     against that field's real,
+	 *                                     already-stored value rather than
+	 *                                     being unable to evaluate at all.
 	 * @return true|\WP_Error
 	 */
-	public static function validate_required_fields( $class_name, array $data, $is_create ) {
+	public static function validate_required_fields( $class_name, array $data, $is_create, $effective_data = null ) {
+		$effective_data = is_array( $effective_data ) ? $effective_data : $data;
 		$missing_labels = array();
 
 		foreach ( self::all( $class_name ) as $field ) {
 			if ( ! $field['required'] ) {
+				continue;
+			}
+
+			if ( ! self::is_field_visible_for_data( $field['conditional_logic'], $effective_data ) ) {
 				continue;
 			}
 
@@ -441,14 +506,26 @@ class Model_Fields {
 	 * extension enabled, same trade-off PHP itself expects call sites to
 	 * make.
 	 *
-	 * @param string $class_name Model class name.
-	 * @param array  $data       sanitize_record_data()'s own output.
+	 * A field whose own Conditional Logic evaluates to "hidden" for this
+	 * record is skipped entirely here too, the same as
+	 * validate_required_fields() -- see that method's own docblock for
+	 * what $effective_data is and why it can differ from $data.
+	 *
+	 * @param string     $class_name     Model class name.
+	 * @param array      $data           sanitize_record_data()'s own output.
+	 * @param array|null $effective_data See validate_required_fields()'s
+	 *                                     own docblock.
 	 * @return true|\WP_Error
 	 */
-	public static function validate_character_limits( $class_name, array $data ) {
-		$too_long = array();
+	public static function validate_character_limits( $class_name, array $data, $effective_data = null ) {
+		$effective_data = is_array( $effective_data ) ? $effective_data : $data;
+		$too_long       = array();
 
 		foreach ( self::all( $class_name ) as $field ) {
+			if ( ! self::is_field_visible_for_data( $field['conditional_logic'], $effective_data ) ) {
+				continue;
+			}
+
 			if ( ! array_key_exists( $field['name'], $data ) ) {
 				continue;
 			}
@@ -620,6 +697,293 @@ class Model_Fields {
 	}
 
 	/**
+	 * Filters+sanitizes a field's own raw "Conditional Logic" -- OR'd
+	 * groups of AND'd rules, each `{field, operator, value}`, controlling
+	 * whether this field appears at all in `RecordForm`'s own Add New/edit
+	 * forms based on the *current* value of some other field on this same
+	 * model. Applies uniformly regardless of $type, the same as `required`
+	 * -- unlike `settings` (Presentation/Default Value/Character Limit),
+	 * there's no `Field_Type` method gating which types get to have this
+	 * at all. Its own column instead of one more `settings` key because
+	 * it's a genuinely different *shape*: a nested tree of OR'd groups of
+	 * AND'd rules, not a flat set of strings.
+	 *
+	 * `$exclude_field_name` is this field's own current name (the field
+	 * the conditional logic being saved *belongs to*) -- a field can never
+	 * meaningfully condition on its own value (by the time a rule could
+	 * evaluate it, the field itself wouldn't even be rendered yet to have
+	 * one), so it's excluded from the set of field names a rule's own
+	 * `field` is allowed to reference. `''`/`null` for `add()` (a brand
+	 * new field, not yet in `self::all()`'s own results regardless, so
+	 * this has no practical effect there -- passed anyway for clarity at
+	 * the call site).
+	 *
+	 * Each rule's `operator` must be one of the five this feature
+	 * actually understands (`has_any_value`/`has_no_value`/`value_equals`/
+	 * `value_not_equals`/`value_contains`) -- anything else, or a rule
+	 * missing a `field`/referencing one that doesn't exist on this model
+	 * (including this field's own name, or a name from some other
+	 * model entirely), is dropped outright rather than stored. A `value`
+	 * is sanitized the same way any other free-text setting already is,
+	 * even for the two operators (`has_any_value`/`has_no_value`) that
+	 * never actually read it -- harmless either way, and simpler than a
+	 * conditional sanitize path per operator.
+	 *
+	 * A group with no surviving rules is dropped; if every group ends up
+	 * dropped (including the common case of `enabled` itself being
+	 * false, or `$raw` simply not being shaped like conditional logic at
+	 * all), the result is `null` -- not `{enabled: false}` or `[]` -- so a
+	 * field with nothing actually configured stores nothing, the same
+	 * "empty means NULL, not an object full of blanks" convention
+	 * `sanitize_settings()` already established. This does mean
+	 * temporarily disabling the toggle and re-enabling it later starts
+	 * from an empty rule builder again, not whatever was configured
+	 * before -- the same accepted trade-off already made for a Choice
+	 * field's own choices being forgotten the moment its type changes
+	 * away from one that has any.
+	 *
+	 * A rule surviving here today can still go stale later: if the field
+	 * it references is subsequently renamed or removed, this method isn't
+	 * re-run against every OTHER field's already-stored conditional logic
+	 * to fix it up (that would mean rewriting a potentially unrelated
+	 * field's own row on every rename/removal). Instead, `all()`'s own
+	 * `prune_conditional_logic_rules()` filters a stale reference back out
+	 * every time conditional logic is actually read, so a dangling rule
+	 * degrades to simply not being evaluated rather than ever pointing at
+	 * the wrong field or erroring -- the on-disk JSON can lag slightly
+	 * behind reality, but nothing reads it without this filter also
+	 * running.
+	 *
+	 * @param string $class_name         Model class name.
+	 * @param string $exclude_field_name This field's own current name --
+	 *                                     never a valid `field` for one of
+	 *                                     its own rules.
+	 * @param mixed  $raw                Raw input, e.g. a REST request
+	 *                                     body's own `conditional_logic`
+	 *                                     object -- tolerated as anything.
+	 * @return array{enabled:true,groups:array<int,array{rules:array<int,array{field:string,operator:string,value:string}>}>}|null
+	 */
+	public static function sanitize_conditional_logic( $class_name, $exclude_field_name, $raw ) {
+		if ( ! is_array( $raw ) || empty( $raw['enabled'] ) ) {
+			return null;
+		}
+
+		$valid_operators = array( 'has_any_value', 'has_no_value', 'value_equals', 'value_not_equals', 'value_contains' );
+
+		$other_field_names = array();
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( $field['name'] !== $exclude_field_name ) {
+				$other_field_names[] = $field['name'];
+			}
+		}
+
+		$groups = array();
+
+		foreach ( (array) ( $raw['groups'] ?? array() ) as $raw_group ) {
+			$rules = array();
+
+			foreach ( (array) ( is_array( $raw_group ) ? ( $raw_group['rules'] ?? array() ) : array() ) as $raw_rule ) {
+				if ( ! is_array( $raw_rule ) ) {
+					continue;
+				}
+
+				$field    = sanitize_text_field( (string) ( $raw_rule['field'] ?? '' ) );
+				$operator = sanitize_text_field( (string) ( $raw_rule['operator'] ?? '' ) );
+
+				if ( '' === $field || ! in_array( $field, $other_field_names, true ) || ! in_array( $operator, $valid_operators, true ) ) {
+					continue;
+				}
+
+				$rules[] = array(
+					'field'    => $field,
+					'operator' => $operator,
+					'value'    => sanitize_text_field( trim( (string) ( $raw_rule['value'] ?? '' ) ) ),
+				);
+			}
+
+			if ( ! empty( $rules ) ) {
+				$groups[] = array( 'rules' => $rules );
+			}
+		}
+
+		return empty( $groups ) ? null : array(
+			'enabled' => true,
+			'groups'  => $groups,
+		);
+	}
+
+	/**
+	 * Drops a rule from an already-`sanitize_conditional_logic()`'d
+	 * structure the moment its own `field` no longer names one of this
+	 * model's *current* fields -- see that method's own docblock for why
+	 * this exists (a rename/removal elsewhere isn't proactively cascaded
+	 * into every other field's own stored conditional logic; this is what
+	 * catches a resulting stale reference instead, every time `all()`
+	 * reads it back). A group left with no rules, or a $decoded that isn't
+	 * shaped like conditional logic at all (including simply `null`), is
+	 * dropped/returned as `null` the same way `sanitize_conditional_logic()`
+	 * itself would.
+	 *
+	 * @param mixed    $decoded           json_decode()'d `conditional_logic`
+	 *                                      column value, or `null`.
+	 * @param string[] $valid_field_names This model's own current field
+	 *                                      names (already excluding
+	 *                                      whichever field $decoded itself
+	 *                                      belongs to -- see all()'s own
+	 *                                      call site).
+	 * @return array{enabled:true,groups:array<int,array{rules:array<int,array{field:string,operator:string,value:string}>}>}|null
+	 */
+	private static function prune_conditional_logic_rules( $decoded, array $valid_field_names ) {
+		if ( ! is_array( $decoded ) || empty( $decoded['enabled'] ) || ! is_array( $decoded['groups'] ?? null ) ) {
+			return null;
+		}
+
+		$groups = array();
+
+		foreach ( $decoded['groups'] as $group ) {
+			$rules = array();
+
+			foreach ( (array) ( is_array( $group ) ? ( $group['rules'] ?? array() ) : array() ) as $rule ) {
+				if ( is_array( $rule ) && in_array( $rule['field'] ?? null, $valid_field_names, true ) ) {
+					$rules[] = $rule;
+				}
+			}
+
+			if ( ! empty( $rules ) ) {
+				$groups[] = array( 'rules' => $rules );
+			}
+		}
+
+		return empty( $groups ) ? null : array(
+			'enabled' => true,
+			'groups'  => $groups,
+		);
+	}
+
+	/**
+	 * Whether a field with this Conditional Logic should be considered to
+	 * exist at all for this particular record -- OR across `$conditional_logic`'s
+	 * own groups, AND within each group's own rules, evaluated against
+	 * `$effective_data` (a plain `[field_name => value]` map -- see this
+	 * method's own call sites, `validate_required_fields()`/
+	 * `validate_character_limits()` below, for what that map actually
+	 * contains on a create vs. an update). `true` (visible, evaluate this
+	 * field normally) whenever `$conditional_logic` is `null`/disabled/has
+	 * no groups at all -- the common case, every field with no Conditional
+	 * Logic configured.
+	 *
+	 * A rule whose own `field` isn't a key in `$effective_data` at all is
+	 * skipped -- neither satisfied nor failed -- rather than treated as
+	 * "no value" (`has_no_value` would otherwise trivially match a rule
+	 * this method genuinely has no data to evaluate, e.g. a Relate to Many
+	 * field's own name on a partial update() that didn't touch it and has
+	 * no real column for `$record->toArray()` to have surfaced it from
+	 * either -- see `Records_REST_Controller::update_record()`'s own
+	 * `$effective_data` construction). An empty group (already excluded by
+	 * `sanitize_conditional_logic()`/`prune_conditional_logic_rules()` in
+	 * practice, but tolerated here too) contributes nothing either way.
+	 *
+	 * @param array|null           $conditional_logic Already-decoded/pruned
+	 *                                                   `{enabled, groups}`,
+	 *                                                   or `null`.
+	 * @param array<string,mixed>  $effective_data     `[field_name => value]`.
+	 * @return bool
+	 */
+	private static function is_field_visible_for_data( $conditional_logic, array $effective_data ) {
+		if ( ! is_array( $conditional_logic ) || empty( $conditional_logic['enabled'] ) || empty( $conditional_logic['groups'] ) ) {
+			return true;
+		}
+
+		foreach ( $conditional_logic['groups'] as $group ) {
+			$rules = is_array( $group ) ? ( $group['rules'] ?? array() ) : array();
+
+			if ( empty( $rules ) ) {
+				continue;
+			}
+
+			$group_matches = true;
+
+			foreach ( $rules as $rule ) {
+				if ( ! is_array( $rule ) || ! array_key_exists( 'field', $rule ) ) {
+					continue;
+				}
+
+				if ( ! array_key_exists( $rule['field'], $effective_data ) ) {
+					continue; // Can't evaluate -- doesn't count against this group.
+				}
+
+				if ( ! self::conditional_logic_rule_matches( $rule, $effective_data[ $rule['field'] ] ) ) {
+					$group_matches = false;
+					break;
+				}
+			}
+
+			if ( $group_matches ) {
+				return true; // OR across groups -- the first fully-matching one wins.
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * @param array $rule  `{field, operator, value}` -- `field` itself
+	 *                       isn't read here, only `operator`/`value`
+	 *                       (the caller already resolved `field` to $value).
+	 * @param mixed $value The referenced field's own current value.
+	 * @return bool
+	 */
+	private static function conditional_logic_rule_matches( array $rule, $value ) {
+		$operator   = $rule['operator'] ?? '';
+		$rule_value = (string) ( $rule['value'] ?? '' );
+
+		switch ( $operator ) {
+			case 'has_any_value':
+				return ! self::is_required_value_missing( $value );
+			case 'has_no_value':
+				return self::is_required_value_missing( $value );
+			case 'value_equals':
+				return self::conditional_logic_value_matches( $value, $rule_value, 'equals' );
+			case 'value_not_equals':
+				return ! self::conditional_logic_value_matches( $value, $rule_value, 'equals' );
+			case 'value_contains':
+				return self::conditional_logic_value_matches( $value, $rule_value, 'contains' );
+			default:
+				return true; // An operator that somehow isn't one of the five recognized ones never blocks a field from showing.
+		}
+	}
+
+	/**
+	 * `$value` an array (a Checkbox field's own selected choices, or a
+	 * Relate to Many field's own ids, if still present in `$effective_data`
+	 * at all) matches if ANY element does -- a single scalar is compared
+	 * directly. `'equals'` is an exact, case-sensitive match; `'contains'`
+	 * is a case-insensitive substring match (an empty `$rule_value` never
+	 * "contains"-matches anything, rather than trivially matching every
+	 * value the way an empty substring normally would).
+	 *
+	 * @param mixed  $value
+	 * @param string $rule_value
+	 * @param string $mode       'equals'|'contains'.
+	 * @return bool
+	 */
+	private static function conditional_logic_value_matches( $value, $rule_value, $mode ) {
+		foreach ( is_array( $value ) ? $value : array( $value ) as $candidate ) {
+			$candidate_string = (string) $candidate;
+
+			if ( 'equals' === $mode ) {
+				if ( $candidate_string === $rule_value ) {
+					return true;
+				}
+			} elseif ( '' !== $rule_value && false !== stripos( $candidate_string, $rule_value ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Add a new field: generates and runs an ADD COLUMN migration for it
 	 * first, and only records the field's metadata once that has
 	 * actually succeeded.
@@ -662,11 +1026,18 @@ class Model_Fields {
 	 *                                           actually recognizes (`[]` for
 	 *                                           every type that recognizes
 	 *                                           none) -- see sanitize_settings().
-	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
+	 * @param array         $conditional_logic Raw Conditional Logic --
+	 *                                           filtered down to only rules
+	 *                                           referencing one of this
+	 *                                           model's OTHER real fields
+	 *                                           with a recognized operator
+	 *                                           -- see
+	 *                                           sanitize_conditional_logic().
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
-	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null, $required = false, $settings = array() ) {
+	public static function add( $class_name, $name, $type, $label = '', $relationship_method = null, $choices = null, $required = false, $settings = array(), $conditional_logic = array() ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -748,8 +1119,9 @@ class Model_Fields {
 		$max_position       = self::table()->where( 'model', $class_name )->max( 'position' );
 		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
 
-		$required          = (bool) $required;
-		$sanitized_settings = self::sanitize_settings( $field['type'], $settings );
+		$required            = (bool) $required;
+		$sanitized_settings  = self::sanitize_settings( $field['type'], $settings );
+		$sanitized_cl        = self::sanitize_conditional_logic( $class_name, $field['name'], $conditional_logic );
 
 		$field_id = self::table()->insertGetId(
 			array(
@@ -761,6 +1133,7 @@ class Model_Fields {
 				'relationship_method' => $relationship_method,
 				'required'            => $required,
 				'settings'            => empty( $sanitized_settings ) ? null : wp_json_encode( $sanitized_settings ),
+				'conditional_logic'   => null === $sanitized_cl ? null : wp_json_encode( $sanitized_cl ),
 				'created_at'          => current_time( 'mysql' ),
 				'updated_at'          => current_time( 'mysql' ),
 			)
@@ -776,6 +1149,7 @@ class Model_Fields {
 		$field['choices']              = $validated_choices;
 		$field['required']             = $required;
 		$field['settings']             = $sanitized_settings;
+		$field['conditional_logic']    = $sanitized_cl;
 
 		// The table row above is already the recorded field -- rewriting
 		// the model file with the now-current, DB-sourced field list is a
@@ -829,9 +1203,16 @@ class Model_Fields {
 	 *                              actually recognizes -- see
 	 *                              sanitize_settings(). Freely editable in
 	 *                              place, same as choices/required.
-	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
+	 * @param array         $conditional_logic Raw Conditional Logic,
+	 *                              filtered down to only rules referencing
+	 *                              one of this model's OTHER real fields
+	 *                              with a recognized operator -- see
+	 *                              sanitize_conditional_logic(). Freely
+	 *                              editable in place, same as
+	 *                              choices/required/settings.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 */
-	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false, $settings = array() ) {
+	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false, $settings = array(), $conditional_logic = array() ) {
 		$model = self::require_model( $class_name );
 
 		if ( is_wp_error( $model ) ) {
@@ -933,7 +1314,10 @@ class Model_Fields {
 		$sanitized_settings = self::sanitize_settings( $new_field['type'], $settings );
 		$settings_changed   = $old_field['settings'] !== $sanitized_settings;
 
-		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed && ! $required_changed && ! $settings_changed ) {
+		$sanitized_cl     = self::sanitize_conditional_logic( $class_name, $current_name, $conditional_logic );
+		$cl_changed       = $old_field['conditional_logic'] !== $sanitized_cl;
+
+		if ( ! $name_changed && ! $type_changed && ! $label_changed && ! $choices_changed && ! $required_changed && ! $settings_changed && ! $cl_changed ) {
 			return $old_field;
 		}
 
@@ -949,7 +1333,7 @@ class Model_Fields {
 		// the new metadata below, the same way a truly no-op update
 		// (caught above) skips it entirely.
 		if ( ! $name_changed && ! $type_changed ) {
-			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
+			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings, $sanitized_cl );
 		}
 
 		$up   = array();
@@ -1007,20 +1391,22 @@ class Model_Fields {
 	 * @param string[] $choices       Already-validated choices -- only used/saved when $is_choice_type.
 	 * @param bool     $required      Whether this field is required -- applies unconditionally, unlike $choices.
 	 * @param array    $settings      Already-sanitize_settings()'d Presentation settings -- applies unconditionally, same as $required.
-	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool,settings:array<string,string>}|\WP_Error
+	 * @param array|null $conditional_logic Already-sanitize_conditional_logic()'d Conditional Logic -- applies unconditionally, same as $required.
+	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 */
-	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required, array $settings = array() ) {
+	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required, array $settings = array(), $conditional_logic = null ) {
 		self::table()
 			->where( 'model', $class_name )
 			->where( 'name', $current_name )
 			->update(
 				array(
-					'name'       => $new_field['name'],
-					'label'      => $new_field['label'],
-					'type'       => $new_field['type'],
-					'required'   => (bool) $required,
-					'settings'   => empty( $settings ) ? null : wp_json_encode( $settings ),
-					'updated_at' => current_time( 'mysql' ),
+					'name'              => $new_field['name'],
+					'label'             => $new_field['label'],
+					'type'              => $new_field['type'],
+					'required'          => (bool) $required,
+					'settings'          => empty( $settings ) ? null : wp_json_encode( $settings ),
+					'conditional_logic' => null === $conditional_logic ? null : wp_json_encode( $conditional_logic ),
+					'updated_at'        => current_time( 'mysql' ),
 				)
 			);
 
@@ -1036,10 +1422,11 @@ class Model_Fields {
 			Model_Field_Choices::forget( $field_id );
 		}
 
-		$new_field['id']       = $field_id;
-		$new_field['choices']  = $is_choice_type ? $choices : array();
-		$new_field['required'] = (bool) $required;
-		$new_field['settings'] = $settings;
+		$new_field['id']                = $field_id;
+		$new_field['choices']           = $is_choice_type ? $choices : array();
+		$new_field['required']          = (bool) $required;
+		$new_field['settings']          = $settings;
+		$new_field['conditional_logic'] = $conditional_logic;
 
 		$rewrite_result = Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
 

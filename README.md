@@ -3513,8 +3513,7 @@ now flushes whatever's still pending (tracked in a small
 few keystrokes before navigating elsewhere are never silently lost.
 
 See "Choice field types" below for the panel's own General/Validation/
-Presentation/Conditional Logic tabs (the latter two currently empty
-placeholders, mirroring ACF's own field-settings layout).
+Presentation tabs, and "Conditional Logic" further down for the fourth.
 
 ### Relationships (`Model_Relationships`) -- real Eloquent relationship methods, printed the same way fields are
 
@@ -4065,10 +4064,9 @@ Buttons/Select/Radio are ordinary single strings, so both stay `true`.
 **The admin app**: `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`)'s
 own edit panel has four ALWAYS-present tabs -- "General", "Validation",
 "Presentation", "Conditional Logic" -- the same four ACF's own
-field-settings screen has ("Conditional Logic" is still an empty
-placeholder, not backed by anything on the PHP side yet; see
-"Presentation field settings" below for what Presentation actually
-does). Unlike the top-level Fields/Relationships tabs on a model's
+field-settings screen has (see "Presentation field settings" below for
+Presentation, and "Conditional Logic" further down for that fourth
+tab). Unlike the top-level Fields/Relationships tabs on a model's
 detail screen (still plain `nav-tab`/`nav-tab-active`, core wp-admin's
 own boxed tab look), these four render as flat, text-only tabs with a
 thin bottom border under the whole strip and a blue underline under
@@ -4491,6 +4489,119 @@ typing past the limit rather than letting them submit and then rejecting
 it), never a substitute for the server-side enforcement above, which a
 request built by hand and bypassing this form entirely would still have
 to pass.
+
+### Conditional Logic -- showing/hiding a field based on another field's value
+
+Any field (regardless of type -- unlike Presentation/Default Value/
+Character Limit, there's no `Field_Type` method gating this) can be
+given "Show this field if ..." rules under its own **Conditional
+Logic** tab: OR'd groups of AND'd conditions, each `{field, operator,
+value}`, `field` limited to this model's OTHER already-saved fields (a
+field can never meaningfully condition on its own value) and `operator`
+one of **Has any value**, **Has no value**, **Value is equal to**,
+**Value is not equal to**, **Value contains**. A record's field only
+actually appears in `RecordForm` when at least one group's rules are ALL
+satisfied by that record's OTHER field values -- the same OR-of-ANDs
+shape ACF's own Conditional Logic already uses.
+
+**Its own column, not one more `settings` key.** Presentation settings/
+Default Value/Character Limit all share one generic `gateway_fields.settings`
+JSON column because they're each a flat set of strings. Conditional
+Logic is a genuinely different *shape* -- a nested tree of OR'd groups of
+AND'd rules -- so it gets its own nullable `gateway_fields.conditional_logic`
+TEXT column instead (`{enabled: true, groups: [...]}`, or `NULL` for a
+field with none configured), same upgrade-path pattern as every other
+column here (`ensure_table()`'s fresh-CREATE block declares it directly;
+an ALTER adds it for a table that predates it).
+
+**`Model_Fields::sanitize_conditional_logic( $class_name, $exclude_field_name,
+$raw )`** is the trust boundary, called by `add()`/`update()` (each
+gaining a new, always-sent `$conditional_logic` param) the same way
+`sanitize_settings()` already gates `settings`: `enabled` must be truthy
+or the whole thing is `NULL`; each rule's own `field` must actually name
+one of this model's OTHER current fields (`$exclude_field_name` -- this
+field's own current name -- is never a valid target, so a field can't
+condition on itself) and `operator` must be one of the five recognized
+ones, or the rule is dropped; a group left with no surviving rules is
+dropped too; if every group ends up dropped, the result is `NULL`, the
+same "empty means nothing stored, not an object full of blanks"
+convention `sanitize_settings()` already established. `update()`'s own
+"nothing changed, skip straight to returning the old field" no-op check
+gained a matching `$cl_changed`.
+
+**Self-healing against a rename/removal elsewhere.** A rule surviving
+`sanitize_conditional_logic()` today can still go stale later: if the
+field it references is subsequently renamed or removed, this method
+isn't re-run against every OTHER field's own already-stored conditional
+logic to fix it up (that would mean rewriting a potentially unrelated
+field's own row on every rename/removal). Instead, `Model_Fields::all()`
+runs a new `prune_conditional_logic_rules()` against its own freshly
+computed list of current field names every time it decodes a field's
+`conditional_logic` column, dropping any rule that no longer points at a
+real field -- so a dangling reference degrades to simply not being
+evaluated (never blocking, never erroring) rather than ever pointing at
+the wrong field.
+
+**Actually enforced, not just recorded -- "as if the field doesn't exist
+for this record."** A required or character-limited field that's
+currently hidden is exempt from that validation entirely: `Model_Fields::
+validate_required_fields()`/`validate_character_limits()` both gained a
+new `is_field_visible_for_data( $conditional_logic, $effective_data )`
+check, skipping a field outright the moment it evaluates to hidden --
+required or too long or not, that field is treated as if this model
+doesn't have it at all for this particular record. `$effective_data` is
+deliberately a separate thing from `$data` (the actual value being
+validated): on `create_record()` it's just `$data` itself (every field
+is always present in a create request regardless); on `update_record()`
+it's `$record->toArray()` merged with `$data`, so a rule referencing a
+field this particular partial update never mentions still evaluates
+against that field's real, already-stored value -- not "can't tell,
+assume it's empty." A rule referencing a field that isn't a key in
+`$effective_data` at all (the same dangling-reference case
+`prune_conditional_logic_rules()` already guards against, belt-and-suspenders)
+is skipped rather than treated as satisfied or failed, so it never
+single-handedly blocks or forces its own group.
+
+**The admin app.** `FieldEditor`'s Conditional Logic tab has its own
+"Conditional Logic" toggle (`conditional_logic.enabled`, a separate RHF
+field from `settings` -- this data doesn't belong in that flat object)
+and, once switched on, a new `ConditionalLogicEditor`
+(`admin-app/src/components/ConditionalLogicEditor.jsx`) for building the
+rule tree -- mirrors `ChoicesEditor`'s own shape (a controlled `groups`
+array + `onChange`, wired in via one `<Controller>`, not
+`react-hook-form`'s own `useFieldArray`, which would need one nested
+instance per group for a tree this shape). Switching the toggle on with
+no rules configured yet seeds one blank rule immediately, so the builder
+is never shown genuinely empty. Each rule row's Field `<select>` only
+ever offers this model's OTHER already-saved fields (whichever row is
+currently open is excluded by index, not name -- a still-unsaved draft
+has no name yet to exclude by); the Value `<input>` only renders for the
+three operators that actually read it (Has any/no value need none at
+all). The last rule in a group shows a blue "and" button (adds another
+AND'd rule to that same group); every earlier rule shows a small "×"
+instead (removing a group's own last rule removes the whole group -- a
+"group with zero rules" isn't a state worth representing). "or" appears
+between groups; "Add rule group" appends a new OR'd one. Conditional
+Logic's own tab-heading dot lights up once it's switched on AND at least
+one rule actually has a field picked.
+
+**`RecordForm`'s own client-side evaluation** (`fieldIsVisible()`, using
+the same five operators, the same OR-of-ANDs shape, and the same
+"a rule referencing a field that no longer exists never blocks its own
+group" reasoning as the server) decides live, on every render, whether
+each field's own `<p>` even renders at all -- no server round-trip, a
+field can appear or disappear the instant whichever OTHER field it
+depends on changes. A rule referencing a relate field compares against
+that OTHER record's own *label* (`{id, label}`/`[{id, label}, ...]` --
+see `RecordForm`'s own docblock), never its numeric id, since a label is
+the only thing meaningful to type a comparison value against in the
+first place. A hidden field is genuinely absent from what gets
+submitted, not just visually collapsed: `handleSubmit()` omits it from
+the payload entirely, so its own already-stored value (if any) is left
+untouched rather than this form's own blank/default local state for it
+silently overwriting something real -- the client-side half of "as if
+the field doesn't exist for this record," with the server-side half
+(above) never trusting that every possible caller actually did this.
 
 ### Relate fields in the Records screen: search, selection, and enriched responses
 
