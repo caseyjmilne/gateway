@@ -4239,19 +4239,43 @@ this time with its row count, reusing `GET /gateway/v1/models` --
 for each one (wrapped in a `try`/`catch`: an unreachable database or a
 migration that never ran shows as "--" rather than breaking the whole
 list). Clicking a model opens `RecordsCrud` (route `/records/:className`),
-the actual CRUD screen: Add New, edit an existing row in place, delete
-one -- the ACF-style "row becomes a form" interaction `FieldEditor`
-already established, reused here for records instead of field
-definitions.
+the actual CRUD screen: Add New (inline, above the table), edit an
+existing row (in a `Modal`), delete one.
+
+**Add New stays inline; Edit opens in a `Modal`
+(`admin-app/src/components/Modal.jsx`), floating above the list rather
+than growing inline as an extra `<tr>` under the row.** `FieldEditor`'s
+own Fields table still uses the ACF-style "row becomes a form, right
+underneath it" interaction, and that's the right call there -- a
+field's own settings never grow large enough to be a problem. A model's
+RECORDS can carry many more fields than that, and an inline edit form
+that size pushed every row below the one being edited further down the
+page as it grew, reflowing the whole table underneath a form the site
+owner was still filling out. A modal doesn't have that problem: the list
+stays exactly where it is underneath, whatever the form's own length,
+and the modal's own body scrolls independently (`max-height: 90vh`) once
+it's taller than the viewport rather than growing the page. Add New
+never had this problem to begin with -- it's already anchored at a fixed
+position above the table that doesn't move regardless of how long the
+form gets -- so it's left as it was, a plain inline form. `Modal` is
+hand-rolled rather than a library (`@wordpress/components`' own `Modal`,
+say): this app is plain React + Vite, deliberately kept separate from
+the Gutenberg blocks' own `@wordpress/scripts` build, so pulling in a
+Gutenberg-only dependency for one small dialog would be an odd fit. It
+closes on three equivalent gestures -- the × button, clicking the dimmed
+overlay outside the panel, or Escape -- all wired to the same handler
+Cancel already used, and carries no focus trap (an admin-only screen
+behind a login, not a public-facing surface with the same accessibility
+stakes a plugin's own front-end widgets would have).
 
 **Every column and every form input comes from the model's own fields**
 -- there's no separate "which columns to show" configuration anywhere.
 `RecordForm` (`admin-app/src/components/RecordForm.jsx`, shared between
-"Add New" and each row's own inline edit) renders one `<input>` per
-field, choosing its HTML `type` from `useFieldTypes()`'s `input_type`
-for that field's own `type` -- a "Number" field genuinely gets
-`<input type="number">`, not a guess made independently of what
-`Field_Type_Registry` already knows.
+"Add New" and the Edit modal) renders one `<input>` per field, choosing
+its HTML `type` from `useFieldTypes()`'s `input_type` for that field's
+own `type` -- a "Number" field genuinely gets `<input type="number">`,
+not a guess made independently of what `Field_Type_Registry` already
+knows.
 
 `Records_REST_Controller` is the one controller in the whole Models/
 Fields/Records trio that actually touches row data:

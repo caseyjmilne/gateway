@@ -3,14 +3,27 @@ import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import RecordForm from '../components/RecordForm.jsx';
+import Modal from '../components/Modal.jsx';
 
 const PER_PAGE = 20;
 
 /**
- * The actual CRUD UI for one model's records: a table of existing rows
- * (each row swaps to an inline edit form, matching FieldEditor's own
- * interaction pattern) plus an "Add New" form above it. Every column and
- * every form input is driven entirely by the model's own fields
+ * The actual CRUD UI for one model's records: a table of existing rows,
+ * an "Add New" form above it, and an Edit form of its own for whichever
+ * row's own Edit button was clicked -- opened in a `Modal`
+ * (`admin-app/src/components/Modal.jsx`) floating above the list rather
+ * than growing inline as an extra `<tr>` under the row (FieldEditor's
+ * own Fields table still does the latter, and that's the right call
+ * there -- a field has only a handful of settings, so its own panel
+ * never grows large enough to be a problem; a MODEL's records can carry
+ * many more fields than that, and an inline form that size pushed every
+ * row below the one being edited further down the page as it grew,
+ * which is what the modal fixes: the list stays exactly where it is
+ * underneath, whatever the form's own length). "Add New" stays inline,
+ * above the table, unlike Edit -- it's already anchored at a fixed
+ * position that never moves regardless of how long the form gets, so it
+ * never had the growing-table problem Edit did. Every column and every
+ * form input is driven entirely by the model's own fields
  * (Gateway\Model_Fields, fetched as part of the model detail response) --
  * there's no separate "which columns to show" configuration here at all.
  *
@@ -149,6 +162,13 @@ export default function RecordsCrud() {
 
 	const fields = model ? model.fields : [];
 	const totalPages = Math.max( 1, Math.ceil( total / PER_PAGE ) );
+	// `null` both while nothing is being edited and for the brief window
+	// right after a delete/reload where the previously-edited record's id
+	// no longer matches anything in the freshly-fetched `records` -- the
+	// Modal below only ever renders when this is non-null, so either case
+	// just means no modal shows.
+	const editingRecord =
+		records.find( ( record ) => record.id === editingId ) || null;
 
 	const isSensitive = ( type ) =>
 		fieldTypes.find( ( fieldType ) => fieldType.key === type )
@@ -264,96 +284,50 @@ export default function RecordsCrud() {
 										</tr>
 									</thead>
 									<tbody>
-										{ records.map( ( record ) =>
-											editingId === record.id ? (
-												<tr key={ record.id }>
-													<td
-														colSpan={
-															fields.length + 2
-														}
-													>
-														<RecordForm
-															fields={ fields }
-															fieldTypes={
-																fieldTypes
-															}
-															initialValues={
-																record
-															}
-															onSubmit={ (
-																values
-															) =>
-																handleEditSave(
-																	record.id,
-																	values
-																)
-															}
-															onCancel={ () =>
-																setEditingId(
-																	null
-																)
-															}
-															submitLabel="Save"
-															submitting={
-																editSubmitting
-															}
-														/>
-														{ editError && (
-															<div className="notice notice-error">
-																<p>
-																	{
-																		editError
-																	}
-																</p>
-															</div>
+										{ records.map( ( record ) => (
+											<tr key={ record.id }>
+												<td>{ record.id }</td>
+												{ fields.map( ( field ) => (
+													<td key={ field.name }>
+														{ displayValue(
+															field,
+															record
 														) }
 													</td>
-												</tr>
-											) : (
-												<tr key={ record.id }>
-													<td>{ record.id }</td>
-													{ fields.map( ( field ) => (
-														<td key={ field.name }>
-															{ displayValue(
-																field,
-																record
-															) }
-														</td>
-													) ) }
-													<td>
-														<button
-															type="button"
-															className="button"
-															onClick={ () =>
-																setEditingId(
-																	record.id
-																)
-															}
-														>
-															Edit
-														</button>
-														<button
-															type="button"
-															className="button"
-															onClick={ () =>
-																handleDelete(
-																	record.id
-																)
-															}
-															disabled={
-																deletingId ===
+												) ) }
+												<td>
+													<button
+														type="button"
+														className="button"
+														onClick={ () =>
+															setEditingId(
 																record.id
-															}
-														>
-															{ deletingId ===
+															)
+														}
+													>
+														Edit
+													</button>
+													<button
+														type="button"
+														className="button"
+														onClick={ () =>
+															handleDelete(
+																record.id
+															)
+														}
+														disabled={
+															deletingId ===
 															record.id
-																? 'Deleting…'
-																: 'Delete' }
-														</button>
-													</td>
-												</tr>
-											)
-										) }
+														}
+													>
+														{ deletingId ===
+														record.id
+															? 'Deleting…'
+															: 'Delete' }
+													</button>
+												</td>
+											</tr>
+										) ) }
 									</tbody>
 								</table>
 							) }
@@ -386,6 +360,32 @@ export default function RecordsCrud() {
 						</>
 					) }
 				</>
+			) }
+
+			{ editingRecord && (
+				<Modal
+					title={ `Edit ${ model.class } #${ editingRecord.id }` }
+					onClose={ () => setEditingId( null ) }
+				>
+					<div className="gateway-record-form-wrap">
+						<RecordForm
+							fields={ fields }
+							fieldTypes={ fieldTypes }
+							initialValues={ editingRecord }
+							onSubmit={ ( values ) =>
+								handleEditSave( editingRecord.id, values )
+							}
+							onCancel={ () => setEditingId( null ) }
+							submitLabel="Save"
+							submitting={ editSubmitting }
+						/>
+						{ editError && (
+							<div className="notice notice-error">
+								<p>{ editError }</p>
+							</div>
+						) }
+					</div>
+				</Modal>
 			) }
 		</div>
 	);

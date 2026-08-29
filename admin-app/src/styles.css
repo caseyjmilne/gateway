@@ -383,6 +383,70 @@
 	max-width: 480px;
 }
 
+.gateway-admin-app .gateway-modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba( 0, 0, 0, 0.5 );
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 5vh 20px;
+	z-index: 100000; /* above wp-admin's own #wpadminbar/#adminmenu */
+	overflow-y: auto;
+}
+
+.gateway-admin-app .gateway-modal {
+	background: #fff;
+	border-radius: 6px;
+	box-shadow: 0 4px 24px rgba( 0, 0, 0, 0.2 );
+	width: 100%;
+	max-width: 560px;
+	max-height: 90vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.gateway-admin-app .gateway-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.gateway-admin-app .gateway-modal-header h2 {
+	margin: 0;
+	font-size: 1.1em;
+}
+
+.gateway-admin-app .gateway-modal-close {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 24px;
+	line-height: 1;
+	color: #646970;
+	padding: 4px;
+}
+
+.gateway-admin-app .gateway-modal-close:hover {
+	color: #1d2327;
+}
+
+.gateway-admin-app .gateway-modal-body {
+	padding: 20px;
+	overflow-y: auto;
+}
+
+.gateway-admin-app .gateway-modal-body .gateway-record-form-wrap {
+	/* Inside the modal, the form's own card chrome (border/background/
+	 * max-width) is redundant -- the modal itself is already that card. */
+	border: none;
+	padding: 0;
+	margin-bottom: 0;
+	max-width: none;
+}
+
 .gateway-admin-app .gateway-record-form label {
 	font-weight: 500;
 	font-size: 13px;
