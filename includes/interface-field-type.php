@@ -315,4 +315,58 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_range_limits();
+
+	/**
+	 * Whether a field of this type has its own bundle of media-specific
+	 * settings -- `true` only for `Image_Field_Type` today. Unlike the
+	 * other `supports_*()` methods above, which each gate ONE or TWO
+	 * settings, this one gates a whole cluster at once, because they're
+	 * all specific to the same one type and all answer variations of the
+	 * same underlying question ("how should this field pick/validate/
+	 * display an attachment"), not because they're a different *shape* of
+	 * data than everything else `settings` already holds (they're not --
+	 * every one of them is still a flat string in the same generic
+	 * `gateway_fields.settings` JSON column, `Model_Fields::sanitize_settings()`
+	 * merges them in exactly like `character_limit`/`min_value`/`max_value`
+	 * are). Adding a THIRD media-capable type later would mean this
+	 * method returning `true` for it too, not a new method of its own.
+	 *
+	 * The keys this gates (`FieldEditor.jsx`'s own General/Validation
+	 * tabs, `RecordForm`'s own media picker, `Model_Fields::
+	 * validate_image_constraints()`):
+	 * - `return_format` (General) -- one of `'array'`/`'url'`/`'id'`,
+	 *   what shape a record's own GET response gives this field's value
+	 *   (the full ACF-style `{id, url, alt, width, height, sizes}`, just
+	 *   the URL string, or just the raw attachment id). Invalid/missing
+	 *   defaults to `'array'` client-side, not stored as a literal
+	 *   default here.
+	 * - `library` (General) -- `'all'` or `'uploadedTo'`, which library
+	 *   scope the media picker opens to. Gateway's own records aren't
+	 *   WP posts, so there's no literal "this post" to scope
+	 *   `'uploadedTo'` to the way ACF's own field (attached to a real
+	 *   post edit screen) can -- see `RecordForm.jsx`'s own docblock for
+	 *   how this is actually handled given that.
+	 * - `min_width`/`min_height`/`min_size`/`max_width`/`max_height`/
+	 *   `max_size` (Validation) -- each independently optional, each
+	 *   numeric and non-negative (unlike `min_value`/`max_value` above, a
+	 *   negative dimension or file size is never legitimate). Actually
+	 *   enforced -- not just recorded -- by `Model_Fields::
+	 *   validate_image_constraints()`, the same "client hint (a rejected
+	 *   pick in the media modal), server enforces" split every other
+	 *   Validation-tab setting already has.
+	 * - `allowed_types` (Validation) -- a free-text, comma-or-space
+	 *   separated list of file extensions (e.g. `"jpg,png,gif"`),
+	 *   filtering both the media modal's own library query and the
+	 *   server-side check.
+	 *
+	 * NOT gated here: `preview_size` (General... actually Presentation)
+	 * is Image_Field_Type's own `presentation_fields()` entry instead --
+	 * it's a genuine Presentation-tab concern (how big a thumbnail
+	 * RecordForm shows while editing), the same category placeholder/
+	 * prepend/append already belong to, not a validation constraint or a
+	 * General-tab picker-behavior setting the way everything else here is.
+	 *
+	 * @return bool
+	 */
+	public static function supports_media_settings();
 }

@@ -4333,7 +4333,7 @@ column that's since been dropped by hand, say) comes back as a clean
 
 A field's "Presentation" tab (previously an empty placeholder, alongside
 "Conditional Logic") is now real for every field type. **`instructions`**
--- a note shown between the label and the control -- is universal: every
+-- a note shown under the control, ACF's own convention -- is universal: every
 built-in type recognizes it, and it's always the FIRST Presentation
 setting a type recognizes, regardless of what else it recognizes. On top
 of that, **Text**, **Number**, **Email**, **URL**, and **Password** all
@@ -4956,6 +4956,106 @@ values, just `RecordForm`'s own signal to special-case them), holding
 the enriched `{id, label}`/`[{id, label}, ...]` shape directly as its
 form state and converting it back to just the id(s) on submit; `RecordsCrud`'s
 table renders a relate field's own label(s) instead of the raw shape.
+
+### Image fields (`Image_Field_Type`) -- an attachment id, the WordPress media modal, and ACF-style constraints
+
+An Image field stores a single WordPress attachment post id in an
+`unsignedBigInteger` column -- the same "store the FK, enrich it for
+display" shape Relate to One already established, not a new pattern.
+Picking/uploading happens through the real `wp.media()` modal (the exact
+one a post editor's Featured Image button opens), not a custom upload
+widget: `Admin_Page::enqueue_assets()` now calls `wp_enqueue_media()`
+before its own script enqueue, which is all `window.wp.media` actually
+needs to exist on the Gateway admin screen.
+
+**General tab.** No Default Value -- `supports_default_value()` is
+`false`; there's no sensible "default attachment" for a record that
+doesn't exist yet. Instead, gated on a new `Field_Type::
+supports_media_settings()` interface method (`true` only for
+`Image_Field_Type`), two selects: **Return Format** (`settings.return_format`,
+one of `array`/`url`/`id` -- what shape this field's value takes in
+every GET response, see "Enrichment" below) and **Library** (`settings.library`,
+`all`/`uploadedTo` -- accepted and preserved, but currently identical in
+effect: Gateway's own records aren't WP posts, so there's no literal
+"this post" for `wp.media()`'s own `library.uploadedTo` query arg to
+scope to the way ACF's Image field, always attached to a real post edit
+screen, can).
+
+**Validation tab**, matching ACF's own Image field layout: a Minimum/
+Maximum grid, two columns, each with Width/Height/File Size rows laid
+out as a prepend-label/`<input>`/append-unit group ("Width"/px,
+"Height"/px, "File Size"/MB -- `settings.min_width`/`max_width`/
+`min_height`/`max_height`/`min_size`/`max_size`, all independently
+optional, unlike Range's own min/max these must be non-negative), plus a
+free-text **Allowed File Types** input (`settings.allowed_types`, a
+comma/space-separated extension list, e.g. `jpg,png`). All seven are
+merged into `sanitize_settings()`'s output only when
+`supports_media_settings()` is true, with the same "drop anything that
+fails its own check rather than reject the whole request" shape
+`min_value`/`max_value`/`character_limit` already have.
+
+**`Model_Fields::validate_image_constraints( $class_name, $data, $effective_data )`**
+is the actual server-side enforcement, called by `Records_REST_Controller::
+create_record()`/`update_record()` right alongside `validate_range_values()`.
+Skipped the same three ways every other Validation check already is: a
+field hidden by Conditional Logic for this request, a field the request
+doesn't mention, or a value that isn't a real (positive, numeric)
+attachment id. For everything else, it resolves the file on disk
+(`get_attached_file()`), decodes its real dimensions
+(`wp_get_attachment_metadata()`) and size (`filesize()`), and checks
+width/height in pixels, size in MB, and extension against
+`allowed_types` -- a single `gateway_record_image_constraint_failed`
+`WP_Error` (400) names every offending field, same "don't make a site
+owner fix one problem at a time" shape as every other bulk validator
+here. **`ImagePicker.jsx`'s own `validateAttachment()`** mirrors all
+three checks client-side, against the picked attachment's own JS model
+attributes -- an immediate rejection at pick time, never a substitute for
+the server-side check above (a request built by hand skips it entirely,
+same as Character Limit's own client hint).
+
+**Presentation tab.** Recognizes one setting, **Preview Size**
+(`settings.preview_size`, a `<select>` of this site's own registered
+image sizes -- `GET /gateway/v1/image-sizes`, a new
+`Media_REST_Controller` route wrapping `wp_get_registered_image_sizes()`
+plus a synthetic "Full Size" entry always offered first, the same way
+ACF's own Image field does) -- which of this field's own available sizes
+`ImagePicker`'s preview renders at. Its options come from a small new
+`useImageSizes()` hook (mirrors `useFieldTypes()`/`useRelationshipTypes()`)
+fetched at render time, not from `PRESENTATION_FIELD_META`'s own static
+catalog the way every other Presentation setting's options do -- there's
+no fixed list of image sizes to hardcode, since `add_image_size()` lets
+a theme/plugin register arbitrary ones per site.
+
+**Enrichment (`Records_REST_Controller::resolve_image_value()`).**
+Every Image field's raw stored id is replaced in a Records response by
+whichever shape its own `return_format` configures, mirroring Relate to
+One's `{id, label}` enrichment: a bare integer for `'id'`; a plain URL
+string for `'url'`; or, for `'array'` (the default, and ACF's own shape)
+`{id, url, alt, width, height, sizes: {name: {url, width, height}, ...}}`,
+`sizes` built from every one of this site's registered sizes (plus a
+synthetic `full` entry) via `wp_get_attachment_image_src()` per size. An
+id that no longer resolves to a real attachment (deleted from the media
+library since) enriches to `null` rather than a stale/broken shape.
+
+**`admin-app/src/components/ImagePicker.jsx`** is the Records-screen UI,
+rendered by `RecordForm` for `input_type === 'image'`. Its own `value`
+prop can arrive in any of the three `return_format` shapes above for an
+existing record; a bare id or a bare URL string can't render a preview
+directly, so the component fetches the same rich `'array'` shape once on
+mount -- `GET /gateway/v1/media/<id>` for the id case (a preview-only
+fetch; the field's own form state stays just the id), or `GET /gateway/v1/media-by-url?url=`
+for the url case (`attachment_url_to_postid()` server-side) -- the
+latter also calls `onChange()` with the id it resolves, a one-time,
+invisible normalization so resubmitting an untouched record still sends
+a valid id rather than the URL string `return_format: 'url'` reduced it
+to (a URL alone has nothing to submit back). Freshly picking a NEW image
+needs neither fetch: `wp.media()`'s own attachment model already carries
+everything a preview needs. "Select Image"/"Change Image" and "Remove"
+buttons round out the control; `settings.allowed_types` also narrows
+`wp.media()`'s own `library.type` filter (mapped from extensions to the
+MIME types the filter actually expects, e.g. `jpg` → `image/jpeg`) so
+the modal itself steers a visitor toward an acceptable file, on top of
+the pick-time and save-time checks above.
 
 ## The Gateway admin app
 

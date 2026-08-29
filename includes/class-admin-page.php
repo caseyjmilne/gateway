@@ -75,6 +75,13 @@ class Admin_Page {
 			return;
 		}
 
+		// Loads WordPress's own media library JS (wp.media) and its
+		// stylesheet -- an Image field's own picker in RecordForm opens
+		// the exact same modal a post editor's Featured Image button
+		// does, rather than this plugin building its own upload UI from
+		// scratch.
+		wp_enqueue_media();
+
 		wp_enqueue_script(
 			self::HANDLE,
 			GATEWAY_ADMIN_APP_URL . '/build/app.js',

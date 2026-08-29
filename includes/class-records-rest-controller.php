@@ -305,6 +305,12 @@ class Records_REST_Controller {
 			return $range_check;
 		}
 
+		$image_check = Model_Fields::validate_image_constraints( $class, $data );
+
+		if ( is_wp_error( $image_check ) ) {
+			return $image_check;
+		}
+
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
@@ -392,6 +398,12 @@ class Records_REST_Controller {
 
 		if ( is_wp_error( $range_check ) ) {
 			return $range_check;
+		}
+
+		$image_check = Model_Fields::validate_image_constraints( $class, $data, $effective_data );
+
+		if ( is_wp_error( $image_check ) ) {
+			return $image_check;
 		}
 
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
@@ -688,19 +700,26 @@ class Records_REST_Controller {
 	 */
 	private static function enrich_records( $class_name, \Illuminate\Database\Eloquent\Collection $records ) {
 		$relate_fields = array();
+		$image_fields  = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
 				$relate_fields[] = $field;
+			}
+
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			if ( $type_class && $type_class::supports_media_settings() ) {
+				$image_fields[] = $field;
 			}
 		}
 
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field ) {
+				function ( $record ) use ( $display_field, $image_fields ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -711,6 +730,8 @@ class Records_REST_Controller {
 					if ( ! array_key_exists( 'label', $array ) ) {
 						$array['label'] = self::record_option( $record, $display_field )['label'];
 					}
+
+					self::enrich_image_fields( $array, $image_fields );
 
 					return $array;
 				}
@@ -734,7 +755,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -775,9 +796,122 @@ class Records_REST_Controller {
 					$array[ $related_column['key'] ] = Column_Registry::resolve_collection_value( $record, $related_column['key'] );
 				}
 
+				self::enrich_image_fields( $array, $image_fields );
+
 				return $array;
 			}
 		)->values()->all();
+	}
+
+	/**
+	 * Replaces every Image field's own raw stored attachment id (in
+	 * $array, by reference) with the shape its own `return_format`
+	 * setting (`Field_Type::supports_media_settings()`) actually asks
+	 * for -- `'id'` leaves the raw id alone, `'url'` becomes the
+	 * attachment's own full-size URL, and `'array'` (the default,
+	 * including when unset/invalid) becomes ACF's own familiar
+	 * `{id, url, alt, width, height, sizes: {name: {url,width,height}, ...}}`
+	 * shape -- `sizes` covering every size WordPress actually generated
+	 * for this attachment (`wp_get_attachment_image_src()` per registered
+	 * size, skipping one that comes back `false`) plus `full` for the
+	 * original. `null` (nothing selected, or the id no longer names a
+	 * real attachment) short-circuits to `null` regardless of format --
+	 * there's no meaningful "empty image" shape to build for any of the
+	 * three.
+	 *
+	 * `RecordForm`'s own edit UI reads this same enriched value
+	 * regardless of the field's configured `return_format` -- see that
+	 * component's own docblock for how it copes with all three shapes
+	 * needing to work as an editing preview, not just as this record's
+	 * own public API response.
+	 *
+	 * @param array $array        A record's own toArray(), modified in place.
+	 * @param array $image_fields Every field on this model with
+	 *                             `supports_media_settings()` true (this
+	 *                             method's own caller already resolved
+	 *                             this once per `enrich_records()` call,
+	 *                             not per record).
+	 */
+	private static function enrich_image_fields( array &$array, array $image_fields ) {
+		foreach ( $image_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$attachment_id = $array[ $field['name'] ];
+
+			if ( empty( $attachment_id ) || ! is_numeric( $attachment_id ) ) {
+				$array[ $field['name'] ] = null;
+				continue;
+			}
+
+			$attachment_id  = (int) $attachment_id;
+			$return_format  = $field['settings']['return_format'] ?? 'array';
+			$array[ $field['name'] ] = self::resolve_image_value( $attachment_id, $return_format );
+		}
+	}
+
+	/**
+	 * Public (unlike this class's every other helper) specifically so
+	 * `Media_REST_Controller::get_media()` can build the exact same
+	 * enriched shape for its own `GET /gateway/v1/media/<id>` route --
+	 * needed by `RecordForm`'s own Image picker whenever a field's
+	 * `return_format` is `'id'` (the record's own value is then a bare
+	 * integer with nothing else to build a preview from).
+	 *
+	 * @param int    $attachment_id WP attachment post id.
+	 * @param string $return_format One of 'array'/'url'/'id'.
+	 * @return array{id:int,url:?string,alt:string,width:?int,height:?int,sizes:array}|string|int|null
+	 */
+	public static function resolve_image_value( $attachment_id, $return_format ) {
+		if ( ! function_exists( 'wp_get_attachment_url' ) || ! get_post( $attachment_id ) ) {
+			// No real attachment behind this id any more (deleted by
+			// hand, e.g.) -- same "don't invent data for something that
+			// isn't there" reasoning a Relate field's own dangling id
+			// gets, just resolved to `null` here since there's no
+			// sensible partial shape to return instead.
+			return null;
+		}
+
+		if ( 'id' === $return_format ) {
+			return $attachment_id;
+		}
+
+		$url = wp_get_attachment_url( $attachment_id );
+
+		if ( 'url' === $return_format ) {
+			return $url;
+		}
+
+		$metadata = wp_get_attachment_metadata( $attachment_id );
+		$sizes    = array(
+			'full' => array(
+				'url'    => $url,
+				'width'  => isset( $metadata['width'] ) ? (int) $metadata['width'] : null,
+				'height' => isset( $metadata['height'] ) ? (int) $metadata['height'] : null,
+			),
+		);
+
+		foreach ( array_keys( wp_get_registered_image_sizes() ) as $size_name ) {
+			$src = wp_get_attachment_image_src( $attachment_id, $size_name );
+
+			if ( is_array( $src ) ) {
+				$sizes[ $size_name ] = array(
+					'url'    => $src[0],
+					'width'  => (int) $src[1],
+					'height' => (int) $src[2],
+				);
+			}
+		}
+
+		return array(
+			'id'     => $attachment_id,
+			'url'    => $url,
+			'alt'    => get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ),
+			'width'  => $sizes['full']['width'],
+			'height' => $sizes['full']['height'],
+			'sizes'  => $sizes,
+		);
 	}
 
 	/**

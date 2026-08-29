@@ -123,7 +123,17 @@ class Field_Type_Registry extends Registry {
 	 * Minimum Value/Maximum Value inputs instead -- `true` only for
 	 * `Range_Field_Type` today.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool}>
+	 * `supports_media_settings` (`Field_Type::supports_media_settings()`)
+	 * is the same idea for a whole bundle at once, spanning General
+	 * (Return Format/Library), Validation (the min/max width/height/
+	 * file-size pairs, Allowed File Types), and -- via `presentation_fields`
+	 * above, not this flag -- Presentation (Preview Size) -- `true` only
+	 * for `Image_Field_Type` today. See that interface method's own
+	 * docblock for why this one setting bundles several keys at once
+	 * rather than getting one flag per key the way everything else here
+	 * does.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -147,6 +157,7 @@ class Field_Type_Registry extends Registry {
 				'supports_default_value'   => $class::supports_default_value(),
 				'supports_character_limit' => $class::supports_character_limit(),
 				'supports_range_limits'    => $class::supports_range_limits(),
+				'supports_media_settings'  => $class::supports_media_settings(),
 			);
 		}
 

@@ -339,6 +339,38 @@
 	font-weight: normal;
 }
 
+.gateway-admin-app .gateway-field-editor-media-bounds-row {
+	display: flex;
+	gap: 32px;
+	flex-wrap: wrap;
+}
+
+.gateway-admin-app .gateway-field-editor-media-bounds {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 180px;
+}
+
+.gateway-admin-app .gateway-field-editor-media-bounds-heading {
+	font-weight: 500;
+	font-size: 13px;
+	color: rgb( 60, 67, 74 );
+}
+
+.gateway-admin-app .gateway-field-editor-media-bounds .gateway-record-form-input-group {
+	max-width: none;
+}
+
+.gateway-admin-app .gateway-field-editor-media-bounds .gateway-record-form-input-addon:first-child {
+	/* Fixed width, not just min-width -- "Width"/"Height"/"File Size"
+	 * are visibly different lengths, and this is what keeps all three
+	 * rows' own number inputs starting at the same x regardless, reading
+	 * as one aligned column rather than three independently-sized ones. */
+	width: 74px;
+	justify-content: center;
+}
+
 .gateway-admin-app .gateway-field-editor-save-status {
 	margin: 1.5em 0 0;
 }
@@ -549,6 +581,29 @@
 	border-left: none;
 	border-top-left-radius: 0;
 	border-bottom-left-radius: 0;
+}
+
+.gateway-admin-app .gateway-image-picker-preview {
+	margin-bottom: 8px;
+}
+
+.gateway-admin-app .gateway-image-picker-preview img {
+	max-width: 100%;
+	max-height: 200px;
+	display: block;
+	border: 1px solid #d0d5dd;
+	border-radius: 6px;
+}
+
+.gateway-admin-app .gateway-image-picker-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.gateway-admin-app .gateway-image-picker-error {
+	color: #d63638;
+	font-size: 13px;
+	margin: 6px 0 0;
 }
 
 .gateway-admin-app .gateway-relate-autocomplete {

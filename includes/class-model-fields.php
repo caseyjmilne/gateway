@@ -720,6 +720,155 @@ class Model_Fields {
 	}
 
 	/**
+	 * Checks every one of a model's own Image fields (`Field_Type::
+	 * supports_media_settings()`) with a configured `min_width`/`min_height`/
+	 * `min_size`/`max_width`/`max_height`/`max_size` and/or `allowed_types`
+	 * against $data -- the same "client hint (a rejected pick in the media
+	 * modal), server enforces" split every other Validation-tab setting
+	 * already has, called by `Records_REST_Controller::create_record()`/
+	 * `update_record()` right alongside `validate_range_values()`.
+	 *
+	 * $data holds a bare WP attachment id (or `null`/absent -- nothing
+	 * selected, never this method's problem: Required is what enforces
+	 * "must have a value" for a required Image field, this only ever
+	 * checks a value that's actually present). Width/height come from
+	 * `wp_get_attachment_metadata()` (only populated for a real raster
+	 * image WP actually generated intermediate sizes for -- a non-image
+	 * attachment, or one whose metadata is missing/stale, skips those two
+	 * checks rather than erroring on data that was never there to check);
+	 * file size is measured directly off disk (`filesize()` on
+	 * `get_attached_file()`'s own path), in MB, matching the same unit
+	 * `min_size`/`max_size` are entered in on the Validation tab -- also
+	 * skipped, not rejected, if the file itself is missing from disk (an
+	 * attachment whose real file was since deleted by hand, say).
+	 * `allowed_types` is a free-text, comma-or-space-separated list of
+	 * file extensions (`"jpg,png,gif"`) checked against the attachment's
+	 * own real file extension, case-insensitively.
+	 *
+	 * A field whose own Conditional Logic evaluates to "hidden" for this
+	 * record is skipped entirely here too, the same as every other
+	 * validator in this class -- see `validate_required_fields()`'s own
+	 * docblock for what $effective_data is and why it can differ from
+	 * $data.
+	 *
+	 * @param string     $class_name     Model class name.
+	 * @param array      $data           sanitize_record_data()'s own output.
+	 * @param array|null $effective_data See validate_required_fields()'s
+	 *                                     own docblock.
+	 * @return true|\WP_Error
+	 */
+	public static function validate_image_constraints( $class_name, array $data, $effective_data = null ) {
+		$effective_data = is_array( $effective_data ) ? $effective_data : $data;
+		$problems       = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			if ( ! $type_class || ! $type_class::supports_media_settings() ) {
+				continue;
+			}
+
+			if ( ! self::is_field_visible_for_data( $field['conditional_logic'], $effective_data ) ) {
+				continue;
+			}
+
+			if ( ! array_key_exists( $field['name'], $data ) ) {
+				continue;
+			}
+
+			$attachment_id = $data[ $field['name'] ];
+
+			if ( empty( $attachment_id ) || ! is_numeric( $attachment_id ) ) {
+				continue;
+			}
+
+			$attachment_id = (int) $attachment_id;
+			$settings      = $field['settings'];
+
+			$min_width  = isset( $settings['min_width'] ) && is_numeric( $settings['min_width'] ) ? (float) $settings['min_width'] : null;
+			$max_width  = isset( $settings['max_width'] ) && is_numeric( $settings['max_width'] ) ? (float) $settings['max_width'] : null;
+			$min_height = isset( $settings['min_height'] ) && is_numeric( $settings['min_height'] ) ? (float) $settings['min_height'] : null;
+			$max_height = isset( $settings['max_height'] ) && is_numeric( $settings['max_height'] ) ? (float) $settings['max_height'] : null;
+			$min_size   = isset( $settings['min_size'] ) && is_numeric( $settings['min_size'] ) ? (float) $settings['min_size'] : null;
+			$max_size   = isset( $settings['max_size'] ) && is_numeric( $settings['max_size'] ) ? (float) $settings['max_size'] : null;
+			$allowed    = isset( $settings['allowed_types'] ) && '' !== trim( (string) $settings['allowed_types'] )
+				? array_filter( array_map( 'trim', preg_split( '/[,\s]+/', strtolower( $settings['allowed_types'] ) ) ) )
+				: array();
+
+			if ( null === $min_width && null === $max_width && null === $min_height && null === $max_height
+				&& null === $min_size && null === $max_size && empty( $allowed ) ) {
+				continue;
+			}
+
+			$file_path = function_exists( 'get_attached_file' ) ? get_attached_file( $attachment_id ) : false;
+
+			if ( ! empty( $allowed ) && $file_path ) {
+				$extension = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+
+				if ( '' !== $extension && ! in_array( $extension, $allowed, true ) ) {
+					/* translators: 1: field label, 2: comma-separated list of allowed file extensions */
+					$problems[] = sprintf( __( '%1$s (must be one of: %2$s)', 'gateway' ), $field['label'], implode( ', ', $allowed ) );
+					continue;
+				}
+			}
+
+			if ( null !== $min_width || null !== $max_width || null !== $min_height || null !== $max_height ) {
+				$metadata = function_exists( 'wp_get_attachment_metadata' ) ? wp_get_attachment_metadata( $attachment_id ) : false;
+				$width    = isset( $metadata['width'] ) ? (float) $metadata['width'] : null;
+				$height   = isset( $metadata['height'] ) ? (float) $metadata['height'] : null;
+
+				if ( null !== $width && null !== $min_width && $width < $min_width ) {
+					/* translators: 1: field label, 2: minimum width in pixels */
+					$problems[] = sprintf( __( '%1$s (width must be at least %2$dpx)', 'gateway' ), $field['label'], $min_width );
+				}
+
+				if ( null !== $width && null !== $max_width && $width > $max_width ) {
+					/* translators: 1: field label, 2: maximum width in pixels */
+					$problems[] = sprintf( __( '%1$s (width must be at most %2$dpx)', 'gateway' ), $field['label'], $max_width );
+				}
+
+				if ( null !== $height && null !== $min_height && $height < $min_height ) {
+					/* translators: 1: field label, 2: minimum height in pixels */
+					$problems[] = sprintf( __( '%1$s (height must be at least %2$dpx)', 'gateway' ), $field['label'], $min_height );
+				}
+
+				if ( null !== $height && null !== $max_height && $height > $max_height ) {
+					/* translators: 1: field label, 2: maximum height in pixels */
+					$problems[] = sprintf( __( '%1$s (height must be at most %2$dpx)', 'gateway' ), $field['label'], $max_height );
+				}
+			}
+
+			if ( ( null !== $min_size || null !== $max_size ) && $file_path && file_exists( $file_path ) ) {
+				$size_mb = filesize( $file_path ) / ( 1024 * 1024 );
+
+				if ( null !== $min_size && $size_mb < $min_size ) {
+					/* translators: 1: field label, 2: minimum file size in megabytes */
+					$problems[] = sprintf( __( '%1$s (file size must be at least %2$sMB)', 'gateway' ), $field['label'], $min_size );
+				}
+
+				if ( null !== $max_size && $size_mb > $max_size ) {
+					/* translators: 1: field label, 2: maximum file size in megabytes */
+					$problems[] = sprintf( __( '%1$s (file size must be at most %2$sMB)', 'gateway' ), $field['label'], $max_size );
+				}
+			}
+		}
+
+		if ( empty( $problems ) ) {
+			return true;
+		}
+
+		return new \WP_Error(
+			'gateway_record_image_constraint_failed',
+			sprintf(
+				/* translators: %s: comma-separated list of "field label (must be ...)" */
+				__( 'The following images don\'t meet their configured requirements: %s.', 'gateway' ),
+				implode( ', ', $problems )
+			),
+			array( 'status' => 400 )
+		);
+	}
+
+	/**
 	 * Filters a raw, arbitrary-keyed array (e.g. straight off a REST
 	 * request body) down to just this model's own known fields, casting
 	 * each surviving value through its field type's own cast() -- used by
@@ -830,6 +979,29 @@ class Model_Fields {
 			$recognized_keys[] = 'max_value';
 		}
 
+		if ( $type_class::supports_media_settings() ) {
+			// 'preview_size' is deliberately NOT here -- it's Image_Field_Type's
+			// own Presentation-tab setting (like placeholder/prepend/append
+			// are for other types), so it's already covered by
+			// presentation_fields() above; these are its General
+			// (return_format/library) and Validation (everything else)
+			// tab settings instead.
+			$recognized_keys = array_merge(
+				$recognized_keys,
+				array(
+					'return_format',
+					'library',
+					'min_width',
+					'min_height',
+					'min_size',
+					'max_width',
+					'max_height',
+					'max_size',
+					'allowed_types',
+				)
+			);
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -859,6 +1031,29 @@ class Model_Fields {
 			// bound is entirely legitimate -- only genuinely non-numeric
 			// input is dropped, the same as leaving it blank.
 			if ( in_array( $key, array( 'min_value', 'max_value' ), true ) && ! is_numeric( $value ) ) {
+				continue;
+			}
+
+			// Image_Field_Type's own width/height/file-size bounds --
+			// numeric like min_value/max_value above, but a negative
+			// dimension or file size is never legitimate the way a
+			// negative min_value can be (a temperature range, say), so
+			// this drops those too, not just non-numeric input.
+			if ( in_array( $key, array( 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size' ), true )
+				&& ( ! is_numeric( $value ) || $value < 0 ) ) {
+				continue;
+			}
+
+			// 'return_format'/'library' are Image_Field_Type's own two
+			// General-tab selects -- a fixed, small vocabulary each,
+			// unlike every other key here; anything outside it is
+			// dropped rather than stored as junk RecordForm's own
+			// <select> would never have actually offered.
+			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id' ), true ) ) {
+				continue;
+			}
+
+			if ( 'library' === $key && ! in_array( $value, array( 'all', 'uploadedTo' ), true ) ) {
 				continue;
 			}
 

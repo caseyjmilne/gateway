@@ -92,6 +92,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-range-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-email-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-url-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
@@ -109,6 +110,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-rest-controller.ph
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationships.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationship-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
 
 /**
  * Boot the plugin.
@@ -133,6 +135,7 @@ function gateway_boot() {
 	\Gateway\Model_Field_REST_Controller::init();
 	\Gateway\Model_Relationship_REST_Controller::init();
 	\Gateway\Records_REST_Controller::init();
+	\Gateway\Media_REST_Controller::init();
 
 	// The built-in field types -- registered the same way as any other
 	// Registry subclass, then a plain action so a future type can hook in
@@ -144,6 +147,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\Email_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\URL_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Password_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Image_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Buttons_Field_Type::class );

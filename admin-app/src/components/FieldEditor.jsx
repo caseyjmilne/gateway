@@ -4,6 +4,7 @@ import { ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
+import useImageSizes from '../hooks/useImageSizes.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 
@@ -27,6 +28,12 @@ const PRESENTATION_FIELD_META = {
 	prepend: { label: 'Prepend', type: 'text', hint: 'Appears before the input.' },
 	append: { label: 'Append', type: 'text', hint: 'Appears after the input.' },
 	instructions: { label: 'Instructions', type: 'textarea' },
+	// `options` is deliberately left out here -- this catalog is a static
+	// module-level constant, but the actual list of image sizes is a
+	// per-site, dynamically-fetched thing (`useImageSizes()`); the render
+	// loop below merges the live list in at render time instead of it
+	// living here.
+	preview_size: { label: 'Preview Size', type: 'select' },
 };
 
 // A defensive normalizer for `field.settings` -- belt-and-suspenders
@@ -210,7 +217,18 @@ const normalizeSettings = ( settings ) =>
  * `supports_default_value` is true -- Text, Number, and Range today -- a
  * Default Value input, applied by `RecordForm` as the initial value of
  * its own "Add New" form and nowhere else, with its own small "Appears
- * when creating a new record." note underneath; plus -- further below,
+ * when creating a new record." note underneath; Image is the one type
+ * whose General tab looks different again -- no Default Value at all
+ * (`supports_default_value` false; there's no sensible "default
+ * attachment" for a brand new record to start from), but, gated on the
+ * picked type's own `supports_media_settings` instead, a Return Format
+ * `<select>` (Image Array/Image URL/Image ID -- `settings.return_format`,
+ * what shape `Records_REST_Controller::resolve_image_value()` gives this
+ * field's own value in every GET response) and a Library `<select>`
+ * (All/Uploaded to post -- `settings.library`, currently identical in
+ * effect since Gateway's own records aren't WP posts for `wp.media()`'s
+ * own `library.uploadedTo` to scope to, kept anyway so the setting
+ * round-trips and is ready the moment that changes); plus -- further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -225,22 +243,45 @@ const normalizeSettings = ( settings ) =>
  * today -- Minimum Value/Maximum Value number inputs, each independently
  * optional ("Leave blank for no minimum/maximum." notes underneath),
  * actually enforced server-side by Gateway\\Model_Fields::
- * validate_range_values() -- neither of these two is just recorded),
- * then **Presentation** (one `<input>`/`<textarea>`
+ * validate_range_values() -- neither of these two is just recorded);
+ * Image's own Validation tab is a fifth, unrelated shape gated on the
+ * same `supports_media_settings` flag as its General tab additions: a
+ * Minimum/Maximum grid (`.gateway-field-editor-media-bounds-row`, two
+ * columns) each with Width/Height/File Size rows laid out as a prepend-
+ * label/`<input>`/append-unit group (`Width`/px, `Height`/px,
+ * `File Size`/MB -- `settings.min_width`/`max_width`/`min_height`/
+ * `max_height`/`min_size`/`max_size`, all independently optional) plus
+ * a free-text Allowed File Types input (`settings.allowed_types`, a
+ * comma/space-separated extension list, e.g. "jpg,png") -- all seven
+ * enforced server-side by the new `Gateway\\Model_Fields::
+ * validate_image_constraints()`, the same "client hint, server
+ * enforces" split Character Limit/Range already have, and mirrored
+ * client-side again by `ImagePicker.jsx`'s own `validateAttachment()`
+ * for an immediate rejection at pick time rather than waiting on a
+ * failed save,
+ * then **Presentation** (one `<input>`/`<textarea>`/`<select>`
  * per key in the picked type's own `presentation_fields` -- see
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
  * own docblock on the PHP side for the whole "different types need
  * different extra data" design this is the first real use of --
- * `instructions` is universal, always first, for every type; Text and
- * Number also recognize Placeholder, and Text/Number/Range all recognize
- * Prepend/Append (Number and Range also get their own `step`, a plain
- * number input rendered via `PRESENTATION_FIELD_META`'s own `type:
- * 'number'`, right after Placeholder for Number -- Range has no
+ * `instructions` is universal, always first, for every type; Text,
+ * Number, Email, and Password also recognize Placeholder (URL recognizes
+ * Placeholder too, but not Prepend/Append -- see Url_Field_Type's own
+ * docblock for why a prepended/appended URL doesn't make sense the way
+ * it does for the others), and Text/Number/Range/Email/Password all
+ * recognize Prepend/Append (Number and Range also get their own `step`,
+ * a plain number input rendered via `PRESENTATION_FIELD_META`'s own
+ * `type: 'number'`, right after Placeholder for Number -- Range has no
  * Placeholder at all, a slider always has a value and no empty state to
  * hint at, so `step` renders right after Instructions for it instead --
  * the order a type's own `presentation_fields` lists a key in is the
- * order this tab renders it in); every other type recognizes
- * `instructions` alone), and **Conditional Logic** -- a "Conditional Logic" toggle
+ * order this tab renders it in); Image recognizes Preview Size instead
+ * of any of the above (`settings.preview_size`, a `<select>` -- see
+ * `PRESENTATION_FIELD_META`'s own comment on why its options come from
+ * `useImageSizes()` at render time rather than living in that static
+ * catalog -- which of this site's registered image sizes, e.g. "Medium
+ * (300×300)", `ImagePicker.jsx`'s own preview renders at); every other
+ * type recognizes `instructions` alone), and **Conditional Logic** -- a "Conditional Logic" toggle
  * (`conditional_logic.enabled`, its own separate RHF field, NOT part of
  * the `settings` object the other three tabs share -- this one is a
  * genuinely nested tree, not a flat set of strings, so
@@ -297,6 +338,7 @@ const normalizeSettings = ( settings ) =>
 export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
 	const relationshipTypes = useRelationshipTypes();
+	const imageSizes = useImageSizes();
 	const [ fields, setFields ] = useState( initialFields || [] );
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
@@ -408,12 +450,16 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsRangeLimitsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_range_limits );
 
+	const supportsMediaSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_media_settings );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
 	const editSupportsDefault = supportsDefaultFor( editType );
 	const editSupportsCharacterLimit = supportsCharacterLimitFor( editType );
 	const editSupportsRangeLimits = supportsRangeLimitsFor( editType );
+	const editSupportsMediaSettings = supportsMediaSettingsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -471,8 +517,16 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		( editSettings.min_value && String( editSettings.min_value ).trim() ) ||
 			( editSettings.max_value && String( editSettings.max_value ).trim() )
 	);
+	const mediaValidationTabHasContent = Boolean(
+		[ 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size', 'allowed_types' ].some(
+			( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
+		)
+	);
 	const validationTabHasContent =
-		Boolean( editRequired ) || characterLimitTabHasContent || rangeLimitsTabHasContent;
+		Boolean( editRequired ) ||
+		characterLimitTabHasContent ||
+		rangeLimitsTabHasContent ||
+		mediaValidationTabHasContent;
 	// Checked only against the current type's OWN presentation keys, not
 	// every key `editSettings` happens to hold -- `settings.default`
 	// lives in the same object but belongs to General, not here, so a
@@ -1160,6 +1214,33 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							</span>
 						</label>
 					) }
+					{ editSupportsMediaSettings && (
+						<>
+							<label>
+								<span>Return Format</span>
+								<select
+									className="regular-text"
+									defaultValue="array"
+									{ ...register( 'settings.return_format' ) }
+								>
+									<option value="array">Image Array</option>
+									<option value="url">Image URL</option>
+									<option value="id">Image ID</option>
+								</select>
+							</label>
+							<label>
+								<span>Library</span>
+								<select
+									className="regular-text"
+									defaultValue="all"
+									{ ...register( 'settings.library' ) }
+								>
+									<option value="all">All</option>
+									<option value="uploadedTo">Uploaded to post</option>
+								</select>
+							</label>
+						</>
+					) }
 				</div>
 
 				{ editHasChoices && (
@@ -1234,6 +1315,64 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						</label>
 					</div>
 				) }
+				{ editSupportsMediaSettings && (
+					<div className="gateway-field-editor-form-grid gateway-field-editor-validation-extra">
+						<div className="gateway-field-editor-media-bounds-row">
+							<div className="gateway-field-editor-media-bounds">
+								<span className="gateway-field-editor-media-bounds-heading">
+									Minimum
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Width</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.min_width' ) } />
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Height</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.min_height' ) } />
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">File Size</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.min_size' ) } />
+									<span className="gateway-record-form-input-addon">MB</span>
+								</span>
+							</div>
+							<div className="gateway-field-editor-media-bounds">
+								<span className="gateway-field-editor-media-bounds-heading">
+									Maximum
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Width</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.max_width' ) } />
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Height</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.max_height' ) } />
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">File Size</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.max_size' ) } />
+									<span className="gateway-record-form-input-addon">MB</span>
+								</span>
+							</div>
+						</div>
+						<label>
+							<span>Allowed File Types</span>
+							<input
+								type="text"
+								className="regular-text"
+								placeholder="e.g. jpg,png,gif"
+								{ ...register( 'settings.allowed_types' ) }
+							/>
+							<span className="description">
+								Comma-separated file extensions. Leave blank to allow any.
+							</span>
+						</label>
+					</div>
+				) }
 			</div>
 
 			<div hidden={ 'presentation' !== editTab }>
@@ -1262,6 +1401,24 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											className="regular-text"
 											{ ...register( `settings.${ key }` ) }
 										/>
+									) : 'select' === meta.type ? (
+										<select
+											className="regular-text"
+											{ ...register( `settings.${ key }` ) }
+										>
+											{ /* `imageSizes` -- the only `select`-type Presentation
+											 * setting today -- starts empty until useImageSizes()'s
+											 * own fetch resolves; an empty <select> is a harmless,
+											 * momentary state rather than something worth a loading
+											 * message of its own. */ }
+											{ ( 'preview_size' === key ? imageSizes : [] ).map(
+												( option ) => (
+													<option key={ option.key } value={ option.key }>
+														{ option.label }
+													</option>
+												)
+											) }
+										</select>
 									) : (
 										<input
 											type="text"
