@@ -13,10 +13,26 @@
  *
  * `groups` is `Gateway\\Model_Fields::sanitize_conditional_logic()`'s own
  * `groups` shape: `[{ rules: [{ field, operator, value }, ...] }, ...]`.
- * A blank/incomplete rule (no field picked yet) is tolerated here while
- * editing -- the server is what actually drops one on save, the same
- * "server validates, this is just the editing surface" split `ChoicesEditor`
- * already has for a blank choice.
+ * A blank/incomplete rule (no field picked yet, `field: ''`) is tolerated
+ * here while editing -- the server is what actually drops one on save,
+ * the same "server validates, this is just the editing surface" split
+ * `ChoicesEditor` already has for a blank choice. This is also why
+ * `blankRule()` seeds a genuinely BLANK `field` (`''`, matched by its own
+ * "-- Select a field --" placeholder `<option>` below) rather than
+ * defaulting to `otherFields[0]`'s own name: switching Conditional Logic
+ * on seeds one of these immediately (see `FieldEditor`'s own docblock),
+ * and a rule that silently pre-picks some field the site owner never
+ * actually chose isn't "no rule yet" at all -- it's a real, active
+ * "Value is equal to \"\"" condition against whatever the model's first
+ * other field happens to be, which matches an empty value on a brand new
+ * record but very likely NOT a real value already saved on an existing
+ * one, hiding the field on Edit while it stays visible on Add New with
+ * no rule ever having been deliberately configured. `RecordForm`'s own
+ * `comparableValueFor()`/`ruleMatches()` already treat a rule naming no
+ * field (`field: ''`, matching nothing in `fields`) as vacuously true --
+ * this is the other half of that: making sure a genuinely not-yet-configured
+ * rule actually LOOKS like `''` to begin with, not like a real field's
+ * name the user never picked.
  *
  * `otherFields` is every OTHER field on this model (`{name, label}`,
  * excluding whichever field is currently being edited -- a field can
@@ -34,8 +50,8 @@ const OPERATORS = [
 	{ key: 'value_contains', label: 'Value contains', needsValue: true },
 ];
 
-const blankRule = ( otherFields ) => ( {
-	field: otherFields[ 0 ]?.name || '',
+const blankRule = () => ( {
+	field: '',
 	operator: 'value_equals',
 	value: '',
 } );
@@ -60,7 +76,7 @@ export default function ConditionalLogicEditor( { groups, onChange, otherFields 
 			groups.map( ( group, gi ) =>
 				gi !== groupIndex
 					? group
-					: { rules: [ ...group.rules, blankRule( otherFields ) ] }
+					: { rules: [ ...group.rules, blankRule() ] }
 			)
 		);
 	};
@@ -80,7 +96,7 @@ export default function ConditionalLogicEditor( { groups, onChange, otherFields 
 	};
 
 	const addGroup = () => {
-		onChange( [ ...groups, { rules: [ blankRule( otherFields ) ] } ] );
+		onChange( [ ...groups, { rules: [ blankRule() ] } ] );
 	};
 
 	const removeGroup = ( groupIndex ) => {
@@ -126,6 +142,12 @@ export default function ConditionalLogicEditor( { groups, onChange, otherFields 
 											} )
 										}
 									>
+										{ /* Matches blankRule()'s own `field: ''` -- a genuinely
+										 * not-yet-configured rule needs a real option here to
+										 * bind to, or the browser would just visually show
+										 * whatever the first real field happens to be despite
+										 * the underlying value never actually being set to it. */ }
+										<option value="">-- Select a field --</option>
 										{ otherFields.map( ( field ) => (
 											<option key={ field.name } value={ field.name }>
 												{ field.label }

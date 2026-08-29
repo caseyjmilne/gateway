@@ -1252,11 +1252,25 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 										checked &&
 										0 === ( getValues( 'conditional_logic.groups' ) || [] ).length
 									) {
+										// `field: ''`, genuinely blank -- NOT
+										// `conditionalLogicOtherFields[0]`'s own
+										// name. Pre-picking some field the site
+										// owner never actually chose would turn
+										// this into a real, active "Value is
+										// equal to \"\"" condition against
+										// whatever the model's first other field
+										// happens to be the instant this toggle
+										// is switched on, before anyone has
+										// configured anything at all -- see
+										// ConditionalLogicEditor's own
+										// `blankRule()` docblock for the exact
+										// failure this caused (visible on Add
+										// New, silently hidden on Edit).
 										setValue( 'conditional_logic.groups', [
 											{
 												rules: [
 													{
-														field: conditionalLogicOtherFields[ 0 ]?.name || '',
+														field: '',
 														operator: 'value_equals',
 														value: '',
 													},
