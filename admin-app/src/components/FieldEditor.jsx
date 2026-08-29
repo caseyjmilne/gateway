@@ -74,9 +74,20 @@ const PRESENTATION_FIELD_META = {
  * Clicking anywhere on a row (except its own grip handle or row-actions,
  * below) opens its own edit panel in a second `<tr>`, not a replacement
  * for the first; clicking the already-open row again collapses it
- * (flushing first, as above); clicking a different row while one is open
- * does nothing, the same "one editing surface at a time" constraint a
- * disabled Edit button used to enforce. The open row's own cells show
+ * (flushing first, as above); clicking a DIFFERENT row while one is open
+ * SWITCHES to it -- closes/flushes whatever's currently open first, then
+ * opens the one actually clicked, never two panels open at once. This
+ * used to just do nothing at all instead, on the theory that "one
+ * editing surface at a time" meant a second click should be ignored the
+ * way the old per-row Edit/Delete buttons' own `disabled` attribute
+ * enforced it -- but with no `disabled` styling or any other visual
+ * sign of that here, a click that silently did nothing just read as
+ * broken, not as an intentional constraint (reported as "Edit/Duplicate
+ * clicks fail when another field is open"). Duplicate's own row-actions
+ * link never had a real reason to be blocked like this at all -- it
+ * only ever appends a new row at the very end of `fields`, which can't
+ * shift any other row's own index out from under an open edit panel the
+ * way, say, deleting an EARLIER row could. The open row's own cells show
  * the LIVE, not-yet-necessarily-saved values (type/label/name) rather
  * than freezing at whatever was last actually saved, so renaming a field
  * is visible on its own row immediately, not up to `AUTOSAVE_DEBOUNCE_MS`
@@ -759,11 +770,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	// docblock) -- clicking the row that's already open collapses it,
 	// flushing any still-pending change first (there's no separate
 	// "Done"/"Save" to click instead -- autosave already covers every
-	// change); clicking any OTHER row while one is open does nothing, the
-	// same
-	// "one editing surface at a time" constraint the old per-row Edit/
-	// Delete buttons' own `disabled` already enforced.
-	const handleRowClick = ( field, index ) => {
+	// change); clicking any OTHER row while one is open SWITCHES to it --
+	// closes/flushes whatever's currently open (same as above), then
+	// opens the one actually clicked. This used to just do nothing at
+	// all instead (a real bug, reported as "Edit/Duplicate clicks fail
+	// when another field is open" -- it read as broken, not as the
+	// deliberate "one editing surface at a time" constraint it actually
+	// was, since nothing here gave any visual sign a click had been
+	// silently ignored).
+	const handleRowClick = async ( field, index ) => {
 		if ( null !== deletingName || reordering ) {
 			return;
 		}
@@ -774,6 +789,27 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		}
 
 		if ( null !== editingIndex ) {
+			// finishEditing() may remove a never-saved draft row at the
+			// currently-open index (see its own docblock) -- if it does,
+			// every index after that one shifts down by one, so `index`
+			// (captured above, before that shift) needs the same
+			// adjustment to still land on the row actually clicked. The
+			// `field` object itself doesn't need re-fetching -- unlike
+			// the row being closed, it's already a real saved field
+			// (a still-unsaved draft can only ever be the ONE currently
+			// open row, never a different one you'd click Edit on), so
+			// its own data can't have changed underneath this click.
+			const closedWasUnsavedDraft = isNewDraftRef.current;
+			const closedIndex = editingIndex;
+
+			await finishEditing();
+
+			const adjustedIndex =
+				closedWasUnsavedDraft && index > closedIndex
+					? index - 1
+					: index;
+
+			startEdit( field, adjustedIndex );
 			return;
 		}
 
@@ -782,11 +818,8 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	// The row-actions' own explicit "Edit" link (see this component's own
 	// docblock, and the wp-admin list-table row-actions convention it
-	// mirrors) -- same toggle behavior as clicking the row itself
-	// (handleRowClick, above): opens a closed row, closes that same row
-	// back up if it's the one already open (flushing first, via
-	// finishEditing()), and does nothing to any OTHER row while one is
-	// already open.
+	// mirrors) -- same toggle/switch behavior as clicking the row itself
+	// (handleRowClick, above).
 	const handleEditClick = ( field, index ) => ( event ) => {
 		event.preventDefault();
 		event.stopPropagation();
@@ -1424,9 +1457,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 													onClick={ ( event ) => {
 														event.stopPropagation();
 														event.preventDefault();
-														if ( null === editingIndex ) {
-															handleDuplicate( field );
-														}
+														// Unlike Edit (above) or Delete (below), this never
+														// needs to check `editingIndex` at all -- handleDuplicate()
+														// only ever APPENDS a new row at the very end of `fields`,
+														// so it can never shift any OTHER row's own index out from
+														// under an open edit panel, whatever else is currently
+														// open. Blocking it while another row was open used to be
+														// a real bug, reported as "Duplicate click fails when
+														// another field is open."
+														handleDuplicate( field );
 													} }
 												>
 													Duplicate

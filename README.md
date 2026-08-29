@@ -3456,9 +3456,20 @@ right underneath it (a second `<tr>`, not a replacement for the first);
 the open row itself keeps showing its own Type/Label/Name, live-updating
 as you type rather than freezing until a save round-trips. Clicking the
 already-open row again closes it (flushing first, see below -- there's
-no separate button for this any more); clicking a different row while
-one is open does nothing -- the same "one editing surface at a time" a
-disabled Edit button used to enforce. "+ Add Field" appends a draft row
+no separate button for this any more); clicking a DIFFERENT row while
+one is open switches to it -- closes/flushes whatever's open first,
+then opens the one actually clicked, never two panels at once. This
+used to just silently do nothing instead, on the theory that "one
+editing surface at a time" meant ignoring a second click the way the
+old per-row Edit/Delete buttons' own `disabled` attribute enforced it --
+but with no `disabled` styling here to signal that, a click that did
+nothing just read as broken (reported as "Edit/Duplicate clicks fail
+when another field is open"), not as an intentional constraint.
+Duplicate's own row-actions link never needed that guard at all -- it
+only ever appends a new row at the very end of the list, which can't
+shift any other row's own index out from under an open edit panel the
+way deleting an earlier one could (Delete keeps its own guard for
+exactly that reason). "+ Add Field" appends a draft row
 (`{ name: '', label: '', type: 'text', choices: [] }`, no id yet)
 straight into the table, open from the start, in the exact same panel --
 there's no separate standalone "Add Field" form, and no POST-vs-PUT
