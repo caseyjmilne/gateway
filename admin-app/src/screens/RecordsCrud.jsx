@@ -193,6 +193,49 @@ export default function RecordsCrud() {
 			return value.map( ( item ) => item.label ).join( ', ' );
 		}
 
+		// An Image field's own value is enriched the same three ways
+		// ImagePicker/RecordForm already handle (see their own docblocks):
+		// the full `{id, url, alt, width, height, sizes}` object or a bare
+		// URL string both have something to actually render a thumbnail
+		// from; a bare id (return_format 'id') doesn't, without a per-row
+		// fetch this list view has no reason to make just for a thumbnail,
+		// so it falls back to naming the id instead of rendering it as a
+		// plain, misleadingly numeric-looking value. Whichever shape it
+		// is, this must never fall through to the plain `?? ''` branch
+		// below -- returning the raw enriched OBJECT there is exactly
+		// what used to crash this screen ("Objects are not valid as a
+		// React child").
+		if ( 'image' === inputType ) {
+			const value = record[ field.name ];
+
+			if ( ! value ) {
+				return '';
+			}
+
+			if ( 'object' === typeof value ) {
+				const thumbUrl = value.sizes?.thumbnail?.url || value.url;
+				return thumbUrl ? (
+					<img
+						src={ thumbUrl }
+						alt={ value.alt || '' }
+						className="gateway-records-crud-thumbnail"
+					/>
+				) : '';
+			}
+
+			if ( 'string' === typeof value ) {
+				return (
+					<img
+						src={ value }
+						alt=""
+						className="gateway-records-crud-thumbnail"
+					/>
+				);
+			}
+
+			return `Image #${ value }`;
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};

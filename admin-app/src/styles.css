@@ -417,6 +417,14 @@
 	margin-left: 6px;
 }
 
+.gateway-admin-app .gateway-records-crud-thumbnail {
+	display: block;
+	max-width: 40px;
+	max-height: 40px;
+	border: 1px solid #d0d5dd;
+	border-radius: 4px;
+}
+
 .gateway-admin-app .gateway-record-form-wrap {
 	background: #fff;
 	border: 1px solid #dcdcde;
