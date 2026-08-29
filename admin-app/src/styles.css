@@ -438,7 +438,16 @@
 	inset: 0;
 	background: rgba( 0, 0, 0, 0.5 );
 	display: flex;
-	align-items: flex-start;
+	/* Vertically centered, not flex-start -- safe even for a long Edit
+	 * form: `.gateway-modal` below is already capped at `max-height: 90vh`
+	 * with its own `.gateway-modal-body` scrolling internally past that,
+	 * so the modal's own box never actually exceeds 90% of the viewport
+	 * regardless of how many fields a model has, and centering it can't
+	 * push its top edge above the visible area the way it could for an
+	 * unbounded box. `overflow-y: auto` here is just the fallback for a
+	 * viewport too short even for that 90vh (a very short window, e.g.),
+	 * not something this normally relies on. */
+	align-items: center;
 	justify-content: center;
 	padding: 5vh 20px;
 	z-index: 100000; /* above wp-admin's own #wpadminbar/#adminmenu */
