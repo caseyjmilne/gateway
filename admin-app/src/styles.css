@@ -127,7 +127,14 @@
 .gateway-admin-app .gateway-field-editor-edit-panel {
 	background: #f6f7f7;
 	border-left: 3px solid #2271b1;
-	padding: 1em 1.25em;
+	/* Left: lines the panel's own content up with the chevron in the row
+	 * above it (that row's own leading cell isn't zero-padding, unlike
+	 * this panel's own <td> -- gateway-field-editor-panel-cell -- so this
+	 * needs to be measured/set explicitly rather than just matching it).
+	 * Bottom: real breathing room before the next field's own row starts
+	 * -- this is a <table>, so a next-row margin isn't available to lean
+	 * on instead. */
+	padding: 1em 1.25em 64px 32px;
 	margin: 0;
 }
 
@@ -241,7 +248,7 @@
 .gateway-admin-app .gateway-field-editor-form-grid {
 	display: flex;
 	flex-direction: column;
-	gap: 1em;
+	gap: 32px;
 	max-width: 480px;
 }
 

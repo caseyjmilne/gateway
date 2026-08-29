@@ -4101,6 +4101,25 @@ on that specific `<td>` (`colSpan={4}`, wrapping `renderEditPanel()`)
 zeroing out its own padding, so the panel's own border-left starts at
 the exact same x-position the row's own box-shadow already does.
 
+**Panel content lines up with the row's own chevron above it, not flush
+against the panel's own border.** `.gateway-field-editor-edit-panel`'s
+own `padding-left` (`32px`) is set high enough on purpose that its
+content (the sub-tabs, and every form field beneath them) starts at or
+just past the chevron's own x-position in the row above -- a plain
+`1.25em` (matching the panel's other three sides) left the panel's own
+content sitting a few pixels to the *left* of that chevron instead, an
+"outdent" that read as misaligned rather than nested underneath it.
+`padding-bottom` is `64px`, deliberately far more than the other three
+sides: a `<table>`'s own rows sit flush against each other with no
+gap to lean on for spacing between fields, so real breathing room
+before the next field's own row has to come from inside this row's own
+last cell instead. Every `.gateway-field-editor-form-grid`'s own `gap`
+(between Type/Name/Label/Default Value in General, and between whichever
+inputs Presentation shows) is `32px` too, for the same "real, deliberate
+space" reasoning -- up from a plain `1em` that read as visually tight
+once the labels above each input got their own smaller, lighter styling
+(see below).
+
 Type/Name/Label live in General, **Type first** -- deliberately, not
 Name/Label/Type: it's both the more natural order to fill the form out
 in, and what the other fields' own type-dependent rendering (Name
