@@ -76,6 +76,18 @@
 	cursor: pointer;
 }
 
+.gateway-admin-app .gateway-field-editor-table tbody td {
+	/* The Label cell's own .row-actions is `visibility: hidden`, not
+	 * `display: none`, so it still reserves its own line of height even
+	 * while invisible (deliberately -- hovering to reveal it must never
+	 * shift the row's own height). That makes the Label cell taller than
+	 * its neighbors; without an explicit vertical-align here, a browser's
+	 * own default top-alignment left the row's actual text looking
+	 * pinned to the top of the row with a dead gap underneath, rather
+	 * than centered in it. */
+	vertical-align: middle;
+}
+
 .gateway-admin-app .gateway-field-editor-table tbody tr:hover {
 	background: #f6f7f7;
 }

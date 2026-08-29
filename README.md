@@ -3478,6 +3478,19 @@ the request collides on that name and the server's own error surfaces
 instead of silently pretending to succeed). "Delete" is the same
 DELETE call the old dedicated button made.
 
+`.row-actions` is `visibility: hidden`, not `display: none`, on purpose
+-- hovering to reveal it must never shift the row's own height (a
+`display: none` element takes up no space at all until it appears,
+which would grow the row out from under the cursor the instant it
+showed up). The trade-off: the Label cell's own `<td>` is genuinely
+taller than its neighbors even while `.row-actions` is invisible, since
+`visibility: hidden` still reserves its own line of height. Every
+`<td>` in this table gets an explicit `vertical-align: middle` because
+of exactly this -- without it, a browser's own default top-alignment
+left the row's actual visible text (Label, Name, Type) looking pinned
+to the top of the row with a dead gap underneath, rather than centered
+in it the way every other row-based UI in this app already reads.
+
 **Every change autosaves -- there's nothing to manage.** The panel's own
 form state is one `react-hook-form` instance (`useForm`), reset to a
 field's current values (or a blank draft's) whenever a row opens. A
