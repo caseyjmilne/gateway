@@ -3464,8 +3464,8 @@ straight into the table, open from the start, in the exact same panel --
 there's no separate standalone "Add Field" form, and no POST-vs-PUT
 distinction visible to the site owner either.
 
-**A small wp-admin-style row-actions menu appears under the Label cell
-on row hover: "Edit | Duplicate | Delete"**, plain text links
+**A small wp-admin-style row-actions menu sits under the Label cell's own
+title on row hover: "Edit | Duplicate | Delete"**, plain text links
 (`.row-actions`, hidden until hover, the same convention wp-admin's own
 post list table already uses) -- each stops the click from also
 bubbling up to the row's own open/close handler. "Edit" toggles the same
@@ -3480,29 +3480,33 @@ the request collides on that name and the server's own error surfaces
 instead of silently pretending to succeed). "Delete" is the same
 DELETE call the old dedicated button made.
 
-`.row-actions` is `visibility: hidden`, not `display: none`, on purpose
--- hovering to reveal it must never shift the row's own height (a
-`display: none` element takes up no space at all until it appears,
-which would grow the row out from under the cursor the instant it
-showed up). It's also `position: absolute` (anchored to
-`.gateway-field-editor-label-col`, a `position: relative` wrapper on the
-Label `<td>` itself), floating below the row on hover rather than
-sitting in normal document flow. A reserved-height, still-in-flow
-approach (`visibility: hidden` alone, no `position: absolute`) was tried
-first, but it made the Label `<td>` genuinely taller than its
-single-line sibling cells (the hidden menu still reserves its own line
-of height even though nothing is visible), and centering that taller
-cell's whole content box with `vertical-align: middle` -- needed so the
-row's actual visible text doesn't look pinned to the top with a dead gap
-underneath -- pushed the VISIBLE label text upward relative to the
-single-line chevron cell next to it, a misalignment that only became
-obvious once the row-actions menu existed at all. Taking the menu out of
-flow entirely avoids the height mismatch causing that in the first
-place: every `<td>` still gets `vertical-align: middle` (belt-and-suspenders,
-still correct for the now-single-line Label cell), but nothing in this
-table is taller than its neighbors any more, so it lines up the chevron
-against the label and every other column without a fight between two
-different alignment fixes.
+**Every row is a fixed, generous height (~60px) with its content
+TOP-aligned, ACF's own row-editor convention** -- not the more usual "as
+tall as the content needs, vertically centered" a plain data table would
+use. This is deliberate, not a compromise: the Label cell's true content
+is two lines (its own title, `.gateway-field-editor-row-title`, plus the
+row-actions line right under it, `visibility: hidden` until hover but
+still reserving its own line of height even then -- a `display: none`
+element would take up no space at all until it appeared, growing the row
+out from under the cursor the instant it showed up), while every other
+cell (chevron, Name, Type) is one line. Two earlier fixes were tried and
+found wanting before landing here: plain `vertical-align: middle` on
+every cell centered each one's own FULL content box, so the two-line
+Label cell centered its title noticeably lower than the single-line
+chevron cell next to it; floating the row-actions menu out of flow
+entirely (`position: absolute`) fixed that specific mismatch but read
+wrong once the row was made taller anyway -- ACF's own menu sits in
+normal flow, under the title, not as a floating overlay. Top-aligning
+everything against a shared, fixed row height (driven by the Label
+cell's own two lines of content plus consistent padding on every `<td>`)
+solves both at once: every cell's own FIRST line -- the chevron, the
+title, Name, Type -- lands at exactly the same y regardless of how many
+lines follow underneath it in that particular cell, so they read as one
+aligned row without the menu ever needing to leave normal flow.
+`.gateway-field-editor-drag-col-inner`'s own explicit `height`, matched
+to `.gateway-field-editor-row-title`'s own `line-height`, is what
+actually centers the chevron against the title's own visual center (not
+just its top edge) despite both being `vertical-align: top`.
 
 **Every change autosaves -- there's nothing to manage.** The panel's own
 form state is one `react-hook-form` instance (`useForm`), reset to a
@@ -4282,15 +4286,20 @@ A field's "Presentation" tab (previously an empty placeholder, alongside
 -- a note shown between the label and the control -- is universal: every
 built-in type recognizes it, and it's always the FIRST Presentation
 setting a type recognizes, regardless of what else it recognizes. On top
-of that, three types -- **Text**, **Number**, and **Range** -- also
-recognize a placeholder and a prepended and/or appended string shown
-flush against their own input (e.g. a "$" prepend and a "USD" append on
-a price field). Number and Range additionally get one setting of their
-own, **Step**, the HTML `<input type="number">`/`<input type="range">`
-`step` attribute -- e.g. `0.01` so a price field increments/decrements
-(and validates) by cents rather than whole units, or `5` so a quantity
-field or a slider only moves in fives. None of these touch what's
-actually stored in the field's own column -- purely presentational.
+of that, **Text** and **Number** also recognize a placeholder, and all
+three of Text/Number/Range recognize a prepended and/or appended string
+shown flush against their own input (e.g. a "$" prepend and a "USD"
+append on a price field). Range deliberately does NOT get a placeholder
+the way Text/Number do -- a placeholder is text shown inside an empty
+`<input>` before a value is typed, which means nothing for
+`<input type="range">` (it always has a value, the slider's current
+position, never an empty state to hint at). Number and Range instead
+share one setting of their own, **Step**, the HTML
+`<input type="number">`/`<input type="range">` `step` attribute -- e.g.
+`0.01` so a price field increments/decrements (and validates) by cents
+rather than whole units, or `5` so a quantity field or a slider only
+moves in fives. None of these touch what's actually stored in the
+field's own column -- purely presentational.
 
 **Why one generic JSON column, not one dedicated column per setting.**
 `gateway_fields` gains a single new nullable `text` column, `settings`,
@@ -4314,14 +4323,15 @@ whitelist: it returns the subset of `['instructions', 'placeholder',
 order its own Presentation tab should render them in** -- `instructions`
 always first, for every type, since it's universal; every other built-in
 type returns just `['instructions']` except `Text_Field_Type`
-(`instructions` plus placeholder/prepend/append, no `step`) and
-`Number_Field_Type`/`Range_Field_Type` (the same set plus their own
-`step`, returned right after `placeholder` and before `prepend`, which
-is exactly where it renders). `step` is recognized by no other type --
-it means nothing for a plain string. Adding a setting to another type
-later (or another type-specific one, like a Number field's own `min`/
-`max`) means adding its key to the fixed catalog and to that one static
-method, not a schema migration or a new column.
+(`instructions` plus placeholder/prepend/append, no `step`),
+`Number_Field_Type` (the same set plus its own `step`, returned right
+after `placeholder` and before `prepend`, which is exactly where it
+renders), and `Range_Field_Type` (the same as Number's, minus
+`placeholder` -- a slider always has a value, there's no empty state a
+placeholder could hint at). `step` is recognized by no other type -- it
+means nothing for a plain string. Adding a setting to another type later
+means adding its key to the fixed catalog and to that one static method,
+not a schema migration or a new column.
 
 **`Model_Fields::sanitize_settings( $type, $raw_settings )`** is the
 actual trust boundary, called from both `add()` and `update()` (each

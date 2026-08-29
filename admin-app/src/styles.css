@@ -43,8 +43,17 @@
 }
 
 .gateway-admin-app .gateway-field-editor-drag-col-inner {
+	/* `height` matches `.gateway-field-editor-row-title`'s own
+	 * `line-height` exactly -- both cells are `vertical-align: top` with
+	 * the same top padding, so without this the grip/chevron (a fixed
+	 * pixel size) and the title text (centered on its own, taller,
+	 * line-height) would start from the same y but their VISUAL centers
+	 * wouldn't match, leaving the chevron looking slightly higher than
+	 * the label text next to it. Centering both within an explicitly
+	 * equal height fixes that. */
 	display: inline-flex;
 	align-items: center;
+	height: 20px;
 	gap: 4px;
 }
 
@@ -77,49 +86,56 @@
 }
 
 .gateway-admin-app .gateway-field-editor-table tbody td {
-	/* Belt-and-suspenders alongside .row-actions now being taken out of
-	 * flow entirely (below) -- keeps every cell's own visible content
-	 * centered against the row's real height even if that height still
-	 * ends up taller than any one cell's own content for some other
-	 * reason later. */
-	vertical-align: middle;
+	/* ACF's own row-editor convention, not the more usual "as tall as the
+	 * content needs, vertically centered" a plain data table would use --
+	 * see this file's own `.gateway-field-editor-row-title` comment below
+	 * for why `vertical-align: middle` (tried first) was the wrong fix.
+	 * Every cell gets the same generous padding and top-aligns its own
+	 * content against it -- with a shared top padding, each cell's own
+	 * FIRST line (the chevron, the title, Name, Type) lands at exactly
+	 * the same y regardless of how many lines follow underneath it in
+	 * that particular cell, which is what actually keeps them reading as
+	 * one aligned row. The Label cell's own two lines (title + the
+	 * `.row-actions` line right under it, reserved whether visible or
+	 * not) are what actually drive the ROW's real height here -- there's
+	 * no explicit `height`/`min-height` set anywhere, it falls out of
+	 * this padding plus that cell's own content, landing at roughly 60px
+	 * without the row ever needing to grow further on hover. */
+	padding: 10px 10px;
+	vertical-align: top;
 }
 
 .gateway-admin-app .gateway-field-editor-table tbody tr:hover {
 	background: #f6f7f7;
 }
 
-.gateway-admin-app .gateway-field-editor-label-col {
-	/* .row-actions' own anchor -- see its own comment below for why this
-	 * has to be `position: relative` rather than the more usual "just
-	 * reserve a hidden line of height for it" approach. */
-	position: relative;
+.gateway-admin-app .gateway-field-editor-row-title {
+	/* A dedicated wrapper around the visible label text, distinct from
+	 * `.row-actions` right underneath it in the same `<td>` -- together
+	 * they're this cell's own two lines. `line-height` is set explicitly
+	 * (rather than left to the browser default) so it can be matched
+	 * exactly by `.gateway-field-editor-drag-col-inner`'s own `height`
+	 * below -- that's what actually lines the chevron up against this
+	 * text's own vertical center, not just its top edge, even though
+	 * both cells are `vertical-align: top`. */
+	display: block;
+	line-height: 20px;
 }
 
 .gateway-admin-app .gateway-field-editor-table .row-actions {
-	/* Absolutely positioned, floating below the label on hover, rather
-	 * than a normal-flow element merely `visibility: hidden` otherwise --
-	 * that older approach still reserved its own line of height even
-	 * while invisible (needed so hovering to reveal it wouldn't shift the
-	 * row's own height), which made the Label cell's own true content
-	 * height taller than its neighbors', throwing off `vertical-align:
-	 * middle` above: centering is computed against a cell's ENTIRE
-	 * content box, hidden content included, so the visible label ended up
-	 * sitting noticeably higher than the (genuinely single-line) chevron
-	 * cell next to it instead of level with it. Taking this out of flow
-	 * entirely fixes both at once -- the label cell's true content is
-	 * only ever its own single line, centering correctly against the
-	 * chevron, and the menu now opens as a real floating menu below the
-	 * row instead of a second reserved (if invisible) row of its own. */
-	position: absolute;
-	top: 100%;
-	left: 0;
-	z-index: 1;
+	/* Back in normal flow, `visibility: hidden` until the row is
+	 * hovered -- a `display: none` element would take up no space at all
+	 * until it appeared, growing the row out from under the cursor the
+	 * instant it showed up, so this still reserves its own line of
+	 * height even while invisible. That's no longer the problem it used
+	 * to be: every row is already a fixed, generous height regardless
+	 * (see `tbody td`'s own comment above), so a hidden reserved line
+	 * here doesn't make this cell "taller than its neighbors" the way it
+	 * once did -- there's nothing for that height difference to throw
+	 * out of alignment any more, since alignment no longer depends on
+	 * every cell's content being exactly one line tall to begin with. */
 	visibility: hidden;
-	background: #fff;
-	border: 1px solid #dcdcde;
-	box-shadow: 0 2px 4px rgba( 0, 0, 0, 0.1 );
-	padding: 4px 8px;
+	margin-top: 4px;
 	white-space: nowrap;
 	color: #646970;
 	font-size: 13px;

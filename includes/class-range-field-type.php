@@ -95,12 +95,15 @@ class Range_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
-	 * The same set Number_Field_Type recognizes, `step` included -- a
-	 * slider's own step size is exactly as meaningful here as it is for a
-	 * plain number input.
+	 * Almost the same set Number_Field_Type recognizes -- `step` included,
+	 * a slider's own step size is exactly as meaningful here as it is for
+	 * a plain number input -- but WITHOUT `placeholder`: a placeholder is
+	 * text shown inside an empty `<input>` before a value is typed, which
+	 * means nothing for `<input type="range">` (it always has a value,
+	 * the slider's current position, and no empty state to hint at).
 	 */
 	public static function presentation_fields() {
-		return array( 'instructions', 'placeholder', 'step', 'prepend', 'append' );
+		return array( 'instructions', 'step', 'prepend', 'append' );
 	}
 
 	/**

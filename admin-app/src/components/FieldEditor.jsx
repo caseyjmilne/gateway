@@ -91,20 +91,29 @@ const PRESENTATION_FIELD_META = {
  * `ChevronDown`, always visible, purely indicating open/closed state (it
  * doesn't need its own click handler; the row's own `onClick` already
  * covers the whole row). A small wp-admin-style row-actions menu ("Edit |
- * Duplicate | Delete", plain text links, `.row-actions`) appears under
- * the Label cell on the same row hover -- each one calls
+ * Duplicate | Delete", plain text links, `.row-actions`) sits directly
+ * under the Label cell's own title (`.gateway-field-editor-row-title`),
+ * `visibility: hidden` until the row is hovered -- each link calls
  * `event.stopPropagation()` so clicking it doesn't ALSO trigger the
- * row's own open/close click underneath it. Unlike a typical wp-admin
- * list table, this menu is `position: absolute` (anchored to the Label
- * `<td>`'s own `.gateway-field-editor-label-col` wrapper, `position:
- * relative`), floating below the row rather than reserving a hidden
- * line of height for it in normal flow -- a `visibility: hidden`
- * reserved-height approach was tried first, but it made the Label
- * `<td>` taller than its single-line sibling cells, so `vertical-align:
- * middle` centered the WHOLE (visible label + hidden menu) content box
- * and visibly pushed the label text upward relative to the chevron
- * next to it; floating the menu out of flow entirely avoids the height
- * mismatch causing that in the first place.
+ * row's own open/close click underneath it.
+ *
+ * **Every row is a fixed, generous height (~60px) with its content
+ * TOP-aligned, ACF's own row-editor convention** -- not the more usual
+ * "as tall as the content needs, vertically centered" a plain data table
+ * would use. This is deliberate, not a compromise: the Label cell's true
+ * content is two lines (the title, and the row-actions line right under
+ * it, `visibility: hidden` or not), while every other cell (chevron,
+ * Name, Type) is one line -- with `vertical-align: middle`, centering is
+ * computed against each cell's own full content box, so the visibly
+ * shorter cells would center lower than the two-line Label cell's own
+ * title line, throwing title/chevron/Name/Type out of alignment with
+ * each other despite looking like one row. Top-aligning everything
+ * against a shared, fixed row height sidesteps that entirely: as long as
+ * every cell gets the same top padding, each one's own FIRST line -- the
+ * chevron, the title, Name, Type -- lands at exactly the same y whether
+ * or not anything else follows it underneath, so they read as one
+ * aligned row regardless of how many lines the Label cell happens to
+ * carry below its own title.
  *
  * `editingIndex` (an index into `fields`, not a name -- a draft has no
  * name yet to key off of) tracks which single row is open; `isNewDraft`
@@ -190,13 +199,16 @@ const PRESENTATION_FIELD_META = {
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
  * own docblock on the PHP side for the whole "different types need
  * different extra data" design this is the first real use of --
- * `instructions` is universal, always first, for every type; Text,
- * Number, and Range also recognize Placeholder/Prepend/Append (Number
- * and Range also get their own `step`, a plain number input rendered via
- * `PRESENTATION_FIELD_META`'s own `type: 'number'`, in between
- * Placeholder and Prepend -- the order a type's own `presentation_fields`
- * lists a key in is the order this tab renders it in); every other type
- * recognizes `instructions` alone), and **Conditional Logic** -- a "Conditional Logic" toggle
+ * `instructions` is universal, always first, for every type; Text and
+ * Number also recognize Placeholder, and Text/Number/Range all recognize
+ * Prepend/Append (Number and Range also get their own `step`, a plain
+ * number input rendered via `PRESENTATION_FIELD_META`'s own `type:
+ * 'number'`, right after Placeholder for Number -- Range has no
+ * Placeholder at all, a slider always has a value and no empty state to
+ * hint at, so `step` renders right after Instructions for it instead --
+ * the order a type's own `presentation_fields` lists a key in is the
+ * order this tab renders it in); every other type recognizes
+ * `instructions` alone), and **Conditional Logic** -- a "Conditional Logic" toggle
  * (`conditional_logic.enabled`, its own separate RHF field, NOT part of
  * the `settings` object the other three tabs share -- this one is a
  * genuinely nested tree, not a flat set of strings, so
@@ -1376,8 +1388,10 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											) }
 										</span>
 									</td>
-									<td className="gateway-field-editor-label-col">
-										{ rowLabel }
+									<td>
+										<span className="gateway-field-editor-row-title">
+											{ rowLabel }
+										</span>
 										<div className="row-actions">
 											<span className="edit">
 												<a
