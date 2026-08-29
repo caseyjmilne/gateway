@@ -54,16 +54,28 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * already guarantees that server-side), so this component never needs
  * its own per-type list to know when there's nothing to show.
  * `settings.instructions` renders as a small note between the label and
- * the actual control, for any field type; `settings.placeholder`/`step`/
- * `prepend`/`append` only ever have anything to show for the one plain
- * `<input>` fallback branch at the bottom (nothing else -- textarea,
- * select, a relate autocomplete, ...) -- currently recognizes them at
- * all. `step` only ever comes back non-empty for a Number or Range field
- * (the only types `Field_Type::presentation_fields()` recognizes it
- * for), and passes straight through to the `<input>`'s own `step`
- * attribute unconditionally -- setting `step` on a non-numeric
- * `<input type>` is a silent no-op in every browser, so there's no need
- * to gate it on `inputType === 'number'`/`'range'` here as well.
+ * the actual control, for any field type. `settings.placeholder`/`step`
+ * only ever have anything to show for the one plain `<input>` fallback
+ * branch at the bottom (nothing else -- textarea, select, a relate
+ * autocomplete, ...) -- currently recognizes them at all -- with one
+ * exception: `step` also applies to the dedicated Range branch (see its
+ * own `settings.min_value`/`max_value` paragraph below), since Range is
+ * the other type `presentation_fields()` grants it to but the only one
+ * of the two that doesn't fall into the plain `<input>` fallback at all
+ * (it renders its own dedicated `<input type="range">` instead).
+ * `settings.prepend`/`append` are similar: the plain `<input>` fallback
+ * and the dedicated Range branch both wrap their own control in a small
+ * inline group (`.gateway-record-form-input-group`, each addon a
+ * `.gateway-record-form-input-addon`) when either is configured --
+ * every other branch (textarea, select, a relate autocomplete, ...)
+ * still ignores both, since neither Text Area/Select/Relate/etc.
+ * recognizes them as a Presentation setting in the first place. `step`
+ * only ever comes back non-empty for a Number or Range field (the only
+ * types `Field_Type::presentation_fields()` recognizes it for), and
+ * passes straight through to the `<input>`'s own `step` attribute
+ * unconditionally -- setting `step` on a non-numeric `<input type>` is a
+ * silent no-op in every browser, so there's no need to gate it on
+ * `inputType === 'number'`/`'range'` here as well.
  *
  * `settings.min_value`/`max_value` (`Field_Type::supports_range_limits()`,
  * Range only -- FieldEditor's own Validation tab, not Presentation)
@@ -394,20 +406,44 @@ export default function RecordForm( {
 								onChange={ handleChange( field.name ) }
 							/>
 						) }
-						{ 'range' === inputType && (
-							<>
-								<input
-									id={ inputId }
-									type="range"
-									min={ field.settings?.min_value ?? undefined }
-									max={ field.settings?.max_value ?? undefined }
-									step={ field.settings?.step || undefined }
-									value={ values[ field.name ] || 0 }
-									onChange={ handleChange( field.name ) }
-								/>{ ' ' }
-								<output>{ values[ field.name ] || 0 }</output>
-							</>
-						) }
+						{ 'range' === inputType &&
+							( field.settings?.prepend || field.settings?.append ? (
+								<span className="gateway-record-form-input-group">
+									{ field.settings.prepend && (
+										<span className="gateway-record-form-input-addon">
+											{ field.settings.prepend }
+										</span>
+									) }
+									<input
+										id={ inputId }
+										type="range"
+										min={ field.settings?.min_value ?? undefined }
+										max={ field.settings?.max_value ?? undefined }
+										step={ field.settings?.step || undefined }
+										value={ values[ field.name ] || 0 }
+										onChange={ handleChange( field.name ) }
+									/>{ ' ' }
+									<output>{ values[ field.name ] || 0 }</output>
+									{ field.settings.append && (
+										<span className="gateway-record-form-input-addon">
+											{ field.settings.append }
+										</span>
+									) }
+								</span>
+							) : (
+								<>
+									<input
+										id={ inputId }
+										type="range"
+										min={ field.settings?.min_value ?? undefined }
+										max={ field.settings?.max_value ?? undefined }
+										step={ field.settings?.step || undefined }
+										value={ values[ field.name ] || 0 }
+										onChange={ handleChange( field.name ) }
+									/>{ ' ' }
+									<output>{ values[ field.name ] || 0 }</output>
+								</>
+							) ) }
 						{ ( 'relate_one' === inputType ||
 							'relate_many' === inputType ) && (
 							<RelateAutocomplete

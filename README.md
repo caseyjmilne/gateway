@@ -4406,25 +4406,33 @@ above already guarantees every other type's `settings` is `{}`, there's
 nothing for a type-specific check here to protect against.
 `settings.instructions`, when present, renders as a small
 `.description`-styled note between a field's label and its own control,
-for any field type at all. `settings.placeholder`/`prepend`/`append`
-only ever have anything to show for the one plain `<input>` fallback
-branch at the very bottom of `RecordForm`'s own type-conditional chain
-(textarea/range/relate/select/radio/buttons/checkboxes/boolean each
-render their own dedicated control, none of which currently reads any of
-these three) -- `placeholder` passes straight through to the `<input>`'s
-own like-named attribute unconditionally, and `prepend`/`append` wrap
-the input in a small inline group (`.gateway-record-form-input-group`,
-each addon a `.gateway-record-form-input-addon`) styled flush against
-the input's own border, matching the familiar prepended/appended-text
-input pattern. `settings.step` is the one exception: the dedicated Range
-branch reads it too (alongside `settings.min_value`/`max_value`, its own
-Validation-tab settings -- see "Range limits" below), passing all three
-straight through to the `<input type="range">`'s own `min`/`max`/`step`
-attributes, so the slider's draggable range and increment actually match
-what's configured, not just the plain `<input>` fallback's own `step`.
-Setting `step` on a non-numeric `<input>` is a harmless no-op in every
-browser regardless, so neither branch needs to gate it on the field's
-own type beyond already being one of the two types that recognize it.
+for any field type at all. `settings.placeholder` only ever has anything
+to show for the one plain `<input>` fallback branch at the very bottom
+of `RecordForm`'s own type-conditional chain (textarea/range/relate/
+select/radio/buttons/checkboxes/boolean each render their own dedicated
+control, none of which recognizes `placeholder` as a Presentation
+setting in the first place) -- it passes straight through to the
+`<input>`'s own like-named attribute unconditionally. `settings.prepend`/
+`append` are recognized by TWO branches, not just the fallback one: the
+plain `<input>` fallback (Text) and the dedicated Range branch both wrap
+their own control in a small inline group
+(`.gateway-record-form-input-group`, each addon a
+`.gateway-record-form-input-addon`) styled flush against the input's own
+border when either is configured, matching the familiar prepended/
+appended-text input pattern -- for Range, the group wraps the
+`<input type="range">` AND its own live `<output>` reading together (a
+"%" append reads naturally right after the number, not squeezed between
+the slider and its own readout). `settings.step` is recognized by the
+same two types as `prepend`/`append` (Number and Range), but through
+different branches -- the plain `<input>` fallback for Number, the
+dedicated Range branch for Range (alongside `settings.min_value`/
+`max_value`, its own Validation-tab settings -- see "Range limits"
+below) -- passing straight through to each one's own `step`/`min`/`max`
+attributes so the slider's draggable range and increment actually match
+what's configured. Setting `step` on a non-numeric `<input>` is a
+harmless no-op in every browser regardless, so neither branch needs to
+gate it on the field's own type beyond already being one of the two
+types that recognize it.
 
 ### Default value
 
