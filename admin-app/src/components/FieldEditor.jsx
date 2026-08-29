@@ -94,7 +94,17 @@ const PRESENTATION_FIELD_META = {
  * Duplicate | Delete", plain text links, `.row-actions`) appears under
  * the Label cell on the same row hover -- each one calls
  * `event.stopPropagation()` so clicking it doesn't ALSO trigger the
- * row's own open/close click underneath it.
+ * row's own open/close click underneath it. Unlike a typical wp-admin
+ * list table, this menu is `position: absolute` (anchored to the Label
+ * `<td>`'s own `.gateway-field-editor-label-col` wrapper, `position:
+ * relative`), floating below the row rather than reserving a hidden
+ * line of height for it in normal flow -- a `visibility: hidden`
+ * reserved-height approach was tried first, but it made the Label
+ * `<td>` taller than its single-line sibling cells, so `vertical-align:
+ * middle` centered the WHOLE (visible label + hidden menu) content box
+ * and visibly pushed the label text upward relative to the chevron
+ * next to it; floating the menu out of flow entirely avoids the height
+ * mismatch causing that in the first place.
  *
  * `editingIndex` (an index into `fields`, not a name -- a draft has no
  * name yet to key off of) tracks which single row is open; `isNewDraft`
@@ -156,7 +166,7 @@ const PRESENTATION_FIELD_META = {
  * (the relationship picker in place of Name for a relate type, the
  * Default Value input switching between text/number below) already
  * implicitly assumes; directly under Label, when the picked type's own
- * `supports_default_value` is true -- Text and Number only, today -- a
+ * `supports_default_value` is true -- Text, Number, and Range today -- a
  * Default Value input, applied by `RecordForm` as the initial value of
  * its own "Add New" form and nowhere else, with its own small "Appears
  * when creating a new record." note underneath; plus -- further below,
@@ -169,18 +179,24 @@ const PRESENTATION_FIELD_META = {
  * `supports_character_limit` is true -- Text and Text Area only, today --
  * a Character Limit number input with its own small "Leave blank for no
  * limit." note underneath, actually enforced server-side by
- * Gateway\\Model_Fields::validate_character_limits(), not just recorded),
+ * Gateway\\Model_Fields::validate_character_limits(); plus, when the
+ * picked type's own `supports_range_limits` is true -- Range only,
+ * today -- Minimum Value/Maximum Value number inputs, each independently
+ * optional ("Leave blank for no minimum/maximum." notes underneath),
+ * actually enforced server-side by Gateway\\Model_Fields::
+ * validate_range_values() -- neither of these two is just recorded),
  * then **Presentation** (one `<input>`/`<textarea>`
  * per key in the picked type's own `presentation_fields` -- see
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
  * own docblock on the PHP side for the whole "different types need
- * different extra data" design this is the first real use of -- Text and
- * Number recognize these today (Number also gets its own `step`, a plain
- * number input rendered via `PRESENTATION_FIELD_META`'s own `type:
- * 'number'`, in between Placeholder and Prepend -- the order a type's own
- * `presentation_fields` lists a key in is the order this tab renders it
- * in); a plain note instead for every other type, which recognizes
- * none), and **Conditional Logic** -- a "Conditional Logic" toggle
+ * different extra data" design this is the first real use of --
+ * `instructions` is universal, always first, for every type; Text,
+ * Number, and Range also recognize Placeholder/Prepend/Append (Number
+ * and Range also get their own `step`, a plain number input rendered via
+ * `PRESENTATION_FIELD_META`'s own `type: 'number'`, in between
+ * Placeholder and Prepend -- the order a type's own `presentation_fields`
+ * lists a key in is the order this tab renders it in); every other type
+ * recognizes `instructions` alone), and **Conditional Logic** -- a "Conditional Logic" toggle
  * (`conditional_logic.enabled`, its own separate RHF field, NOT part of
  * the `settings` object the other three tabs share -- this one is a
  * genuinely nested tree, not a flat set of strings, so
@@ -204,24 +220,27 @@ const PRESENTATION_FIELD_META = {
  * client-side evaluation (see that component's own docblock) is what
  * actually hides the field's own input in the UI to begin with.
  *
- * Default Value, Character Limit, and every Presentation setting
- * all live in the SAME `settings` object/RHF field (`settings.default`/
- * `settings.character_limit` alongside `settings.placeholder`/etc.) --
- * `Field_Type::supports_default_value()`/`supports_character_limit()`
- * and `presentation_fields()` are what keep them from being confused for
- * each other despite sharing one object: which tab's dot lights up for a
- * given key (General/Validation/Presentation, see `generalTabHasContent`/
- * `validationTabHasContent`/`presentationTabHasContent` below) is decided
- * by which of those methods actually recognizes it, not by where the
- * value happens to live. A small green dot on a tab's own heading
- * (General/Validation/Presentation/Conditional Logic) marks that it
- * currently holds real content (a non-blank choice or Default Value;
- * Required switched on and/or a configured Character Limit; a non-blank
- * presentation setting; Conditional Logic switched on with at least one
- * rule that actually has a field picked) -- based on the live,
- * already-autosaved values, not a "changed since this session started"
- * diff, so it's still showing the next time this same field is opened
- * for editing, not just while it's being actively typed into.
+ * Default Value, Character Limit, Minimum/Maximum Value, and every
+ * Presentation setting all live in the SAME `settings` object/RHF field
+ * (`settings.default`/`settings.character_limit`/`settings.min_value`/
+ * `max_value` alongside `settings.placeholder`/etc.) --
+ * `Field_Type::supports_default_value()`/`supports_character_limit()`/
+ * `supports_range_limits()` and `presentation_fields()` are what keep
+ * them from being confused for each other despite sharing one object:
+ * which tab's dot lights up for a given key (General/Validation/
+ * Presentation, see `generalTabHasContent`/`validationTabHasContent`/
+ * `presentationTabHasContent` below) is decided by which of those
+ * methods actually recognizes it, not by where the value happens to
+ * live. A small green dot on a tab's own heading (General/Validation/
+ * Presentation/Conditional Logic) marks that it currently holds real
+ * content (a non-blank choice or Default Value; Required switched on
+ * and/or a configured Character Limit and/or a configured Minimum/
+ * Maximum Value; a non-blank presentation setting; Conditional Logic
+ * switched on with at least one rule that actually has a field picked)
+ * -- based on the live, already-autosaved values, not a "changed since
+ * this session started" diff, so it's still showing the next time this
+ * same field is opened for editing, not just while it's being actively
+ * typed into.
  *
  * "Buttons"/"Select"/"Radio"/"Checkbox" (any Choice_Field_Type -- each
  * type's own `has_choices` from useFieldTypes()) are the one case where
@@ -342,11 +361,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsCharacterLimitFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_character_limit );
 
+	const supportsRangeLimitsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_range_limits );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
 	const editSupportsDefault = supportsDefaultFor( editType );
 	const editSupportsCharacterLimit = supportsCharacterLimitFor( editType );
+	const editSupportsRangeLimits = supportsRangeLimitsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -393,13 +416,19 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		editSettings.default && String( editSettings.default ).trim()
 	);
 	const generalTabHasContent = choicesTabHasContent || defaultValueTabHasContent;
-	// Validation's own dot covers both things that can live there:
-	// Required, and (like Default Value above, checked directly for the
-	// same reason) a configured Character Limit.
+	// Validation's own dot covers everything that can live there:
+	// Required, a configured Character Limit, and a configured Minimum/
+	// Maximum Value (each checked directly for the same reason Default
+	// Value is above).
 	const characterLimitTabHasContent = Boolean(
 		editSettings.character_limit && String( editSettings.character_limit ).trim()
 	);
-	const validationTabHasContent = Boolean( editRequired ) || characterLimitTabHasContent;
+	const rangeLimitsTabHasContent = Boolean(
+		( editSettings.min_value && String( editSettings.min_value ).trim() ) ||
+			( editSettings.max_value && String( editSettings.max_value ).trim() )
+	);
+	const validationTabHasContent =
+		Boolean( editRequired ) || characterLimitTabHasContent || rangeLimitsTabHasContent;
 	// Checked only against the current type's OWN presentation keys, not
 	// every key `editSettings` happens to hold -- `settings.default`
 	// lives in the same object but belongs to General, not here, so a
@@ -1092,7 +1121,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 					field, and it can&rsquo;t be cleared on an existing one.
 				</p>
 				{ editSupportsCharacterLimit && (
-					<div className="gateway-field-editor-form-grid gateway-field-editor-character-limit">
+					<div className="gateway-field-editor-form-grid gateway-field-editor-validation-extra">
 						<label>
 							<span>Character Limit</span>
 							<input
@@ -1104,6 +1133,34 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							/>
 							<span className="description">
 								Leave blank for no limit.
+							</span>
+						</label>
+					</div>
+				) }
+				{ editSupportsRangeLimits && (
+					<div className="gateway-field-editor-form-grid gateway-field-editor-validation-extra">
+						<label>
+							<span>Minimum Value</span>
+							<input
+								type="number"
+								step="any"
+								className="regular-text"
+								{ ...register( 'settings.min_value' ) }
+							/>
+							<span className="description">
+								Leave blank for no minimum.
+							</span>
+						</label>
+						<label>
+							<span>Maximum Value</span>
+							<input
+								type="number"
+								step="any"
+								className="regular-text"
+								{ ...register( 'settings.max_value' ) }
+							/>
+							<span className="description">
+								Leave blank for no maximum.
 							</span>
 						</label>
 					</div>
@@ -1319,7 +1376,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 											) }
 										</span>
 									</td>
-									<td>
+									<td className="gateway-field-editor-label-col">
 										{ rowLabel }
 										<div className="row-actions">
 											<span className="edit">

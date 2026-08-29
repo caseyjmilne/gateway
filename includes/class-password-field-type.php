@@ -100,7 +100,7 @@ class Password_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function presentation_fields() {
-		return array();
+		return array( 'instructions' );
 	}
 
 	/**
@@ -114,6 +114,13 @@ class Password_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function supports_character_limit() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_range_limits() {
 		return false;
 	}
 }

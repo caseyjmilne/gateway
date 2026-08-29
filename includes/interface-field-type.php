@@ -160,7 +160,7 @@ interface Field_Type {
 	/**
 	 * Which of the admin app's Field Editor's own generic "Presentation"
 	 * settings (`FieldEditor.jsx`'s own `PRESENTATION_FIELD_META` catalog
-	 * -- currently `placeholder`/`step`/`prepend`/`append`/`instructions`,
+	 * -- currently `instructions`/`placeholder`/`step`/`prepend`/`append`,
 	 * a small vocabulary this method only ever selects a subset of; a new
 	 * type-specific need like `step` below is added to the catalog itself,
 	 * not invented ad hoc by a single type) this type actually recognizes
@@ -182,16 +182,23 @@ interface Field_Type {
 	 * declared subset of the fixed key catalog ever survives
 	 * `sanitize_settings()`, whatever a request actually sends.
 	 *
-	 * `[]` for every built-in type except `Text_Field_Type` (`placeholder`/
-	 * `prepend`/`append`/`instructions`) and `Number_Field_Type`
-	 * (the same four, plus its own `step` -- the HTML `<input type="number">`
+	 * `['instructions']` -- and nothing else -- for every built-in type
+	 * except `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`
+	 * (`instructions` plus `placeholder`/`prepend`/`append`, and, for
+	 * Number/Range only, `step` -- the HTML `<input type="number"|"range">`
 	 * `step` attribute; recognized by no other type, since it means
-	 * nothing for a plain string). The order a type returns these in is
-	 * the order the Presentation tab renders them in, not just which ones
-	 * appear -- `Number_Field_Type` returns `step` right after
-	 * `placeholder` and before `prepend` for exactly that reason.
+	 * nothing for a plain string). `instructions` is universal -- a short
+	 * note under a field's own label is meaningful for literally any
+	 * field type, unlike the other four -- so unlike them it's never
+	 * gated by anything past this method simply always including it. The
+	 * order a type returns these in is the order the Presentation tab
+	 * renders them in, not just which ones appear -- `instructions`
+	 * always comes first (`RecordForm` renders it as the very first thing
+	 * under a field's own label, before its control), and
+	 * `Number_Field_Type`/`Range_Field_Type` return `step` right after
+	 * `placeholder` and before `prepend` for the same reason.
 	 *
-	 * @return string[] Subset of `['placeholder', 'step', 'prepend', 'append', 'instructions']`, in display order.
+	 * @return string[] Subset of `['instructions', 'placeholder', 'step', 'prepend', 'append']`, in display order, always including `'instructions'`.
 	 */
 	public static function presentation_fields();
 
@@ -249,11 +256,51 @@ interface Field_Type {
 	 * same way `validate_required_fields()` already is.
 	 *
 	 * `true` only for `Text_Field_Type` and `Text_Area_Field_Type` today.
-	 * `false` for every other built-in type, including `Number_Field_Type`
-	 * (a "character limit" on a number is a category error -- a numeric
-	 * range belongs to a future min/max setting of its own, not this one).
+	 * `false` for every other built-in type, including `Number_Field_Type`/
+	 * `Range_Field_Type` (a "character limit" on a number is a category
+	 * error -- a numeric range has its own dedicated pair of settings,
+	 * `supports_range_limits()` below, not this one).
 	 *
 	 * @return bool
 	 */
 	public static function supports_character_limit();
+
+	/**
+	 * Whether a field of this type can be given a configurable minimum
+	 * and/or maximum numeric value -- shown in `FieldEditor.jsx`'s own
+	 * **Validation** tab as "Minimum Value"/"Maximum Value", the same
+	 * "an actual constraint, not a display/default concern, so it
+	 * belongs in Validation" reasoning `supports_character_limit()`
+	 * already follows for its own analogous setting on a string type.
+	 * Either bound, or both, or neither can be configured -- a range
+	 * with only a floor, only a ceiling, or neither is a perfectly valid
+	 * configuration, not an error.
+	 *
+	 * Stored the same way as everything else `settings` holds: two more
+	 * keys (`'min_value'`/`'max_value'`) in the same generic JSON column,
+	 * gated by this method and merged in by `Model_Fields::
+	 * sanitize_settings()` alongside `presentation_fields()`/
+	 * `supports_default_value()`/`supports_character_limit()`'s own keys
+	 * -- unlike those, a value here must actually be numeric (not merely
+	 * a positive whole number the way `character_limit` must be; a
+	 * negative or fractional min/max is entirely legitimate) or it's
+	 * dropped, same as leaving it blank. Actually enforced -- not just
+	 * recorded, and not just an `<input type="range">`'s own `min`/`max`
+	 * attribute in `RecordForm` (a client-side convenience only, exactly
+	 * like `character_limit`'s own `maxLength`) -- by a new
+	 * `Model_Fields::validate_range_values()`, called by
+	 * `Records_REST_Controller::create_record()`/`update_record()` the
+	 * same way `validate_required_fields()`/`validate_character_limits()`
+	 * already are, including the same "skipped entirely for a field
+	 * hidden by its own Conditional Logic" treatment both of those give.
+	 *
+	 * `true` only for `Range_Field_Type` today -- a numeric bound is
+	 * already what `Number_Field_Type` itself represents without needing
+	 * a UI slider to visualize it, so this is Range-specific rather than
+	 * shared with Number the way `step` is. `false` for every other
+	 * built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function supports_range_limits();
 }

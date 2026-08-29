@@ -77,14 +77,11 @@
 }
 
 .gateway-admin-app .gateway-field-editor-table tbody td {
-	/* The Label cell's own .row-actions is `visibility: hidden`, not
-	 * `display: none`, so it still reserves its own line of height even
-	 * while invisible (deliberately -- hovering to reveal it must never
-	 * shift the row's own height). That makes the Label cell taller than
-	 * its neighbors; without an explicit vertical-align here, a browser's
-	 * own default top-alignment left the row's actual text looking
-	 * pinned to the top of the row with a dead gap underneath, rather
-	 * than centered in it. */
+	/* Belt-and-suspenders alongside .row-actions now being taken out of
+	 * flow entirely (below) -- keeps every cell's own visible content
+	 * centered against the row's real height even if that height still
+	 * ends up taller than any one cell's own content for some other
+	 * reason later. */
 	vertical-align: middle;
 }
 
@@ -92,8 +89,38 @@
 	background: #f6f7f7;
 }
 
+.gateway-admin-app .gateway-field-editor-label-col {
+	/* .row-actions' own anchor -- see its own comment below for why this
+	 * has to be `position: relative` rather than the more usual "just
+	 * reserve a hidden line of height for it" approach. */
+	position: relative;
+}
+
 .gateway-admin-app .gateway-field-editor-table .row-actions {
+	/* Absolutely positioned, floating below the label on hover, rather
+	 * than a normal-flow element merely `visibility: hidden` otherwise --
+	 * that older approach still reserved its own line of height even
+	 * while invisible (needed so hovering to reveal it wouldn't shift the
+	 * row's own height), which made the Label cell's own true content
+	 * height taller than its neighbors', throwing off `vertical-align:
+	 * middle` above: centering is computed against a cell's ENTIRE
+	 * content box, hidden content included, so the visible label ended up
+	 * sitting noticeably higher than the (genuinely single-line) chevron
+	 * cell next to it instead of level with it. Taking this out of flow
+	 * entirely fixes both at once -- the label cell's true content is
+	 * only ever its own single line, centering correctly against the
+	 * chevron, and the menu now opens as a real floating menu below the
+	 * row instead of a second reserved (if invisible) row of its own. */
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 1;
 	visibility: hidden;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	box-shadow: 0 2px 4px rgba( 0, 0, 0, 0.1 );
+	padding: 4px 8px;
+	white-space: nowrap;
 	color: #646970;
 	font-size: 13px;
 }
@@ -187,8 +214,16 @@
 	margin: 0 0 0.5em;
 }
 
-.gateway-admin-app .gateway-field-editor-character-limit {
+.gateway-admin-app .gateway-field-editor-validation-extra {
 	margin-top: 1.5em;
+}
+
+.gateway-admin-app .gateway-field-editor-validation-extra + .gateway-field-editor-validation-extra {
+	/* Character Limit and Minimum/Maximum Value never both apply to the
+	 * same type today, but if a future type ever recognized two of these
+	 * blocks at once, the second shouldn't double up on top margin
+	 * against the first's own bottom. */
+	margin-top: 0;
 }
 
 .gateway-admin-app .gateway-field-editor-save-status {

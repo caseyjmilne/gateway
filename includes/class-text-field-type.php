@@ -78,13 +78,14 @@ class Text_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
-	 * The first (and, for now, only) type any of these four apply to --
-	 * see this interface method's own docblock for the whole "different
-	 * types need different presentation data" design this is the first
-	 * real use of.
+	 * `instructions` is recognized by every built-in type (see this
+	 * interface method's own docblock); `placeholder`/`prepend`/`append`
+	 * are Text/Number/Range-specific -- see the whole "different types
+	 * need different presentation data" design this is the first real
+	 * use of.
 	 */
 	public static function presentation_fields() {
-		return array( 'placeholder', 'prepend', 'append', 'instructions' );
+		return array( 'instructions', 'placeholder', 'prepend', 'append' );
 	}
 
 	/**
@@ -107,5 +108,12 @@ class Text_Field_Type implements Field_Type {
 	 */
 	public static function supports_character_limit() {
 		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_range_limits() {
+		return false;
 	}
 }

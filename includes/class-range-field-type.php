@@ -5,11 +5,13 @@
  * value is (Schema Blueprint's `double()`, accepting both integers and
  * decimals) since a slider's value is still just a number underneath.
  *
- * Renders with the browser's own default min/max/step (0-100, step 1) --
- * there's no per-field way to configure those yet, since that would mean
- * a field-level settings concept beyond {name, label, type} this class
- * alone can't add on its own. A future version could surface min/max/
- * step as part of the Field Editor once such a concept exists.
+ * `step` (a plain Presentation setting, same as Number's own) and
+ * `min_value`/`max_value` (a Validation-tab pair this is the only type
+ * that recognizes -- see `supports_range_limits()`) together are what
+ * `RecordForm` renders the actual `<input type="range">`'s own
+ * `step`/`min`/`max` attributes from; a slider with none of the three
+ * configured still falls back to the browser's own bare default
+ * (0-100, step 1).
  *
  * @package Gateway
  */
@@ -92,16 +94,23 @@ class Range_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * The same set Number_Field_Type recognizes, `step` included -- a
+	 * slider's own step size is exactly as meaningful here as it is for a
+	 * plain number input.
 	 */
 	public static function presentation_fields() {
-		return array();
+		return array( 'instructions', 'placeholder', 'step', 'prepend', 'append' );
 	}
 
 	/**
 	 * @inheritDoc
+	 *
+	 * A default position for the slider to start at makes just as much
+	 * sense as it does for a plain Number field.
 	 */
 	public static function supports_default_value() {
-		return false;
+		return true;
 	}
 
 	/**
@@ -109,5 +118,15 @@ class Range_Field_Type implements Field_Type {
 	 */
 	public static function supports_character_limit() {
 		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * The only type this applies to -- see this interface method's own
+	 * docblock.
+	 */
+	public static function supports_range_limits() {
+		return true;
 	}
 }

@@ -58,21 +58,30 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
  * `prepend`/`append` only ever have anything to show for the one plain
  * `<input>` fallback branch at the bottom (nothing else -- textarea,
  * select, a relate autocomplete, ...) -- currently recognizes them at
- * all. `step` only ever comes back non-empty for a Number field (the
- * only type `Field_Type::presentation_fields()` recognizes it for), and
- * passes straight through to the `<input>`'s own `step` attribute
- * unconditionally -- setting `step` on a non-numeric `<input type>` is a
- * silent no-op in every browser, so there's no need to gate it on
- * `inputType === 'number'` here as well.
+ * all. `step` only ever comes back non-empty for a Number or Range field
+ * (the only types `Field_Type::presentation_fields()` recognizes it
+ * for), and passes straight through to the `<input>`'s own `step`
+ * attribute unconditionally -- setting `step` on a non-numeric
+ * `<input type>` is a silent no-op in every browser, so there's no need
+ * to gate it on `inputType === 'number'`/`'range'` here as well.
+ *
+ * `settings.min_value`/`max_value` (`Field_Type::supports_range_limits()`,
+ * Range only -- FieldEditor's own Validation tab, not Presentation)
+ * passes straight through to the range `<input>`'s own `min`/`max`
+ * attributes below, the same "client hint, server enforces" split
+ * `character_limit` has: the real enforcement is
+ * `Model_Fields::validate_range_values()` on the server, this is only
+ * what keeps the slider's own draggable range honest in the meantime.
  *
  * `settings.default` (`Field_Type::supports_default_value()`, currently
- * Text/Number only -- FieldEditor's own General tab, not Presentation)
- * is different from the rest of `settings` in one way: it only ever
- * applies to a brand new record, never an existing one being edited, so
- * `initialValues` state's own initializer above checks `!initialValues`
- * (true only for "Add New" -- editing always passes a real, even if
- * blank, `initialValues`) before falling back to it, rather than reading
- * it unconditionally the way `instructions`/`placeholder`/etc. do.
+ * Text/Number/Range only -- FieldEditor's own General tab, not
+ * Presentation) is different from the rest of `settings` in one way: it
+ * only ever applies to a brand new record, never an existing one being
+ * edited, so `initialValues` state's own initializer above checks
+ * `!initialValues` (true only for "Add New" -- editing always passes a
+ * real, even if blank, `initialValues`) before falling back to it,
+ * rather than reading it unconditionally the way
+ * `instructions`/`placeholder`/etc. do.
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -390,6 +399,9 @@ export default function RecordForm( {
 								<input
 									id={ inputId }
 									type="range"
+									min={ field.settings?.min_value ?? undefined }
+									max={ field.settings?.max_value ?? undefined }
+									step={ field.settings?.step || undefined }
 									value={ values[ field.name ] || 0 }
 									onChange={ handleChange( field.name ) }
 								/>{ ' ' }

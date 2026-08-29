@@ -570,6 +570,96 @@ class Model_Fields {
 	}
 
 	/**
+	 * Checks every one of a model's fields with a configured `min_value`/
+	 * `max_value` (`Field_Type::supports_range_limits()`, `Range_Field_Type`
+	 * only today -- `Model_Fields::sanitize_settings()`'s own doing, always
+	 * genuinely numeric strings by the time they're stored) against $data,
+	 * the exact same shape of check `validate_character_limits()` already
+	 * runs for `character_limit` -- called by `Records_REST_Controller::
+	 * create_record()`/`update_record()` right alongside it.
+	 *
+	 * Either bound is entirely optional and independent -- a field with
+	 * only a `min_value` is checked only against that, one with only a
+	 * `max_value` only against that, one with neither is never checked at
+	 * all (`$limit` no different from "no character_limit configured").
+	 * Only a genuinely numeric value is ever checked (the same values
+	 * `Number_Field_Type`/`Range_Field_Type::cast()` already produce) --
+	 * a non-numeric value isn't this method's problem to catch.
+	 *
+	 * A field whose own Conditional Logic evaluates to "hidden" for this
+	 * record is skipped entirely here too, the same as
+	 * `validate_required_fields()`/`validate_character_limits()` -- see
+	 * that first method's own docblock for what $effective_data is and
+	 * why it can differ from $data.
+	 *
+	 * @param string     $class_name     Model class name.
+	 * @param array      $data           sanitize_record_data()'s own output.
+	 * @param array|null $effective_data See validate_required_fields()'s
+	 *                                     own docblock.
+	 * @return true|\WP_Error
+	 */
+	public static function validate_range_values( $class_name, array $data, $effective_data = null ) {
+		$effective_data = is_array( $effective_data ) ? $effective_data : $data;
+		$out_of_bounds  = array();
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( ! self::is_field_visible_for_data( $field['conditional_logic'], $effective_data ) ) {
+				continue;
+			}
+
+			if ( ! array_key_exists( $field['name'], $data ) ) {
+				continue;
+			}
+
+			$value = $data[ $field['name'] ];
+
+			if ( ! is_numeric( $value ) ) {
+				continue;
+			}
+
+			$min = isset( $field['settings']['min_value'] ) && is_numeric( $field['settings']['min_value'] )
+				? (float) $field['settings']['min_value']
+				: null;
+			$max = isset( $field['settings']['max_value'] ) && is_numeric( $field['settings']['max_value'] )
+				? (float) $field['settings']['max_value']
+				: null;
+
+			if ( null === $min && null === $max ) {
+				continue;
+			}
+
+			$value = (float) $value;
+
+			if ( ( null !== $min && $value < $min ) || ( null !== $max && $value > $max ) ) {
+				if ( null !== $min && null !== $max ) {
+					/* translators: 1: field label, 2: minimum value, 3: maximum value */
+					$out_of_bounds[] = sprintf( __( '%1$s (must be between %2$s and %3$s)', 'gateway' ), $field['label'], $min, $max );
+				} elseif ( null !== $min ) {
+					/* translators: 1: field label, 2: minimum value */
+					$out_of_bounds[] = sprintf( __( '%1$s (must be at least %2$s)', 'gateway' ), $field['label'], $min );
+				} else {
+					/* translators: 1: field label, 2: maximum value */
+					$out_of_bounds[] = sprintf( __( '%1$s (must be at most %2$s)', 'gateway' ), $field['label'], $max );
+				}
+			}
+		}
+
+		if ( empty( $out_of_bounds ) ) {
+			return true;
+		}
+
+		return new \WP_Error(
+			'gateway_record_value_out_of_range',
+			sprintf(
+				/* translators: %s: comma-separated list of "field label (must be ...)" */
+				__( 'The following fields are outside their allowed range: %s.', 'gateway' ),
+				implode( ', ', $out_of_bounds )
+			),
+			array( 'status' => 400 )
+		);
+	}
+
+	/**
 	 * Filters a raw, arbitrary-keyed array (e.g. straight off a REST
 	 * request body) down to just this model's own known fields, casting
 	 * each surviving value through its field type's own cast() -- used by
@@ -602,44 +692,53 @@ class Model_Fields {
 
 	/**
 	 * Filters+sanitizes a field's own raw "settings" -- its Presentation
-	 * tab (`placeholder`/`step`/`prepend`/`append`/`instructions`, per
-	 * `Field_Type::presentation_fields()`), its General tab's own
-	 * `default` value (`Field_Type::supports_default_value()`), and its
-	 * Validation tab's own `character_limit` (`Field_Type::
-	 * supports_character_limit()`) -- down to only the keys $type
-	 * actually recognizes, each `sanitize_text_field()`'d and trimmed the
-	 * same way a raw label already is (validate()'s own $label handling)
-	 * -- an empty-after-trimming value is dropped entirely rather than
-	 * stored as `''`, so a field with nothing actually filled in ends up
-	 * with a genuinely empty `[]`, not a settings object full of blank
-	 * strings. `character_limit` gets one further check on top: it's
-	 * meaningless as an arbitrary string the way the others are, so
-	 * anything left after trimming that isn't a positive whole number is
-	 * dropped too, same as if it had been left blank ("Leave blank for no
-	 * limit").
+	 * tab (`instructions`/`placeholder`/`step`/`prepend`/`append`, per
+	 * `Field_Type::presentation_fields()` -- `instructions` alone is
+	 * recognized by every type; the other four are per-type), its General
+	 * tab's own `default` value (`Field_Type::supports_default_value()`),
+	 * and its Validation tab's own `character_limit`/`min_value`+`max_value`
+	 * (`Field_Type::supports_character_limit()`/`supports_range_limits()`)
+	 * -- down to only the keys $type actually recognizes, each
+	 * `sanitize_text_field()`'d and trimmed the same way a raw label
+	 * already is (validate()'s own $label handling) -- an
+	 * empty-after-trimming value is dropped entirely rather than stored
+	 * as `''`, so a field with nothing actually filled in ends up with a
+	 * genuinely empty `[]`, not a settings object full of blank strings.
+	 * `character_limit` gets one further check on top: it's meaningless
+	 * as an arbitrary string the way the others are, so anything left
+	 * after trimming that isn't a positive whole number is dropped too,
+	 * same as if it had been left blank ("Leave blank for no limit").
+	 * `min_value`/`max_value` get a similar check, just looser: either
+	 * must be genuinely numeric, but (unlike `character_limit`) a
+	 * negative or fractional bound is entirely legitimate, so it's only
+	 * non-numeric input that's dropped.
 	 *
-	 * All three live in the one `settings` column together (none of them
+	 * All four live in the one `settings` column together (none of them
 	 * are a different *shape* of data than a placeholder is, just a
-	 * different tab, or -- `character_limit` -- an actual constraint
-	 * instead of a display/default concern) -- `presentation_fields()`/
-	 * `supports_default_value()`/`supports_character_limit()` stay three
-	 * separate methods on `Field_Type` because they answer three different
+	 * different tab, or -- `character_limit`/`min_value`/`max_value` -- an
+	 * actual constraint instead of a display/default concern) --
+	 * `presentation_fields()`/`supports_default_value()`/
+	 * `supports_character_limit()`/`supports_range_limits()` stay four
+	 * separate methods on `Field_Type` because they answer four different
 	 * questions (which Presentation-tab inputs to show; whether a default
-	 * makes sense for this type at all; whether a maximum length does),
-	 * merged back into one combined whitelist only here.
+	 * makes sense for this type at all; whether a maximum length does;
+	 * whether a numeric range does), merged back into one combined
+	 * whitelist only here.
 	 *
 	 * This -- not a dedicated column per possible per-type setting, and
 	 * not trusting whatever keys a request happens to send -- is what
 	 * keeps `gateway_fields.settings` (one generic JSON column, arbitrary
 	 * shape) from becoming a free-for-all: a type that recognizes nothing
-	 * at all (true for every built-in type except `Text_Field_Type`/
-	 * `Number_Field_Type`/`Text_Area_Field_Type` today) always ends up
-	 * with `[]` here regardless of what a request sends, the same "never
-	 * trust the client, the type itself decides what's meaningful"
-	 * reasoning `require_choices_for_field()` already applies to choices.
-	 * `character_limit` itself is only ever *recorded* here -- actually
-	 * enforcing it against real record data is
-	 * `validate_character_limits()`'s own job, below.
+	 * beyond the universal `instructions` (true for every built-in type
+	 * except `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
+	 * `Text_Area_Field_Type` today) never ends up with anything else here
+	 * regardless of what a request sends, the same "never trust the
+	 * client, the type itself decides what's meaningful" reasoning
+	 * `require_choices_for_field()` already applies to choices.
+	 * `character_limit`/`min_value`/`max_value` are only ever *recorded*
+	 * here -- actually enforcing them against real record data is
+	 * `validate_character_limits()`/`validate_range_values()`'s own job,
+	 * below.
 	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
@@ -666,6 +765,11 @@ class Model_Fields {
 			$recognized_keys[] = 'character_limit';
 		}
 
+		if ( $type_class::supports_range_limits() ) {
+			$recognized_keys[] = 'min_value';
+			$recognized_keys[] = 'max_value';
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -687,6 +791,14 @@ class Model_Fields {
 			// validate_character_limits() would otherwise have to guard
 			// against separately.
 			if ( 'character_limit' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
+				continue;
+			}
+
+			// 'min_value'/'max_value' are meaningless as arbitrary strings
+			// too, but unlike 'character_limit' a negative or fractional
+			// bound is entirely legitimate -- only genuinely non-numeric
+			// input is dropped, the same as leaving it blank.
+			if ( in_array( $key, array( 'min_value', 'max_value' ), true ) && ! is_numeric( $value ) ) {
 				continue;
 			}
 

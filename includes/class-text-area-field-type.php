@@ -83,7 +83,7 @@ class Text_Area_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function presentation_fields() {
-		return array();
+		return array( 'instructions' );
 	}
 
 	/**
@@ -102,5 +102,12 @@ class Text_Area_Field_Type implements Field_Type {
 	 */
 	public static function supports_character_limit() {
 		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_range_limits() {
+		return false;
 	}
 }

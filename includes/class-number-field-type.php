@@ -88,14 +88,14 @@ class Number_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
-	 * The second type these apply to, alongside Text_Field_Type -- plus
-	 * one Number-specific key of its own, `step`, recognized by no other
-	 * type (see this interface method's own docblock for why the fixed
-	 * catalog can grow a type-specific key like this one without every
-	 * other type needing to care).
+	 * `placeholder`/`prepend`/`append`, alongside Text_Field_Type/
+	 * Range_Field_Type -- plus `step`, shared only with Range_Field_Type,
+	 * recognized by no other type (see this interface method's own
+	 * docblock for why the fixed catalog can grow a key like this one
+	 * without every other type needing to care).
 	 */
 	public static function presentation_fields() {
-		return array( 'placeholder', 'step', 'prepend', 'append', 'instructions' );
+		return array( 'instructions', 'placeholder', 'step', 'prepend', 'append' );
 	}
 
 	/**
@@ -113,6 +113,13 @@ class Number_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function supports_character_limit() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_range_limits() {
 		return false;
 	}
 }

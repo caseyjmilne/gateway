@@ -299,6 +299,12 @@ class Records_REST_Controller {
 			return $character_limit_check;
 		}
 
+		$range_check = Model_Fields::validate_range_values( $class, $data );
+
+		if ( is_wp_error( $range_check ) ) {
+			return $range_check;
+		}
+
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
 
 		try {
@@ -380,6 +386,12 @@ class Records_REST_Controller {
 
 		if ( is_wp_error( $character_limit_check ) ) {
 			return $character_limit_check;
+		}
+
+		$range_check = Model_Fields::validate_range_values( $class, $data, $effective_data );
+
+		if ( is_wp_error( $range_check ) ) {
+			return $range_check;
 		}
 
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );

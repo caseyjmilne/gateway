@@ -127,7 +127,7 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	 * @inheritDoc
 	 */
 	public static function presentation_fields() {
-		return array();
+		return array( 'instructions' );
 	}
 
 	/**
@@ -141,6 +141,13 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	 * @inheritDoc
 	 */
 	public static function supports_character_limit() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_range_limits() {
 		return false;
 	}
 }

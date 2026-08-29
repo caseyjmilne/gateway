@@ -3247,10 +3247,12 @@ returning `"textarea"` isn't a real HTML `<input type>` value at all --
 `RecordForm` special-cases exactly that string to render a `<textarea>`
 element instead. **Range** renders as `input[type=range]` with a small
 live `<output>` alongside it (a bare slider with no visible number is
-barely usable); it uses the browser's own default min/max/step (0-100,
-step 1) -- there's no per-field way to configure those yet, since that
-would need a field-level settings concept beyond `{name, label, type}`
-this class alone can't add on its own.
+barely usable); its own configured Step (Presentation) and Minimum/
+Maximum Value (Validation) settings pass straight through to the
+`<input>`'s own `step`/`min`/`max` attributes -- see "Presentation field
+settings" and "Range limits" below -- falling back to the browser's own
+defaults (0-100, step 1) for whichever of those a field leaves
+unconfigured.
 
 **Password values are masked in the Records list view, not hashed in
 storage.** `Password_Field_Type` stores plain text, same as Text -- it's
@@ -3482,14 +3484,25 @@ DELETE call the old dedicated button made.
 -- hovering to reveal it must never shift the row's own height (a
 `display: none` element takes up no space at all until it appears,
 which would grow the row out from under the cursor the instant it
-showed up). The trade-off: the Label cell's own `<td>` is genuinely
-taller than its neighbors even while `.row-actions` is invisible, since
-`visibility: hidden` still reserves its own line of height. Every
-`<td>` in this table gets an explicit `vertical-align: middle` because
-of exactly this -- without it, a browser's own default top-alignment
-left the row's actual visible text (Label, Name, Type) looking pinned
-to the top of the row with a dead gap underneath, rather than centered
-in it the way every other row-based UI in this app already reads.
+showed up). It's also `position: absolute` (anchored to
+`.gateway-field-editor-label-col`, a `position: relative` wrapper on the
+Label `<td>` itself), floating below the row on hover rather than
+sitting in normal document flow. A reserved-height, still-in-flow
+approach (`visibility: hidden` alone, no `position: absolute`) was tried
+first, but it made the Label `<td>` genuinely taller than its
+single-line sibling cells (the hidden menu still reserves its own line
+of height even though nothing is visible), and centering that taller
+cell's whole content box with `vertical-align: middle` -- needed so the
+row's actual visible text doesn't look pinned to the top with a dead gap
+underneath -- pushed the VISIBLE label text upward relative to the
+single-line chevron cell next to it, a misalignment that only became
+obvious once the row-actions menu existed at all. Taking the menu out of
+flow entirely avoids the height mismatch causing that in the first
+place: every `<td>` still gets `vertical-align: middle` (belt-and-suspenders,
+still correct for the now-single-line Label cell), but nothing in this
+table is taller than its neighbors any more, so it lines up the chevron
+against the label and every other column without a fight between two
+different alignment fixes.
 
 **Every change autosaves -- there's nothing to manage.** The panel's own
 form state is one `react-hook-form` instance (`useForm`), reset to a
@@ -4265,15 +4278,19 @@ column that's since been dropped by hand, say) comes back as a clean
 ### Presentation field settings (placeholder / prepend / append / instructions / step)
 
 A field's "Presentation" tab (previously an empty placeholder, alongside
-"Conditional Logic") is now real for two types: **Text** and **Number**.
-Both can be given a placeholder, a prepended and/or appended string shown
+"Conditional Logic") is now real for every field type. **`instructions`**
+-- a note shown between the label and the control -- is universal: every
+built-in type recognizes it, and it's always the FIRST Presentation
+setting a type recognizes, regardless of what else it recognizes. On top
+of that, three types -- **Text**, **Number**, and **Range** -- also
+recognize a placeholder and a prepended and/or appended string shown
 flush against their own input (e.g. a "$" prepend and a "USD" append on
-a price field), and an instructions note shown between the label and the
-control. Number also gets one setting of its own, **Step**, the HTML
-`<input type="number">` `step` attribute -- e.g. `0.01` so a price field
-increments/decrements (and validates) by cents rather than whole units,
-or `5` so a quantity field only moves in fives. None of the five touch
-what's actually stored in the field's own column -- purely presentational.
+a price field). Number and Range additionally get one setting of their
+own, **Step**, the HTML `<input type="number">`/`<input type="range">`
+`step` attribute -- e.g. `0.01` so a price field increments/decrements
+(and validates) by cents rather than whole units, or `5` so a quantity
+field or a slider only moves in fives. None of these touch what's
+actually stored in the field's own column -- purely presentational.
 
 **Why one generic JSON column, not one dedicated column per setting.**
 `gateway_fields` gains a single new nullable `text` column, `settings`,
@@ -4292,17 +4309,19 @@ here it's shape variance across types, there it was orderability.
 
 **`Field_Type::presentation_fields()`** (new interface method, alongside
 `eloquent_cast()`/`is_filterable()`/`is_text_renderable()`) is that
-whitelist: it returns the subset of `['placeholder', 'step', 'prepend',
-'append', 'instructions']` a given type actually recognizes, **in the
-order its own Presentation tab should render them in** -- every built-in
-type returns `[]` except `Text_Field_Type` (all four, no `step`) and
-`Number_Field_Type` (the same four plus its own `step`, returned right
-after `placeholder` and before `prepend`, which is exactly where it
-renders). `step` is recognized by no other type -- it means nothing for
-a plain string. Adding a setting to another type later (or another
-type-specific one, like a Number field's own `min`/`max`) means adding
-its key to the fixed catalog and to that one static method, not a schema
-migration or a new column.
+whitelist: it returns the subset of `['instructions', 'placeholder',
+'step', 'prepend', 'append']` a given type actually recognizes, **in the
+order its own Presentation tab should render them in** -- `instructions`
+always first, for every type, since it's universal; every other built-in
+type returns just `['instructions']` except `Text_Field_Type`
+(`instructions` plus placeholder/prepend/append, no `step`) and
+`Number_Field_Type`/`Range_Field_Type` (the same set plus their own
+`step`, returned right after `placeholder` and before `prepend`, which
+is exactly where it renders). `step` is recognized by no other type --
+it means nothing for a plain string. Adding a setting to another type
+later (or another type-specific one, like a Number field's own `min`/
+`max`) means adding its key to the fixed catalog and to that one static
+method, not a schema migration or a new column.
 
 **`Model_Fields::sanitize_settings( $type, $raw_settings )`** is the
 actual trust boundary, called from both `add()` and `update()` (each
@@ -4359,9 +4378,12 @@ React Hook Form as `settings.placeholder`/`settings.step`/etc.
 they autosave exactly like Name/Label/Required already do, and the tab's
 own heading grows the same small green dot as General/Validation
 whenever any setting currently holds a non-blank value. A type that
-recognizes no presentation settings at all (everything except Text and
-Number, today) shows a plain "This field type has no presentation
-settings yet." instead of an empty tab. Prepend and Append each carry a
+recognizes no presentation settings at all would show a plain "This
+field type has no presentation settings yet." instead of an empty tab --
+dead code against every built-in type today, since `instructions` being
+universal means `presentation_fields()` never actually returns `[]`
+any more, but kept as the honest fallback for a future type that somehow
+opted out of even that. Prepend and Append each carry a
 small `.description` hint of their own underneath the input ("Appears
 before the input."/"Appears after the input.") -- purely a local,
 admin-app-only aid for the site owner configuring the field (their own
@@ -4374,40 +4396,49 @@ above already guarantees every other type's `settings` is `{}`, there's
 nothing for a type-specific check here to protect against.
 `settings.instructions`, when present, renders as a small
 `.description`-styled note between a field's label and its own control,
-for any field type at all. `settings.placeholder`/`step`/`prepend`/
-`append` only ever have anything to show for the one plain `<input>`
-fallback branch at the very bottom of `RecordForm`'s own type-conditional
-chain (textarea/range/relate/select/radio/buttons/checkboxes/boolean
-each render their own dedicated control, none of which currently reads
-any of these four) -- `placeholder` and `step` both pass straight
-through to the `<input>`'s own like-named attributes unconditionally
-(setting `step` on a non-numeric `<input>` is a harmless no-op in every
-browser, so there's no need to gate it on the field actually being a
-Number -- `step` only ever comes back non-empty for one in the first
-place, since it's the only type that recognizes it), and `prepend`/
-`append` wrap the input in a small inline group
-(`.gateway-record-form-input-group`, each addon a
-`.gateway-record-form-input-addon`) styled flush against the input's own
-border, matching the familiar prepended/appended-text input pattern.
+for any field type at all. `settings.placeholder`/`prepend`/`append`
+only ever have anything to show for the one plain `<input>` fallback
+branch at the very bottom of `RecordForm`'s own type-conditional chain
+(textarea/range/relate/select/radio/buttons/checkboxes/boolean each
+render their own dedicated control, none of which currently reads any of
+these three) -- `placeholder` passes straight through to the `<input>`'s
+own like-named attribute unconditionally, and `prepend`/`append` wrap
+the input in a small inline group (`.gateway-record-form-input-group`,
+each addon a `.gateway-record-form-input-addon`) styled flush against
+the input's own border, matching the familiar prepended/appended-text
+input pattern. `settings.step` is the one exception: the dedicated Range
+branch reads it too (alongside `settings.min_value`/`max_value`, its own
+Validation-tab settings -- see "Range limits" below), passing all three
+straight through to the `<input type="range">`'s own `min`/`max`/`step`
+attributes, so the slider's draggable range and increment actually match
+what's configured, not just the plain `<input>` fallback's own `step`.
+Setting `step` on a non-numeric `<input>` is a harmless no-op in every
+browser regardless, so neither branch needs to gate it on the field's
+own type beyond already being one of the two types that recognize it.
 
 ### Default value
 
-A Text or Number field can be given a default value -- what a brand new
-record starts out with, not how the field is displayed, which is why it
-lives in **General**, directly under Label, rather than alongside
-placeholder/step/prepend/append/instructions in Presentation. It's shown
-with its own small note underneath, "Appears when creating a new
-record.", and only ever actually applies there: editing an existing
+A Text, Number, or Range field can be given a default value -- what a
+brand new record starts out with, not how the field is displayed, which
+is why it lives in **General**, directly under Label, rather than
+alongside instructions/placeholder/step/prepend/append in Presentation.
+It's shown with its own small note underneath, "Appears when creating a
+new record.", and only ever actually applies there: editing an existing
 record always shows that record's own real (even if blank) value, never
-silently replaced by the field's configured default.
+silently replaced by the field's configured default. For Range
+specifically, this is a starting position for the slider -- exactly the
+same idea as a Number field's own default, just for a control that
+otherwise always starts at whatever a bare `<input type="range">`
+defaults to (`0`, or its own `min` if higher).
 
 **`Field_Type::supports_default_value()`** (new interface method) is a
 second, separate whitelist alongside `presentation_fields()` -- `true`
-only for `Text_Field_Type`/`Number_Field_Type` today, `false` for every
-other built-in type (a default makes little sense for a Choice type,
-whose own choices list already offers a natural "pick one," or a Relate
-field, where a default related record raises its own questions -- does
-it still exist, is it still valid -- this doesn't attempt to answer). The
+only for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type` today,
+`false` for every other built-in type (a default makes little sense for
+a Choice type, whose own choices list already offers a natural "pick
+one," or a Relate field, where a default related record raises its own
+questions -- does it still exist, is it still valid -- this doesn't
+attempt to answer). The
 two methods are kept separate because they answer different questions
 (which Presentation-tab inputs to show vs. whether a default value makes
 sense for this type at all) and render in different tabs, but a default
@@ -4454,9 +4485,10 @@ recorded.
 **`Field_Type::supports_character_limit()`** (new interface method) is a
 third whitelist alongside `presentation_fields()`/`supports_default_value()`
 -- `true` only for `Text_Field_Type`/`Text_Area_Field_Type` today, `false`
-for every other built-in type (including `Number_Field_Type`: a
-"character limit" on a number is a category error -- a numeric range
-belongs to a future min/max setting of its own, not this one). Stored the
+for every other built-in type (including `Number_Field_Type`/
+`Range_Field_Type`: a "character limit" on a number is a category error
+-- a numeric range is `supports_range_limits()`'s own concern, see
+"Range limits" below, not this one). Stored the
 same way as everything else `settings` holds -- one more key
 (`'character_limit'`) in the same generic JSON column, merged in by
 `Model_Fields::sanitize_settings()` alongside the other two methods' own
@@ -4502,6 +4534,65 @@ typing past the limit rather than letting them submit and then rejecting
 it), never a substitute for the server-side enforcement above, which a
 request built by hand and bypassing this form entirely would still have
 to pass.
+
+### Range limits (minimum / maximum value)
+
+A Range field can be given a minimum and/or maximum numeric value --
+shown under **Validation**, alongside Required, each with its own small
+"Leave blank for no minimum/maximum." note underneath, independently
+optional (a field can configure just a minimum, just a maximum, both, or
+neither). Same reasoning as Character Limit: an actual constraint on
+what can be saved, not a display concern, so it lives in Validation and
+is genuinely *enforced*, not just recorded.
+
+**`Field_Type::supports_range_limits()`** (new interface method) is a
+fourth whitelist alongside `presentation_fields()`/
+`supports_default_value()`/`supports_character_limit()` -- `true` only
+for `Range_Field_Type` today, `false` for every other built-in type.
+Stored the same way as everything else `settings` holds -- two more keys
+(`'min_value'`/`'max_value'`) in the same generic JSON column, merged in
+by `Model_Fields::sanitize_settings()` alongside the other three
+methods' own keys -- with a different extra check than Character Limit's
+own, since a range bound isn't restricted to positive whole numbers the
+way a length is: anything left after trimming that isn't `is_numeric()`
+is dropped (a negative minimum, or a fractional bound like `2.5`, is
+perfectly legitimate for a Range field and stored as-is; only genuinely
+non-numeric input is treated as if left blank).
+
+**`Model_Fields::validate_range_values( $class_name, $data )`** is the
+actual enforcement -- the direct counterpart to
+`validate_character_limits()`, called by `Records_REST_Controller::
+create_record()`/`update_record()` right alongside it, with the same
+"a field the request doesn't mention has nothing to check, so it's
+skipped" reasoning needing no `$is_create` distinction either. Only a
+numeric value already present in the (sanitized, already-cast) request
+data is ever checked, against whichever of `min_value`/`max_value` are
+actually configured (independently -- a field with only a maximum
+configured never rejects a low value it has no minimum opinion about). A
+rejected request gets a single `gateway_record_value_out_of_range`
+`WP_Error` (400) naming every offending field by its own label and a
+message tailored to which bound(s) it actually has ("must be between X
+and Y" when both are configured, "must be at least X" or "must be at
+most Y" when only one is), not just the first one found -- same
+"don't make a site owner fix one problem at a time" reasoning
+`validate_required_fields()`'s own error already follows.
+
+**The admin app.** `FieldEditor`'s Validation tab shows Minimum Value/
+Maximum Value inputs (`<input type="number" step="any">`, registered as
+`settings.min_value`/`settings.max_value` -- the same RHF field object
+General's own Default Value and Presentation's own settings all share,
+just two more keys) only when the currently-picked type's own
+`supports_range_limits` is true, autosaving exactly like Character Limit
+already does. Validation's own tab-heading dot now reflects Required
+being on, and/or a non-blank Character Limit, and/or a non-blank Minimum
+or Maximum Value (previously just the first two).
+
+`RecordForm`'s Range branch passes `field.settings.min_value`/
+`max_value` straight through to the `<input type="range">`'s own `min`/
+`max` attributes (alongside `step`, already read from Presentation --
+see "Presentation field settings" above) -- a client-side convenience
+only, keeping the slider's own draggable range honest, never a
+substitute for the server-side enforcement above.
 
 ### Conditional Logic -- showing/hiding a field based on another field's value
 

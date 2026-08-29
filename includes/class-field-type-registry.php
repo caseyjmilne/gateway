@@ -96,9 +96,10 @@ class Field_Type_Registry extends Registry {
 	 *
 	 * `presentation_fields` (`Field_Type::presentation_fields()`) is what
 	 * tells `FieldEditor`'s own Presentation tab which of its fixed
-	 * `placeholder`/`step`/`prepend`/`append`/`instructions` inputs to
-	 * actually show for the currently-picked type -- `[]` for every type
-	 * except `Text_Field_Type`/`Number_Field_Type` today, same "the type
+	 * `instructions`/`placeholder`/`step`/`prepend`/`append` inputs to
+	 * actually show for the currently-picked type -- `['instructions']`
+	 * for every type except `Text_Field_Type`/`Number_Field_Type`/
+	 * `Range_Field_Type` today (which recognize more), same "the type
 	 * itself declares this, not a per-type list living in JavaScript"
 	 * reasoning as `has_choices`.
 	 *
@@ -106,7 +107,7 @@ class Field_Type_Registry extends Registry {
 	 * the same idea for a different tab: whether `FieldEditor`'s own
 	 * General tab should show a Default Value input at all for the
 	 * currently-picked type -- `true` only for `Text_Field_Type`/
-	 * `Number_Field_Type` today.
+	 * `Number_Field_Type`/`Range_Field_Type` today.
 	 *
 	 * `supports_character_limit` (`Field_Type::supports_character_limit()`)
 	 * is the same idea again for Validation: whether `FieldEditor`'s own
@@ -114,7 +115,12 @@ class Field_Type_Registry extends Registry {
 	 * currently-picked type -- `true` only for `Text_Field_Type`/
 	 * `Text_Area_Field_Type` today.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool}>
+	 * `supports_range_limits` (`Field_Type::supports_range_limits()`) is
+	 * the same idea once more, also for Validation: whether it should show
+	 * Minimum Value/Maximum Value inputs instead -- `true` only for
+	 * `Range_Field_Type` today.
+	 *
+	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -137,6 +143,7 @@ class Field_Type_Registry extends Registry {
 				'presentation_fields'      => $class::presentation_fields(),
 				'supports_default_value'   => $class::supports_default_value(),
 				'supports_character_limit' => $class::supports_character_limit(),
+				'supports_range_limits'    => $class::supports_range_limits(),
 			);
 		}
 
