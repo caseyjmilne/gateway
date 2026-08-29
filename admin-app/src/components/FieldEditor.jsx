@@ -29,6 +29,27 @@ const PRESENTATION_FIELD_META = {
 	instructions: { label: 'Instructions', type: 'textarea' },
 };
 
+// A defensive normalizer for `field.settings` -- belt-and-suspenders
+// alongside `Gateway\\Model_Fields::for_rest_response()` on the PHP
+// side, which is what actually fixed the real bug this guards against
+// (see that method's own docblock): a field with no `settings`
+// configured yet used to arrive here as a genuine JS ARRAY (`[]`), not
+// an object, because PHP's own `wp_json_encode()` can't tell an empty
+// array meant as `{}` from one meant as `[]`. `field.settings || {}`
+// alone was never enough to catch that -- `[]` is truthy in JS, so the
+// `||` never fell through -- and once `settings` was seeded as an array,
+// setting a *named* property on it via `register('settings.default')`,
+// etc. still silently "worked" (arrays are plain objects underneath),
+// right up until `JSON.stringify()` on the whole `values.settings`
+// object dropped every one of those non-numeric-index properties on the
+// way out in the next autosave, indistinguishable from having typed
+// nothing at all. The PHP fix already stops `settings` from arriving
+// this way in the first place; this stays as a second line of defense
+// against the exact same corruption resurfacing through any other path
+// (a stale cached response from before that fix deployed, e.g.).
+const normalizeSettings = ( settings ) =>
+	settings && ! Array.isArray( settings ) ? settings : {};
+
 /**
  * A small ACF-style field editor for one model: add a field, edit one in
  * place, delete one -- backed by Gateway\Model_Fields via
@@ -546,7 +567,11 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		// currently in form state (leftover values from a type this
 		// session briefly picked and moved on from, say) is harmless,
 		// never stored for a type that doesn't recognize a given key.
-		body.settings = values.settings || {};
+		// normalizeSettings() (not a bare `|| {}`), for the same reason
+		// `startEdit()` needs it -- see that helper's own docblock: an
+		// array here would silently lose every property except numeric
+		// ones the instant this gets `JSON.stringify()`'d below.
+		body.settings = normalizeSettings( values.settings );
 
 		// Same again -- always sent regardless of type (unlike choices);
 		// Model_Fields::sanitize_conditional_logic() is what actually
@@ -749,7 +774,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			relationshipMethod: field.relationship_method || '',
 			choices: field.choices && field.choices.length > 0 ? field.choices : [],
 			required: Boolean( field.required ),
-			settings: field.settings || {},
+			settings: normalizeSettings( field.settings ),
 			conditional_logic: field.conditional_logic || {
 				enabled: false,
 				groups: [],

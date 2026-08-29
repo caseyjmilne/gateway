@@ -206,7 +206,17 @@ class Model_Field_REST_Controller {
 	 * @return \WP_REST_Response
 	 */
 	public static function list_fields( \WP_REST_Request $request ) {
-		return rest_ensure_response( Model_Fields::all( $request->get_param( 'class' ) ) );
+		// Model_Fields::for_rest_response() -- see its own docblock --
+		// casts each field's own `settings` to a real JSON object rather
+		// than a bare (and, when empty, ambiguous) PHP array.
+		$fields = array_map(
+			function ( $field ) {
+				return Model_Fields::for_rest_response( $field );
+			},
+			Model_Fields::all( $request->get_param( 'class' ) )
+		);
+
+		return rest_ensure_response( $fields );
 	}
 
 	/**
@@ -230,7 +240,7 @@ class Model_Field_REST_Controller {
 			return $result;
 		}
 
-		return rest_ensure_response( $result );
+		return rest_ensure_response( Model_Fields::for_rest_response( $result ) );
 	}
 
 	/**
@@ -254,7 +264,7 @@ class Model_Field_REST_Controller {
 			return $result;
 		}
 
-		return rest_ensure_response( $result );
+		return rest_ensure_response( Model_Fields::for_rest_response( $result ) );
 	}
 
 	/**

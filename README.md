@@ -4494,6 +4494,61 @@ harmless no-op in every browser regardless, so neither branch needs to
 gate it on the field's own type beyond already being one of the two
 types that recognize it.
 
+### A real bug: settings silently never saving, for a genuinely empty field only
+
+A field's own `settings` -- whatever the sections above describe --
+could silently fail to save ANY of it (Default Value, Placeholder,
+Instructions, all of it) the very first time it was ever configured,
+while a field whose settings were already a real, non-empty object from
+an earlier save kept working fine. Confirmed by a user directly
+inspecting `wp_gateway_fields` and the outgoing PUT payload: the request
+body showed `"settings": []` no matter what had actually been typed
+into the Field Editor -- an empty JSON ARRAY, not the expected object.
+
+**Root cause: PHP and JSON can't agree on what an empty object is.**
+`wp_json_encode()` (like PHP's own `json_encode()`) has no way to tell
+an empty PHP array meant to become a JSON object (`{}`) apart from one
+meant to become a JSON array (`[]`) -- empty is empty, and PHP always
+picks `[]`. A field with no `settings` configured yet decodes to
+`array()` internally, which is exactly this ambiguous case:
+`Model_Fields::all()` (and `add()`/`update()`'s own return values) sent
+that straight into the REST response as `"settings": []`.
+
+**Why that broke saving, not just reading.** `FieldEditor.jsx` seeds its
+own `react-hook-form` state directly from `field.settings`
+(`startEdit()`): `field.settings || {}`. Since `[]` is truthy in
+JavaScript, that `||` never falls through to `{}` -- the form's own
+`settings` value silently started life as a genuine JS ARRAY. Typing
+into any setting (`register('settings.placeholder')`, etc.) still
+"worked" in the sense that it set a named property on that array
+without erroring -- a JS array is still a plain object underneath,
+property assignment on one is perfectly legal -- but `JSON.stringify()`
+on an array ONLY EVER serializes its own numeric-indexed elements,
+silently dropping every other named property. The very next autosave's
+own outgoing request body carried `"settings": []` again, indistinguishable
+from the network tab from the setting having never been typed at all.
+
+**The fix, at both ends.** `Model_Fields::all()`/`add()`/`update()`
+themselves are deliberately left alone -- their own return values are
+also read internally as plain PHP arrays elsewhere (`validate_character_limits()`'s
+own `$field['settings']['character_limit']`, `validate_range_values()`'s
+`['min_value']`/`['max_value']`), so casting `settings` to an object
+there would break every one of those with a fatal "cannot use object as
+array" the moment a field's settings happened to be empty. Instead, a
+new `Model_Fields::for_rest_response( array $field )` casts just
+`settings` to `(object)` -- applied ONLY at the actual REST response
+boundary, in `Model_REST_Controller::describe_model()` (the whole
+model's own field list) and `Model_Field_REST_Controller::list_fields()`/
+`add_field()`/`update_field()` (every route that actually serializes a
+field to JSON) -- so the browser never receives `[]` for `settings`
+again, regardless of whether it's empty. `FieldEditor.jsx` also gained
+its own defensive `normalizeSettings()` helper, used everywhere
+`field.settings` seeds form state (`startEdit()`) or gets sent back out
+(`buildBody()`) -- a second line of defense against the exact same
+array-vs-object corruption resurfacing through any other path (a stale
+cached response from before this fix deployed, e.g.), not a substitute
+for the PHP fix.
+
 ### Default value
 
 A Text, Number, Range, Email, or URL field can be given a default value

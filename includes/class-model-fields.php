@@ -352,6 +352,66 @@ class Model_Fields {
 	}
 
 	/**
+	 * Prepares a single field array (one of `all()`'s own return values,
+	 * or `add()`/`update()`'s) for a JSON REST response -- specifically,
+	 * casts `settings` to a real PHP object (`(object)`) rather than
+	 * leaving it a plain array.
+	 *
+	 * This is deliberately NOT done inside `all()`/`add()`/`update()`
+	 * themselves: their own return values are also read internally as
+	 * plain arrays by, e.g., `validate_character_limits()`/
+	 * `validate_range_values()` (`$field['settings']['character_limit']`,
+	 * `$field['settings']['min_value']`) -- casting `settings` to an
+	 * object there would break every one of those with a fatal "cannot
+	 * use object as array" the moment a field's settings happened to be
+	 * empty. This helper exists so the REST controllers (the only
+	 * callers that actually serialize a field to JSON) can apply the
+	 * same fix at their own boundary instead, right before the array
+	 * leaves PHP entirely.
+	 *
+	 * **Why this matters at all**: `wp_json_encode()` (like PHP's own
+	 * `json_encode()`) can't tell an empty PHP array meant as a JSON
+	 * object (`{}`) from one meant as a JSON array (`[]`) -- it always
+	 * picks `[]` for an empty array, regardless of intent. A field with
+	 * no `settings` configured yet -- i.e. every field's own settings the
+	 * very first time it's opened, before anything's been typed into it
+	 * -- hits exactly this case: `settings` decodes to `array()`, which
+	 * then serializes as `"settings": []`, not `"settings": {}`. This was
+	 * a real, previously-shipped bug, not just a theoretical one: the
+	 * admin app's own `FieldEditor.jsx` seeds its react-hook-form state
+	 * from `field.settings` directly (`settings: field.settings || {}`)
+	 * -- since `[]` is truthy in JS, that `||` never falls through to
+	 * `{}`, so the form's own `settings` value silently started life as a
+	 * genuine JS ARRAY. Typing into any Presentation/General setting
+	 * (`register('settings.placeholder')`, etc.) still "worked" in the
+	 * sense that it set a `.placeholder` property on that array object
+	 * without erroring -- JS arrays are still plain objects underneath,
+	 * property assignment on one is perfectly legal -- but
+	 * `JSON.stringify()` on an array ONLY ever serializes its own
+	 * numeric-indexed elements, silently dropping any other named
+	 * property. The autosave's own outgoing request body ended up
+	 * carrying `"settings": []` again, no matter what had actually been
+	 * typed -- indistinguishable, from the network tab, from the setting
+	 * simply never having been typed in the first place. A field whose
+	 * settings were already a genuine non-empty object (anything typed
+	 * into it earlier, in an older session before this fix, or during
+	 * the SAME session once at least one setting keystroke happened to
+	 * autosave successfully before hitting this exact empty-first case)
+	 * never exhibited this at all, which is why it read as affecting
+	 * "some fields but not others" rather than as a single, consistent,
+	 * always-reproducible bug.
+	 *
+	 * @param array $field One field array, as returned by `all()`/`add()`/
+	 *                       `update()`.
+	 * @return array The same array, with `settings` cast to `(object)`.
+	 */
+	public static function for_rest_response( array $field ) {
+		$field['settings'] = (object) ( is_array( $field['settings'] ) ? $field['settings'] : array() );
+
+		return $field;
+	}
+
+	/**
 	 * Checks every one of a model's `required` fields against $data
 	 * (Records_REST_Controller calls this with sanitize_record_data()'s
 	 * own output, straight after casting and BEFORE extract_relate_many_data()

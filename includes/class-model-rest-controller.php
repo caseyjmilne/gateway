@@ -226,7 +226,16 @@ class Model_REST_Controller {
 			'class'         => $class,
 			'table'         => $table,
 			'plural_title'  => Model_Builder::get_plural_title( $class ),
-			'fields'        => Model_Fields::all( $class ),
+			// for_rest_response() -- not the raw all() result -- casts
+			// each field's own `settings` to a real JSON object, never a
+			// bare (and, when empty, ambiguous) PHP array. See that
+			// method's own docblock for the real bug this fixes.
+			'fields'        => array_map(
+				function ( $field ) {
+					return Model_Fields::for_rest_response( $field );
+				},
+				Model_Fields::all( $class )
+			),
 			'relationships' => Model_Relationships::all( $class ),
 			'count'         => $count,
 			'migration'     => $migration,
