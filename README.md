@@ -4972,14 +4972,14 @@ needs to exist on the Gateway admin screen.
 `false`; there's no sensible "default attachment" for a record that
 doesn't exist yet. Instead, gated on a new `Field_Type::
 supports_media_settings()` interface method (`true` only for
-`Image_Field_Type`), two selects: **Return Format** (`settings.return_format`,
+`Image_Field_Type`), one select: **Return Format** (`settings.return_format`,
 one of `array`/`url`/`id` -- what shape this field's value takes in
-every GET response, see "Enrichment" below) and **Library** (`settings.library`,
-`all`/`uploadedTo` -- accepted and preserved, but currently identical in
-effect: Gateway's own records aren't WP posts, so there's no literal
-"this post" for `wp.media()`'s own `library.uploadedTo` query arg to
-scope to the way ACF's Image field, always attached to a real post edit
-screen, can).
+every GET response, see "Enrichment" below). ACF's own Image field also
+offers a Library setting (all attachments vs. only ones uploaded to the
+current post) -- left out here rather than shipped as a setting with no
+actual effect: Gateway's own records aren't WP posts, so there's no
+literal "this post" for a library scope to narrow to the way ACF's field
+(always attached to a real post edit screen) can.
 
 **Validation tab**, matching ACF's own Image field layout: a Minimum/
 Maximum grid, two columns, each with Width/Height/File Size rows laid

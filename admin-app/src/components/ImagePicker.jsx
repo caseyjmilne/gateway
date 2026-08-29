@@ -120,13 +120,6 @@ function validateAttachment( attachment, settings ) {
  * -- a one-time, transparent normalization of this field's own form
  * value from a string to a number, not a change the person editing the
  * record ever sees or has to do anything about.
- *
- * `settings.library === 'uploadedTo'` is accepted and preserved (the
- * dropdown's own selected value round-trips correctly) but currently
- * behaves identically to `'all'` in the actual picker -- Gateway's own
- * records aren't WP posts, so there's no literal "this post" for
- * wp.media()'s own `library.uploadedTo` query arg to scope to the way
- * ACF's own field (always attached to a real post edit screen) can.
  */
 export default function ImagePicker( { field, value, onChange } ) {
 	const settings = field.settings || {};

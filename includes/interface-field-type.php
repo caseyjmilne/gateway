@@ -340,12 +340,6 @@ interface Field_Type {
 	 *   the URL string, or just the raw attachment id). Invalid/missing
 	 *   defaults to `'array'` client-side, not stored as a literal
 	 *   default here.
-	 * - `library` (General) -- `'all'` or `'uploadedTo'`, which library
-	 *   scope the media picker opens to. Gateway's own records aren't
-	 *   WP posts, so there's no literal "this post" to scope
-	 *   `'uploadedTo'` to the way ACF's own field (attached to a real
-	 *   post edit screen) can -- see `RecordForm.jsx`'s own docblock for
-	 *   how this is actually handled given that.
 	 * - `min_width`/`min_height`/`min_size`/`max_width`/`max_height`/
 	 *   `max_size` (Validation) -- each independently optional, each
 	 *   numeric and non-negative (unlike `min_value`/`max_value` above, a

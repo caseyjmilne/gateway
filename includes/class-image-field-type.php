@@ -18,8 +18,8 @@
  * already gets).
  *
  * `supports_media_settings()` is `true` -- see that interface method's own
- * docblock for the full settings bundle this gates (`return_format`/
- * `library`/the min/max width/height/file-size pairs/`allowed_types`), and
+ * docblock for the full settings bundle this gates (`return_format`/the
+ * min/max width/height/file-size pairs/`allowed_types`), and
  * `Model_Fields::validate_image_constraints()` for how the numeric bounds
  * are actually enforced.
  *

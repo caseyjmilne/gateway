@@ -984,13 +984,12 @@ class Model_Fields {
 			// own Presentation-tab setting (like placeholder/prepend/append
 			// are for other types), so it's already covered by
 			// presentation_fields() above; these are its General
-			// (return_format/library) and Validation (everything else)
-			// tab settings instead.
+			// (return_format) and Validation (everything else) tab
+			// settings instead.
 			$recognized_keys = array_merge(
 				$recognized_keys,
 				array(
 					'return_format',
-					'library',
 					'min_width',
 					'min_height',
 					'min_size',
@@ -1044,16 +1043,12 @@ class Model_Fields {
 				continue;
 			}
 
-			// 'return_format'/'library' are Image_Field_Type's own two
-			// General-tab selects -- a fixed, small vocabulary each,
-			// unlike every other key here; anything outside it is
-			// dropped rather than stored as junk RecordForm's own
-			// <select> would never have actually offered.
+			// 'return_format' is Image_Field_Type's own General-tab
+			// select -- a fixed, small vocabulary, unlike every other key
+			// here; anything outside it is dropped rather than stored as
+			// junk RecordForm's own <select> would never have actually
+			// offered.
 			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id' ), true ) ) {
-				continue;
-			}
-
-			if ( 'library' === $key && ! in_array( $value, array( 'all', 'uploadedTo' ), true ) ) {
 				continue;
 			}
 

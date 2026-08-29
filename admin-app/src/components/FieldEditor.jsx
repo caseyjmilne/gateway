@@ -224,11 +224,7 @@ const normalizeSettings = ( settings ) =>
  * picked type's own `supports_media_settings` instead, a Return Format
  * `<select>` (Image Array/Image URL/Image ID -- `settings.return_format`,
  * what shape `Records_REST_Controller::resolve_image_value()` gives this
- * field's own value in every GET response) and a Library `<select>`
- * (All/Uploaded to post -- `settings.library`, currently identical in
- * effect since Gateway's own records aren't WP posts for `wp.media()`'s
- * own `library.uploadedTo` to scope to, kept anyway so the setting
- * round-trips and is ready the moment that changes); plus -- further below,
+ * field's own value in every GET response); plus -- further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -1215,31 +1211,18 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 						</label>
 					) }
 					{ editSupportsMediaSettings && (
-						<>
-							<label>
-								<span>Return Format</span>
-								<select
-									className="regular-text"
-									defaultValue="array"
-									{ ...register( 'settings.return_format' ) }
-								>
-									<option value="array">Image Array</option>
-									<option value="url">Image URL</option>
-									<option value="id">Image ID</option>
-								</select>
-							</label>
-							<label>
-								<span>Library</span>
-								<select
-									className="regular-text"
-									defaultValue="all"
-									{ ...register( 'settings.library' ) }
-								>
-									<option value="all">All</option>
-									<option value="uploadedTo">Uploaded to post</option>
-								</select>
-							</label>
-						</>
+						<label>
+							<span>Return Format</span>
+							<select
+								className="regular-text"
+								defaultValue="array"
+								{ ...register( 'settings.return_format' ) }
+							>
+								<option value="array">Image Array</option>
+								<option value="url">Image URL</option>
+								<option value="id">Image ID</option>
+							</select>
+						</label>
 					) }
 				</div>
 
