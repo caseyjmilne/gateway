@@ -19,6 +19,21 @@
  * list itself, just with the list's own *contents* also allowed to change
  * between calls, not just their order.
  *
+ * Each choice is a `{value, label}` pair, not a bare string: `value` is
+ * what actually gets stored/returned/compared when the field is used --
+ * `Choice_Field_Type`'s own `cast()` (Select/Radio/Buttons/Checkbox
+ * alike) only ever operates on `value`, never `label` -- while `label` is
+ * purely a display concern, read only by the admin app itself (a
+ * `<select>`'s visible option text, a checkbox's visible caption, the
+ * Records list's own display of an already-saved value). This mirrors
+ * `gateway_fields.label`'s own relationship to `gateway_fields.name`
+ * elsewhere in this plugin: one column is the real, technical identity
+ * something is stored/compared against, the other is an optional,
+ * cosmetic override of how it's shown, falling back to the technical one
+ * when left blank (see `label`'s own column comment below, and
+ * `Model_Fields::require_choices_for_field()`, which is what actually
+ * applies that fallback).
+ *
  * Deliberately not itself concerned with WHICH fields are even Choice_Field_Type
  * fields, or with validating what a raw choice value looks like -- both
  * are Model_Fields' own job (require_choices_for_field()), the same
@@ -48,37 +63,65 @@ class Model_Field_Choices {
 	public static function ensure_table() {
 		$schema = \Illuminate\Database\Capsule\Manager::schema();
 
-		if ( $schema->hasTable( self::TABLE ) ) {
+		if ( ! $schema->hasTable( self::TABLE ) ) {
+			$schema->create(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->id();
+					// gateway_fields.id -- not a real Eloquent/Capsule foreign
+					// key constraint (this plugin's other tables, e.g.
+					// gateway_fields itself, don't use real FK constraints
+					// either, relying instead on this class's own lifecycle
+					// calls -- set()/forget() -- staying in lock-step with
+					// Model_Fields' own add()/update()/remove()/forget()).
+					$table->unsignedBigInteger( 'field_id' );
+					$table->string( 'value' );
+					// Optional, cosmetic override of how this choice is
+					// SHOWN -- see this class's own docblock for the full
+					// value/label split. Nullable for the same upgrade-path
+					// reason as the ALTER below: a row from before this
+					// column existed has no real label to backfill, and
+					// for_fields()'s own fallback (label defaults to value
+					// when blank) already treats that identically to a
+					// freshly-added choice that simply never got one typed
+					// in either.
+					$table->string( 'label' )->nullable();
+					// Sort order -- see this class's own docblock for why a
+					// real column, not array index alone, is what's
+					// authoritative (same reasoning as Model_Fields::position).
+					$table->unsignedInteger( 'position' )->default( 0 );
+					$table->timestamps();
+
+					// A field's own choices must each be distinct BY VALUE
+					// (never by label -- two choices sharing a label but
+					// storing different values are perfectly meaningful,
+					// the same way two posts can share a title) -- the same
+					// belt-and-suspenders role gateway_fields' own
+					// unique(model,name) plays alongside Model_Fields::validate()'s
+					// own uniqueness check; Model_Fields::require_choices_for_field()
+					// is what actually produces the friendly, pre-empted error.
+					$table->unique( array( 'field_id', 'value' ) );
+					$table->index( 'field_id' );
+				}
+			);
+
 			return;
 		}
 
-		$schema->create(
-			self::TABLE,
-			function ( \Illuminate\Database\Schema\Blueprint $table ) {
-				$table->id();
-				// gateway_fields.id -- not a real Eloquent/Capsule foreign
-				// key constraint (this plugin's other tables, e.g.
-				// gateway_fields itself, don't use real FK constraints
-				// either, relying instead on this class's own lifecycle
-				// calls -- set()/forget() -- staying in lock-step with
-				// Model_Fields' own add()/update()/remove()/forget()).
-				$table->unsignedBigInteger( 'field_id' );
-				$table->string( 'value' );
-				// Sort order -- see this class's own docblock for why a
-				// real column, not array index alone, is what's
-				// authoritative (same reasoning as Model_Fields::position).
-				$table->unsignedInteger( 'position' )->default( 0 );
-				$table->timestamps();
-
-				// A field's own choices must each be distinct -- the same
-				// belt-and-suspenders role gateway_fields' own
-				// unique(model,name) plays alongside Model_Fields::validate()'s
-				// own uniqueness check; Model_Fields::require_choices_for_field()
-				// is what actually produces the friendly, pre-empted error.
-				$table->unique( array( 'field_id', 'value' ) );
-				$table->index( 'field_id' );
-			}
-		);
+		// Upgrade path for a table created by a version of this plugin that
+		// predates the label column -- same reasoning/backfill as every
+		// column Model_Fields::ensure_table() adds this way for
+		// gateway_fields itself: nullable, existing rows get NULL, and
+		// for_fields()'s own fallback treats that exactly like a choice
+		// that simply never had a label typed in.
+		if ( ! $schema->hasColumn( self::TABLE, 'label' ) ) {
+			$schema->table(
+				self::TABLE,
+				function ( \Illuminate\Database\Schema\Blueprint $table ) {
+					$table->string( 'label' )->nullable();
+				}
+			);
+		}
 	}
 
 	/**
@@ -97,12 +140,16 @@ class Model_Field_Choices {
 	 * query per Choice_Field_Type field on the model.
 	 *
 	 * @param int[] $field_ids gateway_fields.id values.
-	 * @return array<int,string[]> Map of field_id => ordered choice
-	 *                               values -- every requested id present
-	 *                               (as `[]`) even if it has no choices
-	 *                               recorded (or isn't a real field id at
-	 *                               all), so a caller can always index it
-	 *                               directly without an isset() check.
+	 * @return array<int,array{value:string,label:string}[]> Map of
+	 *                field_id => ordered choices -- every requested id
+	 *                present (as `[]`) even if it has no choices recorded
+	 *                (or isn't a real field id at all), so a caller can
+	 *                always index it directly without an isset() check. A
+	 *                blank/NULL `label` (a row from before that column
+	 *                existed, or one whose label was simply left blank)
+	 *                comes back defaulted to that row's own `value` --
+	 *                see this class's own docblock for why -- so a caller
+	 *                never has to fall back to `value` itself.
 	 */
 	public static function for_fields( array $field_ids ) {
 		$field_ids = array_values( array_unique( array_filter( array_map( 'absint', $field_ids ) ) ) );
@@ -117,10 +164,13 @@ class Model_Field_Choices {
 				->whereIn( 'field_id', $field_ids )
 				->orderBy( 'position' )
 				->orderBy( 'id' )
-				->get( array( 'field_id', 'value' ) )
+				->get( array( 'field_id', 'value', 'label' ) )
 			as $row
 		) {
-			$by_field[ (int) $row->field_id ][] = $row->value;
+			$by_field[ (int) $row->field_id ][] = array(
+				'value' => $row->value,
+				'label' => ! empty( $row->label ) ? $row->label : $row->value,
+			);
 		}
 
 		return $by_field;
@@ -128,8 +178,8 @@ class Model_Field_Choices {
 
 	/**
 	 * @param int $field_id gateway_fields.id.
-	 * @return string[] Ordered choice values for this one field, `[]` if
-	 *                    it has none.
+	 * @return array{value:string,label:string}[] Ordered choices for this
+	 *                one field, `[]` if it has none.
 	 */
 	public static function all( $field_id ) {
 		$by_field = self::for_fields( array( $field_id ) );
@@ -142,10 +192,14 @@ class Model_Field_Choices {
 	 * order -- the only write operation this class has (see this class's
 	 * own docblock for why). $choices is trusted here to already be
 	 * validated/sanitized (Model_Fields::require_choices_for_field()'s
-	 * job, not this class's).
+	 * job, not this class's) -- specifically, that every one already has
+	 * both a non-empty `value` AND a `label` (already defaulted to
+	 * `value` there when left blank, never blank/missing by the time it
+	 * reaches here).
 	 *
-	 * @param int      $field_id gateway_fields.id.
-	 * @param string[] $choices  Ordered, already-sanitized choice values.
+	 * @param int                             $field_id gateway_fields.id.
+	 * @param array{value:string,label:string}[] $choices Ordered,
+	 *                already-sanitized choices.
 	 */
 	public static function set( $field_id, array $choices ) {
 		self::table()->where( 'field_id', $field_id )->delete();
@@ -157,10 +211,11 @@ class Model_Field_Choices {
 		$now  = current_time( 'mysql' );
 		$rows = array();
 
-		foreach ( array_values( $choices ) as $position => $value ) {
+		foreach ( array_values( $choices ) as $position => $choice ) {
 			$rows[] = array(
 				'field_id'   => $field_id,
-				'value'      => $value,
+				'value'      => $choice['value'],
+				'label'      => $choice['label'],
 				'position'   => $position,
 				'created_at' => $now,
 				'updated_at' => $now,

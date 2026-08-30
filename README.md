@@ -4015,9 +4015,21 @@ configure at all, just a fixed on/off value, so it implements the plain
 **A field's own choices live in their own table, `gateway_field_choices`
 (`Model_Field_Choices`, `includes/class-model-field-choices.php`), not a
 JSON blob squeezed onto `gateway_fields` itself** -- one row per choice
-(`field_id`, `value`, `position`), the same "a real column is what
-actually makes a list orderable" reasoning `gateway_fields`' own
-`position` column already established for the fields list itself. Every
+(`field_id`, `value`, `label`, `position`), the same "a real column is
+what actually makes a list orderable" reasoning `gateway_fields`' own
+`position` column already established for the fields list itself. Each
+choice is a `{value, label}` pair, not a bare string: `value` is the
+real, technical identity `Choice_Field_Type::cast()` actually stores/
+returns/compares (a record's own saved value is always one of a field's
+own configured `value`s, never a `label`), while `label` is a purely
+cosmetic override of how it's shown -- in the admin app's own Select/
+Radio/Buttons/Checkbox controls and the Records list's own display of an
+already-saved value -- falling back to `value` when left blank. The same
+"technical identity vs. optional display override" relationship
+`gateway_fields.name`/`label` already have elsewhere in this plugin, one
+level down. `unique( field_id, value )` is keyed on `value` alone, never
+`label` -- two choices sharing a label but storing different values are
+perfectly meaningful, the same way two posts can share a title. Every
 write replaces a field's *entire* choice list at once
 (`Model_Field_Choices::set( $field_id, $choices )` -- delete then
 re-insert in the given order) rather than editing one choice in place --
@@ -4030,10 +4042,15 @@ extra query total per model, not one per Choice field on it.
 
 **`Model_Fields::require_choices_for_field( $raw_choices )`** is the
 validation gate, the direct counterpart to
-`require_relationship_for_field()`: sanitizes and trims each raw choice
-(dropping blanks -- a half-typed row in the admin app's own list editor
-shouldn't itself be an error), then requires at least one survives and
-that none are exact duplicates, returning a clear `WP_Error`
+`require_relationship_for_field()`: sanitizes and trims each raw
+choice's own `value` AND `label` (a bare string is also tolerated per
+item, shorthand for `{value: $string, label: $string}` -- what an older
+admin-app build, from before this split existed, would have sent),
+dropping a choice whose `value` ends up blank after trimming (a
+half-typed row in the admin app's own list editor shouldn't itself be an
+error) and defaulting a blank `label` to that same choice's own `value`,
+then requires at least one survives and that no two share the same
+`value` (never checked against `label`), returning a clear `WP_Error`
 (`gateway_field_choices_required`/`gateway_field_choices_duplicate`)
 otherwise. Required by `Model_Fields::add()`/`update()` whenever the
 (possibly new) `type` resolves to a `Choice_Field_Type` -- ignored
@@ -4055,8 +4072,11 @@ choice rows too, via `Model_Field_Choices::forget()`/`forget_for_fields()`
 `Model_Fields::all()` now returns an extra `id` key (the field's own
 `gateway_fields.id`, needed to address its own choices table) alongside
 a `choices` key -- `[]` for every non-Choice field, an ordered array of
-plain strings for one that has some, e.g. `['Open', 'In Progress',
-'Closed']`. `POST`/`PUT .../fields` (`Model_Field_REST_Controller`)
+`{value, label}` pairs for one that has some, e.g. `[{value: 'open',
+label: 'Open'}, {value: 'in_progress', label: 'In Progress'}, {value:
+'closed', label: 'Closed'}]` (`label` always non-empty, even for a
+choice that never had one typed in -- see `require_choices_for_field()`'s
+own fallback above). `POST`/`PUT .../fields` (`Model_Field_REST_Controller`)
 accepts a matching `choices` array param, required exactly when
 `require_choices_for_field()` requires it.
 
@@ -4183,24 +4203,37 @@ switching between a text and a number input) already assumes; a
 (`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
 them, in that same tab, only when the picked type's own `has_choices` (a
 key on `Field_Type_Registry::describe_all()`'s own output, alongside a
-Choice type's own `is_multiple`) is `true` -- one text input per choice,
-a "⠿" handle to drag-reorder it (the same native HTML5 drag-and-drop
-convention `FieldEditor`'s own fields table already uses, not a second
-different mechanism), "Remove" to delete one, "Add Choice" to append a
-blank one. A tab's own heading grows a small green dot whenever it
-currently holds real content (General: at least one non-blank choice;
-Validation: Required switched on) -- based on the live, already-autosaved
-values, not a "changed this session" diff, so it's still showing the
-next time this same field is reopened for editing, not just while it's
-being actively typed into. `RecordForm`
-(`admin-app/src/components/RecordForm.jsx`) reads a field's own `choices`
-straight off the field object (already threaded through by
+Choice type's own `is_multiple`) is `true` -- two text inputs per choice
+(Value, then Label -- the same order Name comes before Label at the
+field level itself, the technical identity typed first, the optional
+display override second), a "⠿" handle to drag-reorder it (the same
+native HTML5 drag-and-drop convention `FieldEditor`'s own fields table
+already uses, not a second different mechanism), "Remove" to delete one,
+"Add Choice" to append a blank one. A tab's own heading grows a small
+green dot whenever it currently holds real content (General: at least
+one choice with a non-blank Value; Validation: Required switched on) --
+based on the live, already-autosaved values, not a "changed this
+session" diff, so it's still showing the next time this same field is
+reopened for editing, not just while it's being actively typed into.
+`RecordForm` (`admin-app/src/components/RecordForm.jsx`) reads a field's
+own `choices` straight off the field object (already threaded through by
 `Model_Fields::all()`/the fields REST route) to render the right control
 per `input_type` -- `<select>` for "select", a radio group for "radio", a
 row of toggle buttons for "buttons", a group of checkboxes for
 "checkboxes" (form state and the submitted value both a plain string
 array), and a single native checkbox for "boolean" (form state and the
-submitted value both a real JS boolean).
+submitted value both a real JS boolean). Each choice's own `label` is
+used ONLY as the visible option/caption text in every one of those
+controls; the value actually read into form state and submitted --
+`choice.value` -- is what a record ends up storing, exactly what
+`Choice_Field_Type::cast()` on the server expects. `RecordsCrud`'s own
+list view resolves an already-saved value back to its matching choice's
+current `label` for the same reason (a technical value like
+"in_progress" is far less useful to see in a list than "In Progress"),
+falling back to showing the raw value as-is if it no longer matches any
+of the field's *current* choices (one since renamed or removed from the
+list, but never retroactively scrubbed from already-saved records --
+see `Checkbox_Field_Type::cast()`'s own docblock for why).
 
 ### Required fields
 

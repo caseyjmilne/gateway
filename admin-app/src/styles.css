@@ -383,7 +383,7 @@
 }
 
 .gateway-admin-app .gateway-choices-editor {
-	max-width: 480px;
+	max-width: 640px;
 }
 
 .gateway-admin-app .gateway-choices-editor-row {
@@ -393,8 +393,12 @@
 	margin-bottom: 6px;
 }
 
+/* Value and Label, in that order (see this component's own docblock) --
+ * equal width, both shrinking/growing together as the row's own space
+ * changes. */
 .gateway-admin-app .gateway-choices-editor-row input {
 	flex: 1;
+	min-width: 0;
 }
 
 .gateway-admin-app .gateway-choices-editor-drag-col {

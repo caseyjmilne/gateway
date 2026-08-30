@@ -2,34 +2,47 @@ import { useState } from 'react';
 
 /**
  * A small orderable list editor for a Choice_Field_Type field's own
- * choices (Buttons/Select/Radio/Checkbox) -- one text input per choice,
- * a "⠿" handle to drag-reorder it, "Remove" to delete one, "Add Choice"
- * to append a new blank one. Native HTML5 drag-and-drop, the same
- * mechanism (and the same drag-handle convention) FieldEditor's own
- * fields table already uses to reorder fields -- one drag pattern this
- * app expects an orderable list to use, not a second, different one.
+ * choices (Buttons/Select/Radio/Checkbox) -- one `{value, label}` pair
+ * per row (two text inputs), a "⠿" handle to drag-reorder it, "Remove"
+ * to delete one, "Add Choice" to append a new blank one. Native HTML5
+ * drag-and-drop, the same mechanism (and the same drag-handle
+ * convention) FieldEditor's own fields table already uses to reorder
+ * fields -- one drag pattern this app expects an orderable list to use,
+ * not a second, different one.
  *
- * A blank entry is tolerated here while editing (the site owner is
- * mid-typing a new choice, or cleared one out) -- Gateway\\Model_Fields::
- * require_choices_for_field() on the server is what actually drops
- * blanks/rejects an empty-after-trimming list on save, the same
- * "server validates, this is just the editing surface" split every other
- * field input already has (e.g. a blank Name is likewise only rejected
- * server-side, not pre-validated here).
+ * `value` is what's actually stored/returned/compared when the field is
+ * used elsewhere (`Choice_Field_Type::cast()` only ever sees this half);
+ * `label` is a purely cosmetic override of how it's shown -- in this
+ * form's own Select/Radio/Buttons/Checkbox controls, and in the Records
+ * list's own display of an already-saved value -- falling back to
+ * `value` when left blank (`Gateway\\Model_Fields::require_choices_for_field()`
+ * is what actually applies that fallback on save; a still-blank Label
+ * shown here while editing is not itself an error). Value comes first in
+ * each row, same order Name comes before Label at the field level
+ * itself (`FieldEditor`'s own General tab) -- the technical identity is
+ * typed first, the display override second and optional.
  *
- * Controlled: `choices` (a plain string array, in order) and `onChange`
- * (receiving the whole new array) are owned by the caller (FieldEditor,
- * once for its own field-being-added/edited state) -- this component
- * holds no state of its own beyond which row is mid-drag, the same
- * "lifted state" shape the rest of FieldEditor's own fields list already
- * uses.
+ * A blank Value is tolerated here while editing (the site owner is
+ * mid-typing a new choice, or cleared one out) -- `require_choices_for_field()`
+ * on the server is what actually drops blanks/rejects an empty-after
+ * -trimming list on save, the same "server validates, this is just the
+ * editing surface" split every other field input already has (e.g. a
+ * blank Name is likewise only rejected server-side, not pre-validated
+ * here).
+ *
+ * Controlled: `choices` (an array of `{value, label}` objects, in order)
+ * and `onChange` (receiving the whole new array) are owned by the caller
+ * (FieldEditor, once for its own field-being-added/edited state) -- this
+ * component holds no state of its own beyond which row is mid-drag, the
+ * same "lifted state" shape the rest of FieldEditor's own fields list
+ * already uses.
  */
 export default function ChoicesEditor( { choices, onChange } ) {
 	const [ draggedIndex, setDraggedIndex ] = useState( null );
 
-	const updateChoice = ( index, value ) => {
+	const updateChoice = ( index, key, value ) => {
 		const next = [ ...choices ];
-		next[ index ] = value;
+		next[ index ] = { ...next[ index ], [ key ]: value };
 		onChange( next );
 	};
 
@@ -37,7 +50,7 @@ export default function ChoicesEditor( { choices, onChange } ) {
 		onChange( choices.filter( ( _choice, i ) => i !== index ) );
 	};
 
-	const addChoice = () => onChange( [ ...choices, '' ] );
+	const addChoice = () => onChange( [ ...choices, { value: '', label: '' } ] );
 
 	const handleDragStart = ( index ) => ( event ) => {
 		setDraggedIndex( index );
@@ -93,10 +106,21 @@ export default function ChoicesEditor( { choices, onChange } ) {
 					<input
 						type="text"
 						className="regular-text"
-						placeholder={ `Choice ${ index + 1 }` }
-						value={ choice }
+						placeholder={ `Value ${ index + 1 }` }
+						aria-label={ `Choice ${ index + 1 } value` }
+						value={ choice.value }
 						onChange={ ( event ) =>
-							updateChoice( index, event.target.value )
+							updateChoice( index, 'value', event.target.value )
+						}
+					/>
+					<input
+						type="text"
+						className="regular-text"
+						placeholder="Label (optional)"
+						aria-label={ `Choice ${ index + 1 } label` }
+						value={ choice.label }
+						onChange={ ( event ) =>
+							updateChoice( index, 'label', event.target.value )
 						}
 					/>
 					<button
@@ -111,7 +135,7 @@ export default function ChoicesEditor( { choices, onChange } ) {
 			<button type="button" className="button" onClick={ addChoice }>
 				Add Choice
 			</button>
-			{ 0 === choices.filter( ( choice ) => choice.trim() ).length && (
+			{ 0 === choices.filter( ( choice ) => choice.value.trim() ).length && (
 				<p className="description">Add at least one choice.</p>
 			) }
 		</div>

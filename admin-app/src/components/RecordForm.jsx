@@ -51,13 +51,17 @@ import OEmbedPicker from './OEmbedPicker.jsx';
  * field's own `choices` (Gateway\\Model_Field_Choices, threaded straight
  * through by Model_Fields::all()/the fields REST route -- the same
  * per-field array every one of these three reads, just with a different
- * widget on top); their form state and submitted value are both a plain
- * string, same as a Text field's. "checkboxes" (Checkbox_Field_Type,
+ * widget on top). Each choice is a `{value, label}` pair, not a bare
+ * string: `choice.value` is what's actually read/written into this
+ * field's own form state and submitted -- a plain string, same as a Text
+ * field's -- while `choice.label` is only ever used as the visible
+ * option/caption text (a `<select>`'s option text, a radio/button's own
+ * label), never itself stored anywhere. "checkboxes" (Checkbox_Field_Type,
  * `is_multiple: true`) is the one multi-selection case: form state and
- * submitted value are both a plain string array (`[]` if none checked),
- * matching Checkbox_Field_Type::cast()'s own shape -- unrelated to
- * relate_many's `[{id,label}, ...]` above despite the shared "array"
- * shape; nothing here is an id. "boolean" (True_False_Field_Type) is a
+ * submitted value are both a plain string array of `choice.value`s (`[]`
+ * if none checked), matching Checkbox_Field_Type::cast()'s own shape --
+ * unrelated to relate_many's `[{id,label}, ...]` above despite the
+ * shared "array" shape; nothing here is an id. "boolean" (True_False_Field_Type) is a
  * single native checkbox; its form state and submitted value are both a
  * real JS boolean, not a string -- initialValues coming back as `0`/`1`/
  * `"0"`/`"1"` (a driver that doesn't apply Eloquent's own boolean cast
@@ -525,8 +529,8 @@ export default function RecordForm( {
 							>
 								<option value="">— Select —</option>
 								{ ( field.choices || [] ).map( ( choice ) => (
-									<option key={ choice } value={ choice }>
-										{ choice }
+									<option key={ choice.value } value={ choice.value }>
+										{ choice.label }
 									</option>
 								) ) }
 							</select>
@@ -534,56 +538,56 @@ export default function RecordForm( {
 						{ 'radio' === inputType &&
 							( field.choices || [] ).map( ( choice ) => (
 								<label
-									key={ choice }
+									key={ choice.value }
 									className="gateway-record-form-choice"
 								>
 									<input
 										type="radio"
 										name={ inputId }
-										value={ choice }
-										checked={ values[ field.name ] === choice }
+										value={ choice.value }
+										checked={ values[ field.name ] === choice.value }
 										onChange={ handleChange( field.name ) }
 									/>{ ' ' }
-									{ choice }
+									{ choice.label }
 								</label>
 							) ) }
 						{ 'buttons' === inputType &&
 							( field.choices || [] ).map( ( choice ) => (
 								<button
-									key={ choice }
+									key={ choice.value }
 									type="button"
 									className={
 										'button' +
-										( values[ field.name ] === choice
+										( values[ field.name ] === choice.value
 											? ' button-primary'
 											: '' )
 									}
 									onClick={ () =>
 										handleButtonSelect( field.name )(
-											choice
+											choice.value
 										)
 									}
 								>
-									{ choice }
+									{ choice.label }
 								</button>
 							) ) }
 						{ 'checkboxes' === inputType &&
 							( field.choices || [] ).map( ( choice ) => (
 								<label
-									key={ choice }
+									key={ choice.value }
 									className="gateway-record-form-choice"
 								>
 									<input
 										type="checkbox"
 										checked={ (
 											values[ field.name ] || []
-										).includes( choice ) }
+										).includes( choice.value ) }
 										onChange={ handleCheckboxToggle(
 											field.name,
-											choice
+											choice.value
 										) }
 									/>{ ' ' }
-									{ choice }
+									{ choice.label }
 								</label>
 							) ) }
 						{ 'boolean' === inputType && (

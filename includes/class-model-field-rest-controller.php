@@ -138,10 +138,24 @@ class Model_Field_REST_Controller {
 				// array element order is what the admin app's own
 				// orderable choices list editor actually sends, and what
 				// Model_Field_Choices::set() records as each choice's
-				// own `position`.
+				// own `position`. Each item is a `{value, label}` pair --
+				// no `required`/`properties` enforcement on either half at
+				// this schema level (a missing/blank `label`, or even a
+				// missing `value`, still reaches Model_Fields::
+				// require_choices_for_field(), which is what actually
+				// requires a non-empty `value` and defaults a blank
+				// `label` to it), the same "accept broadly here, validate
+				// for real in Model_Fields" split `settings`/
+				// `conditional_logic` already have below. (A bare string
+				// per item -- what an older admin-app build would have
+				// sent -- is also tolerated by require_choices_for_field()
+				// itself, but not by THIS route's own schema, which
+				// expects an object; that shorthand only matters for a
+				// caller invoking Model_Fields::add()/update() directly,
+				// bypassing this REST layer entirely.)
 				'required' => false,
 				'type'     => 'array',
-				'items'    => array( 'type' => 'string' ),
+				'items'    => array( 'type' => 'object' ),
 				'default'  => array(),
 			),
 			// Whether a record can be saved with this field left empty

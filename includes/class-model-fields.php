@@ -269,9 +269,12 @@ class Model_Fields {
 	 *
 	 * `choices` is `[]` for every plain/relationship field, and for a
 	 * Choice_Field_Type field with none configured yet -- an ordered array
-	 * of strings (Model_Field_Choices::for_fields()'s own shape) for one
-	 * that has some. Batch-fetched once for every field on the model in a
-	 * single query (keyed by each row's own `id`), not one query per
+	 * of `{value, label}` pairs (Model_Field_Choices::for_fields()'s own
+	 * shape -- `value` is what's actually stored/returned when the field
+	 * is used, `label` is a purely cosmetic override of how it's shown,
+	 * always non-empty even for a choice that never had one typed in) for
+	 * one that has some. Batch-fetched once for every field on the model
+	 * in a single query (keyed by each row's own `id`), not one query per
 	 * Choice_Field_Type field -- the same "one query total" reasoning
 	 * relationship resolution above already follows.
 	 *
@@ -298,7 +301,7 @@ class Model_Fields {
 	 * time).
 	 *
 	 * @param string $class_name Model class name.
-	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}>
+	 * @return array<int,array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}>
 	 */
 	public static function all( $class_name ) {
 		$relationships_by_method = array();
@@ -1412,12 +1415,16 @@ class Model_Fields {
 	 *                                           name -- see this class's own docblock.
 	 * @param string|null $relationship_method Required for a Relationship_Field_Type;
 	 *                                           ignored otherwise.
-	 * @param string[]|null $choices           Required (at least one
-	 *                                           non-empty, unique value)
-	 *                                           for a Choice_Field_Type
+	 * @param array|null $choices              Required (at least one with
+	 *                                           a non-empty, unique
+	 *                                           `value`) for a
+	 *                                           Choice_Field_Type
 	 *                                           ("Buttons"/"Select"/
 	 *                                           "Radio"/"Checkbox"); ignored
-	 *                                           otherwise -- see
+	 *                                           otherwise -- each item a
+	 *                                           `{value, label}` pair (a
+	 *                                           bare string tolerated
+	 *                                           too) -- see
 	 *                                           require_choices_for_field().
 	 * @param bool          $required          Whether a record can be saved
 	 *                                           with this field left empty --
@@ -1435,7 +1442,7 @@ class Model_Fields {
 	 *                                           with a recognized operator
 	 *                                           -- see
 	 *                                           sanitize_conditional_logic().
-	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 *              The added field (with its sanitized name) on success --
 	 *              always appended after every existing field.
 	 */
@@ -1583,8 +1590,10 @@ class Model_Fields {
 	 * @param string $label        New display label; blank defaults to a
 	 *                              title-cased version of the (sanitized)
 	 *                              name -- see this class's own docblock.
-	 * @param string[]|null $choices Required (see require_choices_for_field())
+	 * @param array|null $choices  Required (see require_choices_for_field())
 	 *                              whenever $type resolves to a Choice_Field_Type
+	 *                              -- each item a `{value, label}` pair (a bare
+	 *                              string tolerated too)
 	 *                              -- freely editable in place, unlike a
 	 *                              relate field's relationship: replaces
 	 *                              the field's entire choice list (content
@@ -1612,7 +1621,7 @@ class Model_Fields {
 	 *                              sanitize_conditional_logic(). Freely
 	 *                              editable in place, same as
 	 *                              choices/required/settings.
-	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
+	 * @return array{id:int,name:string,label:string,type:string,position:int,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 */
 	public static function update( $class_name, $current_name, $name, $type, $label = '', $choices = null, $required = false, $settings = array(), $conditional_logic = array() ) {
 		$model = self::require_model( $class_name );
@@ -1790,11 +1799,11 @@ class Model_Fields {
 	 * @param string   $current_name  The field's existing row, found by name.
 	 * @param array    $new_field     {name, label, type} to save.
 	 * @param bool     $is_choice_type Whether $new_field['type'] is a Choice_Field_Type.
-	 * @param string[] $choices       Already-validated choices -- only used/saved when $is_choice_type.
+	 * @param array{value:string,label:string}[] $choices Already-validated choices -- only used/saved when $is_choice_type.
 	 * @param bool     $required      Whether this field is required -- applies unconditionally, unlike $choices.
 	 * @param array    $settings      Already-sanitize_settings()'d Presentation settings -- applies unconditionally, same as $required.
 	 * @param array|null $conditional_logic Already-sanitize_conditional_logic()'d Conditional Logic -- applies unconditionally, same as $required.
-	 * @return array{id:int,name:string,label:string,type:string,choices:string[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
+	 * @return array{id:int,name:string,label:string,type:string,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}|\WP_Error
 	 */
 	private static function save_updated_field( $class_name, $table, $field_id, $current_name, array $new_field, $is_choice_type, array $choices, $required, array $settings = array(), $conditional_logic = null ) {
 		self::table()
@@ -2288,24 +2297,43 @@ PHP;
 	 * needs this extra thing" role require_relationship_for_field() plays
 	 * for a relationship type.
 	 *
-	 * Each raw choice is `sanitize_text_field()`'d and trimmed the same
-	 * way a raw label already is (validate()'s own $label handling);
-	 * empty ones are silently dropped (a blank row in the admin app's own
+	 * Each raw choice is a `{value, label}` pair -- `value` is the real,
+	 * technical identity actually stored/returned/compared when the field
+	 * is used (Choice_Field_Type's own cast() only ever sees this half),
+	 * `label` is a purely cosmetic override of how it's shown, falling
+	 * back to `value` when left blank -- the exact same "technical vs.
+	 * optional display override" relationship `gateway_fields.name`/
+	 * `label` already have elsewhere in this class (see validate()'s own
+	 * $label handling). A bare string is also tolerated in place of a
+	 * `{value, label}` pair, treated as shorthand for `{value: $string,
+	 * label: $string}` -- what an older admin-app build (from before this
+	 * split existed) would have sent, and the simplest possible choice
+	 * either way: a value that's also its own label.
+	 *
+	 * Both halves are `sanitize_text_field()`'d and trimmed the same way a
+	 * raw label already is; a choice whose `value` is blank after that is
+	 * silently dropped entirely (a blank row in the admin app's own
 	 * orderable list editor, e.g. one added and left untyped, shouldn't
 	 * itself be an error) -- but the list as a whole must end up with at
-	 * least one real choice, and every one of them must be distinct
-	 * (case-sensitive, matching gateway_field_choices' own unique(field_id,
-	 * value) constraint), both surfaced as a clear error rather than
+	 * least one real choice, and every one of them must have a distinct
+	 * `value` (case-sensitive, matching gateway_field_choices' own
+	 * unique(field_id, value) constraint -- never checked against `label`;
+	 * two choices sharing a label but storing different values are
+	 * perfectly meaningful), both surfaced as a clear error rather than
 	 * silently coerced (deduplicating instead, for instance, would make a
 	 * mistyped near-duplicate simply vanish with no feedback at all).
 	 *
 	 * @param mixed $raw_choices Raw choices from the request -- expected
-	 *                            to be an array of strings, but tolerated
-	 *                            as anything (a missing/non-array value
-	 *                            just yields the "add at least one choice"
-	 *                            error below, same as an empty array would).
-	 * @return string[]|\WP_Error Ordered, sanitized, de-duplicated-checked
-	 *                              choice values.
+	 *                            to be an array of `{value, label}`
+	 *                            pairs (plain strings tolerated per-item,
+	 *                            see above), but tolerated as anything (a
+	 *                            missing/non-array value just yields the
+	 *                            "add at least one choice" error below,
+	 *                            same as an empty array would).
+	 * @return array{value:string,label:string}[]|\WP_Error Ordered,
+	 *              sanitized, de-duplicated-checked choices, `label`
+	 *              always non-empty (defaulted to `value` when the raw
+	 *              choice left it blank).
 	 */
 	private static function require_choices_for_field( $raw_choices ) {
 		$raw_choices = is_array( $raw_choices ) ? $raw_choices : array();
@@ -2313,11 +2341,31 @@ PHP;
 		$sanitized = array();
 
 		foreach ( $raw_choices as $raw_choice ) {
-			$value = sanitize_text_field( trim( (string) $raw_choice ) );
-
-			if ( '' !== $value ) {
-				$sanitized[] = $value;
+			// A bare string is shorthand for {value: $string, label: $string}
+			// -- see this method's own docblock.
+			if ( is_string( $raw_choice ) ) {
+				$raw_choice = array(
+					'value' => $raw_choice,
+					'label' => $raw_choice,
+				);
 			}
+
+			if ( ! is_array( $raw_choice ) ) {
+				continue;
+			}
+
+			$value = sanitize_text_field( trim( (string) ( $raw_choice['value'] ?? '' ) ) );
+
+			if ( '' === $value ) {
+				continue;
+			}
+
+			$label = sanitize_text_field( trim( (string) ( $raw_choice['label'] ?? '' ) ) );
+
+			$sanitized[] = array(
+				'value' => $value,
+				'label' => '' !== $label ? $label : $value,
+			);
 		}
 
 		if ( empty( $sanitized ) ) {
@@ -2328,10 +2376,12 @@ PHP;
 			);
 		}
 
-		if ( count( array_unique( $sanitized ) ) !== count( $sanitized ) ) {
+		$values = wp_list_pluck( $sanitized, 'value' );
+
+		if ( count( array_unique( $values ) ) !== count( $values ) ) {
 			return new \WP_Error(
 				'gateway_field_choices_duplicate',
-				__( 'Choices must be unique -- remove the duplicate and try again.', 'gateway' ),
+				__( 'Choice values must be unique -- remove the duplicate and try again.', 'gateway' ),
 				array( 'status' => 400 )
 			);
 		}

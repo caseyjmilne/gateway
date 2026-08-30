@@ -338,6 +338,35 @@ export default function RecordsCrud() {
 			) : '';
 		}
 
+		// select/radio/buttons/checkboxes -- the record's own stored value
+		// (or, for checkboxes, values) is always a raw `choice.value`
+		// (Choice_Field_Type::cast() never sees `label` at all -- see
+		// Gateway\\Model_Field_Choices' own docblock), which is often not
+		// what a site owner actually wants to SEE in this list -- a
+		// technical value like "in_progress" where the configured label
+		// reads "In Progress". Resolved back to its matching choice's own
+		// label here, purely for this display; a value that no longer
+		// matches any of the field's own CURRENT choices (one since
+		// renamed or removed from the list, but never retroactively
+		// scrubbed from already-saved records -- see Checkbox_Field_Type::
+		// cast()'s own docblock for why) falls back to showing the raw
+		// value as-is rather than silently disappearing.
+		if ( 'select' === inputType || 'radio' === inputType || 'buttons' === inputType ) {
+			const value = record[ field.name ];
+			const choice = ( field.choices || [] ).find( ( c ) => c.value === value );
+			return value ? ( choice ? choice.label : value ) : '';
+		}
+
+		if ( 'checkboxes' === inputType ) {
+			const values = record[ field.name ] || [];
+			return values
+				.map( ( value ) => {
+					const choice = ( field.choices || [] ).find( ( c ) => c.value === value );
+					return choice ? choice.label : value;
+				} )
+				.join( ', ' );
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};

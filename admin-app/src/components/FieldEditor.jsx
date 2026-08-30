@@ -526,7 +526,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	// via `Object.values( editSettings )` (see presentationTabHasContent
 	// below for why that broader check would wrongly light up a tab this
 	// value doesn't actually belong to).
-	const choicesTabHasContent = editChoices.some( ( choice ) => choice.trim() );
+	const choicesTabHasContent = editChoices.some( ( choice ) => choice.value.trim() );
 	const defaultValueTabHasContent = Boolean(
 		editSettings.default && String( editSettings.default ).trim()
 	);
@@ -579,8 +579,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 			( group.rules || [] ).some( ( rule ) => rule.field )
 		);
 
-	const arraysEqual = ( a, b ) =>
-		a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
+	// Choices are `{value, label}` pairs, not plain strings -- compared
+	// field-by-field rather than with a bare `===` (which would always be
+	// false for two structurally-identical-but-distinct objects).
+	const choicesEqual = ( a, b ) =>
+		a.length === b.length &&
+		a.every(
+			( choice, index ) =>
+				choice.value === b[ index ].value && choice.label === b[ index ].label
+		);
 
 	const settingsEqual = ( a, b ) => {
 		const aKeys = Object.keys( a || {} );
@@ -610,7 +617,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		a.type === b.type &&
 		a.relationshipMethod === b.relationshipMethod &&
 		a.required === b.required &&
-		arraysEqual( a.choices, b.choices ) &&
+		choicesEqual( a.choices, b.choices ) &&
 		settingsEqual( a.settings, b.settings ) &&
 		conditionalLogicEqual( a.conditional_logic, b.conditional_logic );
 
@@ -623,7 +630,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 		const choicesOk =
 			! hasChoicesFor( values.type ) ||
-			values.choices.filter( ( choice ) => choice.trim() ).length > 0;
+			values.choices.filter( ( choice ) => choice.value.trim() ).length > 0;
 
 		return nameOk && choicesOk;
 	};
