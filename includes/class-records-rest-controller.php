@@ -305,10 +305,10 @@ class Records_REST_Controller {
 			return $range_check;
 		}
 
-		$image_check = Model_Fields::validate_image_constraints( $class, $data );
+		$attachment_check = Model_Fields::validate_attachment_constraints( $class, $data );
 
-		if ( is_wp_error( $image_check ) ) {
-			return $image_check;
+		if ( is_wp_error( $attachment_check ) ) {
+			return $attachment_check;
 		}
 
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
@@ -400,10 +400,10 @@ class Records_REST_Controller {
 			return $range_check;
 		}
 
-		$image_check = Model_Fields::validate_image_constraints( $class, $data, $effective_data );
+		$attachment_check = Model_Fields::validate_attachment_constraints( $class, $data, $effective_data );
 
-		if ( is_wp_error( $image_check ) ) {
-			return $image_check;
+		if ( is_wp_error( $attachment_check ) ) {
+			return $attachment_check;
 		}
 
 		$relate_many = Model_Fields::extract_relate_many_data( $class, $data );
@@ -701,6 +701,7 @@ class Records_REST_Controller {
 	private static function enrich_records( $class_name, \Illuminate\Database\Eloquent\Collection $records ) {
 		$relate_fields = array();
 		$image_fields  = array();
+		$file_fields   = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
@@ -712,14 +713,18 @@ class Records_REST_Controller {
 			if ( $type_class && $type_class::supports_media_settings() ) {
 				$image_fields[] = $field;
 			}
+
+			if ( $type_class && $type_class::supports_file_settings() ) {
+				$file_fields[] = $field;
+			}
 		}
 
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -732,6 +737,7 @@ class Records_REST_Controller {
 					}
 
 					self::enrich_image_fields( $array, $image_fields );
+					self::enrich_file_fields( $array, $file_fields );
 
 					return $array;
 				}
@@ -755,7 +761,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -797,6 +803,7 @@ class Records_REST_Controller {
 				}
 
 				self::enrich_image_fields( $array, $image_fields );
+				self::enrich_file_fields( $array, $file_fields );
 
 				return $array;
 			}
@@ -911,6 +918,82 @@ class Records_REST_Controller {
 			'width'  => $sizes['full']['width'],
 			'height' => $sizes['full']['height'],
 			'sizes'  => $sizes,
+		);
+	}
+
+	/**
+	 * File_Field_Type's own close sibling of enrich_image_fields() above --
+	 * same "replace the raw stored id with whatever return_format asks
+	 * for" shape, just via resolve_file_value() instead.
+	 *
+	 * @param array $array       A record's own toArray(), modified in place.
+	 * @param array $file_fields Every field on this model with
+	 *                            `supports_file_settings()` true (this
+	 *                            method's own caller already resolved
+	 *                            this once per `enrich_records()` call,
+	 *                            not per record).
+	 */
+	private static function enrich_file_fields( array &$array, array $file_fields ) {
+		foreach ( $file_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$attachment_id = $array[ $field['name'] ];
+
+			if ( empty( $attachment_id ) || ! is_numeric( $attachment_id ) ) {
+				$array[ $field['name'] ] = null;
+				continue;
+			}
+
+			$attachment_id           = (int) $attachment_id;
+			$return_format           = $field['settings']['return_format'] ?? 'array';
+			$array[ $field['name'] ] = self::resolve_file_value( $attachment_id, $return_format );
+		}
+	}
+
+	/**
+	 * File_Field_Type's own close sibling of resolve_image_value() above --
+	 * same three-way `return_format` shape (bare id / plain URL / an
+	 * enriched object), but built for a generic attachment rather than an
+	 * image specifically: no width/height/sizes (meaningless for a PDF or
+	 * a .zip), instead the handful of things actually useful about ANY
+	 * file -- its filename, its title, its MIME type, and its size in
+	 * bytes. Public for the same reason resolve_image_value() is:
+	 * `Media_REST_Controller::get_media()`/`get_media_by_url()` build this
+	 * exact shape for `FilePicker.jsx`'s own preview needs when a field's
+	 * `return_format` is `'id'`/`'url'`.
+	 *
+	 * @param int    $attachment_id WP attachment post id.
+	 * @param string $return_format One of 'array'/'url'/'id'.
+	 * @return array{id:int,url:?string,filename:string,title:string,mime_type:string,filesize:?int}|string|int|null
+	 */
+	public static function resolve_file_value( $attachment_id, $return_format ) {
+		if ( ! function_exists( 'wp_get_attachment_url' ) || ! get_post( $attachment_id ) ) {
+			// No real attachment behind this id any more -- same
+			// reasoning as resolve_image_value()'s own identical guard.
+			return null;
+		}
+
+		if ( 'id' === $return_format ) {
+			return $attachment_id;
+		}
+
+		$url = wp_get_attachment_url( $attachment_id );
+
+		if ( 'url' === $return_format ) {
+			return $url;
+		}
+
+		$file_path = get_attached_file( $attachment_id );
+
+		return array(
+			'id'        => $attachment_id,
+			'url'       => $url,
+			'filename'  => $file_path ? wp_basename( $file_path ) : '',
+			'title'     => get_the_title( $attachment_id ),
+			'mime_type' => get_post_mime_type( $attachment_id ),
+			'filesize'  => ( $file_path && file_exists( $file_path ) ) ? filesize( $file_path ) : null,
 		);
 	}
 

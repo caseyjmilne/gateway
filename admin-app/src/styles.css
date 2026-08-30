@@ -623,6 +623,21 @@
 	margin: 6px 0 0;
 }
 
+.gateway-admin-app .gateway-file-picker-preview {
+	margin-bottom: 8px;
+}
+
+.gateway-admin-app .gateway-file-picker-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.gateway-admin-app .gateway-file-picker-error {
+	color: #d63638;
+	font-size: 13px;
+	margin: 6px 0 0;
+}
+
 .gateway-admin-app .gateway-relate-autocomplete {
 	max-width: 320px;
 }

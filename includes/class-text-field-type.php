@@ -123,4 +123,11 @@ class Text_Field_Type implements Field_Type {
 	public static function supports_media_settings() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_file_settings() {
+		return false;
+	}
 }

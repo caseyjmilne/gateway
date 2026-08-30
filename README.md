@@ -4994,17 +4994,19 @@ merged into `sanitize_settings()`'s output only when
 fails its own check rather than reject the whole request" shape
 `min_value`/`max_value`/`character_limit` already have.
 
-**`Model_Fields::validate_image_constraints( $class_name, $data, $effective_data )`**
-is the actual server-side enforcement, called by `Records_REST_Controller::
-create_record()`/`update_record()` right alongside `validate_range_values()`.
-Skipped the same three ways every other Validation check already is: a
-field hidden by Conditional Logic for this request, a field the request
+**`Model_Fields::validate_attachment_constraints( $class_name, $data, $effective_data )`**
+(originally `validate_image_constraints()` -- renamed once File fields
+started sharing it, see that section below) is the actual server-side
+enforcement, called by `Records_REST_Controller::create_record()`/
+`update_record()` right alongside `validate_range_values()`. Skipped
+the same three ways every other Validation check already is: a field
+hidden by Conditional Logic for this request, a field the request
 doesn't mention, or a value that isn't a real (positive, numeric)
 attachment id. For everything else, it resolves the file on disk
 (`get_attached_file()`), decodes its real dimensions
 (`wp_get_attachment_metadata()`) and size (`filesize()`), and checks
 width/height in pixels, size in MB, and extension against
-`allowed_types` -- a single `gateway_record_image_constraint_failed`
+`allowed_types` -- a single `gateway_record_attachment_constraint_failed`
 `WP_Error` (400) names every offending field, same "don't make a site
 owner fix one problem at a time" shape as every other bulk validator
 here. **`ImagePicker.jsx`'s own `validateAttachment()`** mirrors all
@@ -5056,6 +5058,88 @@ buttons round out the control; `settings.allowed_types` also narrows
 MIME types the filter actually expects, e.g. `jpg` → `image/jpeg`) so
 the modal itself steers a visitor toward an acceptable file, on top of
 the pick-time and save-time checks above.
+
+### File fields (`File_Field_Type`) -- Image's own close sibling, for anything that isn't a picture
+
+A File field is Image's own near-identical sibling for an attachment
+that isn't necessarily (or even usually) a raster image -- a PDF, a
+spreadsheet, a .zip, anything `wp.media()` can accept an upload of.
+Same underlying storage (a WP attachment post id), same three-way
+`return_format` General-tab setting, same `min_size`/`max_size`/
+`allowed_types` Validation-tab bundle -- minus everything that only
+makes sense for an actual image: no width/height bounds, no Preview
+Size (no registered-image-sizes concept for an arbitrary file), and no
+MIME-based filtering of the media modal itself (see below).
+
+**A second `supports_*()` flag, not a shared one.** `Field_Type::
+supports_file_settings()` is `supports_media_settings()`'s own sibling
+-- `true` only for `File_Field_Type` -- rather than the two types
+sharing one flag with conditional sub-behavior, because the two
+bundles genuinely differ: a generic file has no
+`wp_get_attachment_metadata()` dimensions the way a raster image does,
+and no sizes to preview. `Model_Fields::sanitize_settings()` merges in
+File's own narrower bundle (`return_format`/`min_size`/`max_size`/
+`allowed_types` -- no `min_width`/`max_width`/`min_height`/`max_height`
+at all) the same way it already merges in Image's own, and the exact
+same enum/numeric-non-negative validation branches apply to both,
+keyed by setting name rather than by which flag included it.
+
+**One validator serves both types.** `Model_Fields::
+validate_image_constraints()` was renamed to `validate_attachment_constraints()`
+and its own gate widened to `supports_media_settings() ||
+supports_file_settings()` -- its width/height checks simply never
+trigger for a File field, since `min_width`/`max_width`/`min_height`/
+`max_height` never exist in a File field's own settings to begin with
+(nothing to gate on a type check for). The same renaming applies to
+its own error code (`gateway_record_attachment_constraint_failed`).
+
+**Enrichment gets its own resolver, not a reused one.** Image's
+`return_format: 'array'` produces `{id, url, alt, width, height,
+sizes}` -- meaningless for a PDF. `Records_REST_Controller::
+resolve_file_value()` is File's own sibling to `resolve_image_value()`,
+producing `{id, url, filename, title, mime_type, filesize}` instead --
+the handful of things actually useful about any file, not an image's
+own dimensions. `enrich_file_fields()` mirrors `enrich_image_fields()`
+exactly, and `enrich_records()` now computes both `$image_fields` and
+`$file_fields` up front, applying both enrichments in each of its two
+branches.
+
+**`Media_REST_Controller`'s two id/url routes gained a `kind` param.**
+`GET /gateway/v1/media/<id>` and `GET /gateway/v1/media-by-url` now
+accept `?kind=image` (the default, keeping every existing caller
+unchanged) or `?kind=file`, dispatching to `resolve_image_value()` or
+`resolve_file_value()` respectively -- one small, shared dispatch point
+rather than a second pair of near-duplicate routes. `GET /gateway/v1/image-sizes`
+stays Image-only; File has no Preview Size setting to build a `<select>`
+for.
+
+**The admin app.** `FieldEditor`'s General tab shows the same Return
+Format `<select>` for both types (same underlying `settings.return_format`
+field, registered once) with different option labels -- "File Array"/
+"File URL"/"File ID" instead of "Image Array"/"Image URL"/"Image ID" --
+picked by which of the two `supports_*` flags is actually true. Its
+Validation tab shows the same Minimum/Maximum grid styling as Image's
+own, just with a single File Size row per column instead of three
+(Width/Height/File Size) -- reusing `settings.min_size`/`max_size`, the
+exact same keys Image's own bundle already has. Presentation stays at
+just `instructions` -- `File_Field_Type::presentation_fields()` never
+lists `preview_size`.
+
+**`admin-app/src/components/FilePicker.jsx`** is `ImagePicker.jsx`'s
+own sibling for the Records screen -- same three-value-shape handling,
+same normalize-a-`'url'`-value-to-an-id-on-load behavior (see
+`ImagePicker.jsx`'s own docblock for the full "why," identical here),
+same `GET /gateway/v1/media/<id>`/`media-by-url` fetches with `?kind=file`
+appended. Two real differences: **no MIME-based `library.type` filter**
+on the media modal at all -- Image's own `EXTENSION_TO_MIME` map works
+because there's a small, fixed set of raster formats to cover, but an
+arbitrary file's own `allowed_types` (`.pdf`, `.docx`, `.zip`, ...) has
+no comparably small, reliable extension-to-MIME table, so the modal
+opens fully unrestricted and relies on the pick-time client check plus
+server-side enforcement instead; and **the preview is a filename/title
+link, not a thumbnail** -- there's nothing meaningful to render visually
+for a .zip or a .docx, so it links straight to the file itself using
+whichever of `filename`/`title`/the bare URL is available.
 
 ## The Gateway admin app
 

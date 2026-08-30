@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import RelateAutocomplete from './RelateAutocomplete.jsx';
 import ImagePicker from './ImagePicker.jsx';
+import FilePicker from './FilePicker.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -47,21 +48,24 @@ import ImagePicker from './ImagePicker.jsx';
  * `"0"`/`"1"` (a driver that doesn't apply Eloquent's own boolean cast
  * strictly) is coerced with `Boolean()` either way.
  *
- * "image" (Image_Field_Type) is the other special case whose form state
- * isn't a plain scalar: like relate_one's `{id, label}`, its value can be
- * richer than what the field's own DB column actually stores (a bare
- * attachment id) -- exactly which shape depends on the field's own
- * configured `return_format` (a bare number for `'id'`, a plain URL
- * string for `'url'`, or the full `{id, url, width, height, sizes}`
- * object for `'array'`, all three enriched by `Records_REST_Controller::
- * resolve_image_value()`), so `initialValues` state's own initializer
- * passes it through completely unchanged -- `ImagePicker` (rendered in
- * its place below) is what makes sense of whichever shape it turns out
- * to be, including normalizing a `'url'`-shaped value back to a real id
- * transparently once it resolves one (see that component's own
- * docblock). `handleSubmit()` reduces whatever richer shape is currently
- * in form state back down to a bare id (or `null`) the same way
- * relate_one's own `{id, label}` gets reduced to just `.id`.
+ * "image" (Image_Field_Type) and "file" (File_Field_Type) are the other
+ * special case whose form state isn't a plain scalar: like relate_one's
+ * `{id, label}`, its value can be richer than what the field's own DB
+ * column actually stores (a bare attachment id) -- exactly which shape
+ * depends on the field's own configured `return_format` (a bare number
+ * for `'id'`, a plain URL string for `'url'`, or an enriched object for
+ * `'array'` -- `{id, url, width, height, sizes}` for Image, `{id, url,
+ * filename, title, mime_type, filesize}` for File, both built by
+ * `Records_REST_Controller::resolve_image_value()`/`resolve_file_value()`
+ * respectively), so `initialValues` state's own initializer passes it
+ * through completely unchanged -- `ImagePicker`/`FilePicker` (rendered
+ * in its place below) are what make sense of whichever shape it turns
+ * out to be, including normalizing a `'url'`-shaped value back to a real
+ * id transparently once it resolves one (see `ImagePicker`'s own
+ * docblock for the full "why", identical for both). `handleSubmit()`
+ * reduces whatever richer shape is currently in form state back down to
+ * a bare id (or `null`) the same way relate_one's own `{id, label}` gets
+ * reduced to just `.id`.
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -297,13 +301,13 @@ export default function RecordForm( {
 					: [];
 			} else if ( 'boolean' === inputType ) {
 				initial[ field.name ] = Boolean( existing );
-			} else if ( 'image' === inputType ) {
+			} else if ( 'image' === inputType || 'file' === inputType ) {
 				// Passed through exactly as the record's own GET response
 				// gave it -- null, a bare id, a URL string, or the full
-				// {id, url, sizes, ...} object, depending on this field's
-				// own configured return_format. ImagePicker itself is what
-				// makes sense of whichever shape this turns out to be --
-				// see that component's own docblock.
+				// enriched object, depending on this field's own
+				// configured return_format. ImagePicker/FilePicker
+				// themselves are what make sense of whichever shape this
+				// turns out to be -- see those components' own docblocks.
 				initial[ field.name ] = existing;
 			} else if (
 				null === existing &&
@@ -383,18 +387,19 @@ export default function RecordForm( {
 				payload[ field.name ] = ( values[ field.name ] || [] ).map(
 					( item ) => item.id
 				);
-			} else if ( 'image' === inputType ) {
+			} else if ( 'image' === inputType || 'file' === inputType ) {
 				// Same reduction Relate to One's own {id, label} gets above
-				// -- ImagePicker keeps whatever richer shape it was handed
-				// in form state (an object once freshly picked, or
-				// whatever the initial GET response gave it), but the
-				// field's own DB column only ever stores a bare attachment
-				// id. A plain number here (already the id, nothing to
-				// reduce) and null both pass through unchanged; a
-				// leftover string (return_format 'url', ImagePicker's own
-				// id-resolving fetch not done yet) has no id to extract at
-				// all, so it's dropped to null rather than sent as
-				// something the server would just reject anyway.
+				// -- ImagePicker/FilePicker both keep whatever richer
+				// shape they were handed in form state (an object once
+				// freshly picked, or whatever the initial GET response
+				// gave it), but the field's own DB column only ever
+				// stores a bare attachment id. A plain number here
+				// (already the id, nothing to reduce) and null both pass
+				// through unchanged; a leftover string (return_format
+				// 'url', the picker's own id-resolving fetch not done
+				// yet) has no id to extract at all, so it's dropped to
+				// null rather than sent as something the server would
+				// just reject anyway.
 				const current = values[ field.name ];
 				payload[ field.name ] =
 					current && 'object' === typeof current
@@ -585,6 +590,18 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'file' === inputType && (
+							<FilePicker
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -595,6 +612,7 @@ export default function RecordForm( {
 							'checkboxes' !== inputType &&
 							'boolean' !== inputType &&
 							'image' !== inputType &&
+							'file' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

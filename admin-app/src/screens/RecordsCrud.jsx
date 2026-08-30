@@ -269,6 +269,37 @@ export default function RecordsCrud() {
 			return `Image #${ value }`;
 		}
 
+		// A File field's own value is enriched the same three ways
+		// FilePicker/RecordForm already handle -- same reasoning as
+		// Image's own branch above, just with a filename link instead of
+		// a thumbnail (there's nothing to preview visually for an
+		// arbitrary file the way there is for an image).
+		if ( 'file' === inputType ) {
+			const value = record[ field.name ];
+
+			if ( ! value ) {
+				return '';
+			}
+
+			if ( 'object' === typeof value ) {
+				return value.url ? (
+					<a href={ value.url } target="_blank" rel="noreferrer">
+						{ value.filename || value.title || value.url }
+					</a>
+				) : '';
+			}
+
+			if ( 'string' === typeof value ) {
+				return (
+					<a href={ value } target="_blank" rel="noreferrer">
+						{ value }
+					</a>
+				);
+			}
+
+			return `File #${ value }`;
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};

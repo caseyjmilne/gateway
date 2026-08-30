@@ -1,7 +1,7 @@
 <?php
 /**
- * Two small, admin-only REST routes an Image field's own admin-app UI
- * needs that no other route already covers:
+ * Small, admin-only REST routes the Image and File fields' own admin-app
+ * UI need that no other route already covers:
  *
  * - `GET /gateway/v1/image-sizes` -- every image size this site has
  *   registered (`wp_get_registered_image_subsizes()`, core sizes and any
@@ -9,23 +9,29 @@
  *   Size" entry -- what `FieldEditor.jsx`'s own Presentation tab builds
  *   an Image field's "Preview Size" `<select>` from, instead of a
  *   hardcoded guess at what sizes this particular site actually has.
+ *   Image-only -- File_Field_Type has no Preview Size setting at all.
  *
- * - `GET /gateway/v1/media/<id>` -- one attachment's own enriched shape
- *   (the exact same one `Records_REST_Controller::resolve_image_value()`
- *   builds for `return_format: 'array'`), for `RecordForm`'s own Image
- *   picker to render a real preview when a field's own `return_format`
- *   is `'id'` -- the record's own value in that case is a bare integer,
- *   with nothing else to build a thumbnail from without this.
+ * - `GET /gateway/v1/media/<id>?kind=image|file` -- one attachment's own
+ *   enriched shape (the exact same one `Records_REST_Controller::
+ *   resolve_image_value()`/`resolve_file_value()` builds for
+ *   `return_format: 'array'`, picked by `kind`, default `'image'` for
+ *   the route's own pre-File-field behavior to stay unchanged), for
+ *   `RecordForm`'s own Image/File picker to render a real preview when a
+ *   field's own `return_format` is `'id'` -- the record's own value in
+ *   that case is a bare integer, with nothing else to build a preview
+ *   from without this.
  *
- * - `GET /gateway/v1/media-by-url?url=<url>` -- the same enriched shape,
- *   found by URL instead of id (`attachment_url_to_postid()`, a WP core
- *   function built for exactly this) -- for the SAME picker when a
- *   field's own `return_format` is `'url'` instead: the record's own
- *   value is then a bare URL string with no id in it at all, and
- *   `RecordForm` needs the real id back (not just a preview) so it can
- *   resubmit a valid value even for a record whose Image field is never
- *   actually touched during that edit -- see `ImagePicker.jsx`'s own
- *   docblock for the full "why" of this normalize-on-load step.
+ * - `GET /gateway/v1/media-by-url?url=<url>&kind=image|file` -- the same
+ *   enriched shape, found by URL instead of id
+ *   (`attachment_url_to_postid()`, a WP core function built for exactly
+ *   this) -- for the SAME pickers when a field's own `return_format` is
+ *   `'url'` instead: the record's own value is then a bare URL string
+ *   with no id in it at all, and `RecordForm` needs the real id back
+ *   (not just a preview) so it can resubmit a valid value even for a
+ *   record whose Image/File field is never actually touched during that
+ *   edit -- see `ImagePicker.jsx`'s own docblock for the full "why" of
+ *   this normalize-on-load step (`FilePicker.jsx`'s own docblock points
+ *   back at it rather than repeating it, the reasoning is identical).
  *
  * @package Gateway
  */
@@ -67,6 +73,14 @@ class Media_REST_Controller {
 				'methods'             => \WP_REST_Server::READABLE,
 				'callback'            => array( __CLASS__, 'get_media' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				'args'                => array(
+					'kind' => array(
+						'required' => false,
+						'type'     => 'string',
+						'enum'     => array( 'image', 'file' ),
+						'default'  => 'image',
+					),
+				),
 			)
 		);
 
@@ -78,9 +92,15 @@ class Media_REST_Controller {
 				'callback'            => array( __CLASS__, 'get_media_by_url' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
 				'args'                => array(
-					'url' => array(
+					'url'  => array(
 						'required' => true,
 						'type'     => 'string',
+					),
+					'kind' => array(
+						'required' => false,
+						'type'     => 'string',
+						'enum'     => array( 'image', 'file' ),
+						'default'  => 'image',
 					),
 				),
 			)
@@ -166,10 +186,10 @@ class Media_REST_Controller {
 
 		// Always the full 'array' shape here, regardless of any field's
 		// own configured return_format -- this route exists specifically
-		// to give RecordForm's own Image picker something to build a
-		// preview from when a field's OWN value is a bare id ('id'
+		// to give RecordForm's own Image/File picker something to build
+		// a preview from when a field's OWN value is a bare id ('id'
 		// format), so the shape it needs is always the rich one.
-		return rest_ensure_response( Records_REST_Controller::resolve_image_value( $id, 'array' ) );
+		return rest_ensure_response( self::resolve_by_kind( $request, $id ) );
 	}
 
 	/**
@@ -187,6 +207,29 @@ class Media_REST_Controller {
 			);
 		}
 
-		return rest_ensure_response( Records_REST_Controller::resolve_image_value( $id, 'array' ) );
+		return rest_ensure_response( self::resolve_by_kind( $request, $id ) );
+	}
+
+	/**
+	 * Dispatches to whichever of `Records_REST_Controller::
+	 * resolve_image_value()`/`resolve_file_value()` a request's own
+	 * `kind` param asks for -- `get_media()`/`get_media_by_url()`'s own
+	 * shared bit, since both need the same dispatch once they've each
+	 * resolved an id their own way (path param vs. URL lookup).
+	 * Unrecognized/missing `kind` defaults to `'image'`, matching this
+	 * pair of routes' own pre-File-field behavior exactly, so
+	 * `ImagePicker.jsx`'s existing calls (with no `kind` at all) keep
+	 * working unchanged.
+	 *
+	 * @param \WP_REST_Request $request Request (read only for its own `kind` param).
+	 * @param int               $id      WP attachment post id, already resolved.
+	 * @return array|string|int|null
+	 */
+	private static function resolve_by_kind( \WP_REST_Request $request, $id ) {
+		$kind = (string) $request->get_param( 'kind' );
+
+		return 'file' === $kind
+			? Records_REST_Controller::resolve_file_value( $id, 'array' )
+			: Records_REST_Controller::resolve_image_value( $id, 'array' );
 	}
 }

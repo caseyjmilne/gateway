@@ -93,6 +93,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-email-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-url-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-file-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
@@ -148,6 +149,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\URL_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Password_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Image_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\File_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Buttons_Field_Type::class );

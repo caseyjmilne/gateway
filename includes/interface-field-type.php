@@ -333,7 +333,7 @@ interface Field_Type {
 	 *
 	 * The keys this gates (`FieldEditor.jsx`'s own General/Validation
 	 * tabs, `RecordForm`'s own media picker, `Model_Fields::
-	 * validate_image_constraints()`):
+	 * validate_attachment_constraints()`):
 	 * - `return_format` (General) -- one of `'array'`/`'url'`/`'id'`,
 	 *   what shape a record's own GET response gives this field's value
 	 *   (the full ACF-style `{id, url, alt, width, height, sizes}`, just
@@ -345,9 +345,11 @@ interface Field_Type {
 	 *   numeric and non-negative (unlike `min_value`/`max_value` above, a
 	 *   negative dimension or file size is never legitimate). Actually
 	 *   enforced -- not just recorded -- by `Model_Fields::
-	 *   validate_image_constraints()`, the same "client hint (a rejected
-	 *   pick in the media modal), server enforces" split every other
-	 *   Validation-tab setting already has.
+	 *   validate_attachment_constraints()` (also shared with
+	 *   `supports_file_settings()` below -- see that method's own
+	 *   docblock for why one method serves both), the same "client hint
+	 *   (a rejected pick in the media modal), server enforces" split
+	 *   every other Validation-tab setting already has.
 	 * - `allowed_types` (Validation) -- a free-text, comma-or-space
 	 *   separated list of file extensions (e.g. `"jpg,png,gif"`),
 	 *   filtering both the media modal's own library query and the
@@ -363,4 +365,66 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_media_settings();
+
+	/**
+	 * Whether a field of this type has its own bundle of generic-file
+	 * settings -- `true` only for `File_Field_Type` today. `File_Field_Type`'s
+	 * own close sibling to `supports_media_settings()` above, same
+	 * "gates a whole cluster at once" reasoning and same underlying
+	 * storage (still just flat strings in the generic `settings` JSON
+	 * column) -- kept as its OWN method rather than folded into
+	 * `supports_media_settings()` because the two clusters genuinely
+	 * differ, not just in which type happens to use them: a generic file
+	 * has no width/height to bound (there's no `wp_get_attachment_metadata()`
+	 * dimensions for a PDF or a .zip the way there is for a raster
+	 * image) and no `preview_size`/registered-image-sizes concept either
+	 * -- gating both types off one flag would mean either exposing
+	 * meaningless width/height inputs for File, or `Image_Field_Type`
+	 * itself having to override which of the bundle's own keys actually
+	 * apply to it, neither of which this two-flag split needs to do.
+	 *
+	 * The keys this gates (`FieldEditor.jsx`'s own General/Validation
+	 * tabs, `RecordForm`'s own file picker, `Model_Fields::
+	 * validate_attachment_constraints()`):
+	 * - `return_format` (General) -- one of `'array'`/`'url'`/`'id'`,
+	 *   the exact same three values `supports_media_settings()`'s own
+	 *   `return_format` accepts and the exact same `Model_Fields::
+	 *   sanitize_settings()` validation branch (keyed by name, not by
+	 *   which of the two flags actually included it) -- what differs is
+	 *   only the shape `Records_REST_Controller::resolve_file_value()`
+	 *   builds for `'array'`: `{id, url, filename, title, mime_type,
+	 *   filesize}`, no width/height/sizes, since none of those mean
+	 *   anything for an arbitrary file.
+	 * - `min_size`/`max_size` (Validation) -- in MB, independently
+	 *   optional, numeric and non-negative -- the exact same two keys
+	 *   `supports_media_settings()` already has, actually enforced by
+	 *   the same `Model_Fields::validate_attachment_constraints()` that
+	 *   enforces Image's own (that method reads whichever of
+	 *   width/height/size keys a field's settings actually carry, so
+	 *   File fields -- which never have min_width/max_height/etc. in the
+	 *   first place, see `sanitize_settings()` -- simply never trip
+	 *   those checks, without needing a separate method of its own).
+	 * - `allowed_types` (Validation) -- the same free-text extension
+	 *   list as `supports_media_settings()`'s own, checked server-side
+	 *   the same way -- but, unlike Image's own, NOT used to narrow the
+	 *   media modal's own library query client-side: mapping an
+	 *   arbitrary file extension (`.zip`, `.docx`, `.csv`, ...) to the
+	 *   MIME type `wp.media()`'s own `library.type` filter expects has
+	 *   no small, reliable lookup table the way the handful of image
+	 *   formats `ImagePicker.jsx`'s own `EXTENSION_TO_MIME` covers does
+	 *   -- `FilePicker.jsx` opens the library unrestricted instead,
+	 *   relying on the pick-time client check (mirroring the server's
+	 *   own) plus that server-side enforcement itself, the same
+	 *   "narrower of the two available tools" trade-off, just landing on
+	 *   the other tool than Image's own.
+	 *
+	 * NOT gated here (unlike `supports_media_settings()`): no
+	 * `min_width`/`max_width`/`min_height`/`max_height` (nothing to
+	 * bound), no `preview_size` (nothing to preview a thumbnail of) --
+	 * `File_Field_Type::presentation_fields()` is just `instructions`,
+	 * the universal baseline every type gets.
+	 *
+	 * @return bool
+	 */
+	public static function supports_file_settings();
 }

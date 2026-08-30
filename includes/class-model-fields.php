@@ -720,30 +720,37 @@ class Model_Fields {
 	}
 
 	/**
-	 * Checks every one of a model's own Image fields (`Field_Type::
-	 * supports_media_settings()`) with a configured `min_width`/`min_height`/
-	 * `min_size`/`max_width`/`max_height`/`max_size` and/or `allowed_types`
-	 * against $data -- the same "client hint (a rejected pick in the media
-	 * modal), server enforces" split every other Validation-tab setting
-	 * already has, called by `Records_REST_Controller::create_record()`/
-	 * `update_record()` right alongside `validate_range_values()`.
+	 * Checks every one of a model's own Image AND File fields
+	 * (`Field_Type::supports_media_settings()`/`supports_file_settings()` --
+	 * one method for both, since the two bundles share every one of
+	 * these keys; see `supports_file_settings()`'s own docblock for why
+	 * they're still two separate flags) with a configured `min_width`/
+	 * `min_height`/`min_size`/`max_width`/`max_height`/`max_size` and/or
+	 * `allowed_types` against $data -- the same "client hint (a rejected
+	 * pick in the media modal), server enforces" split every other
+	 * Validation-tab setting already has, called by `Records_REST_Controller::
+	 * create_record()`/`update_record()` right alongside
+	 * `validate_range_values()`.
 	 *
 	 * $data holds a bare WP attachment id (or `null`/absent -- nothing
 	 * selected, never this method's problem: Required is what enforces
-	 * "must have a value" for a required Image field, this only ever
-	 * checks a value that's actually present). Width/height come from
+	 * "must have a value" for a required field, this only ever checks a
+	 * value that's actually present). Width/height come from
 	 * `wp_get_attachment_metadata()` (only populated for a real raster
-	 * image WP actually generated intermediate sizes for -- a non-image
-	 * attachment, or one whose metadata is missing/stale, skips those two
-	 * checks rather than erroring on data that was never there to check);
-	 * file size is measured directly off disk (`filesize()` on
-	 * `get_attached_file()`'s own path), in MB, matching the same unit
-	 * `min_size`/`max_size` are entered in on the Validation tab -- also
-	 * skipped, not rejected, if the file itself is missing from disk (an
-	 * attachment whose real file was since deleted by hand, say).
-	 * `allowed_types` is a free-text, comma-or-space-separated list of
-	 * file extensions (`"jpg,png,gif"`) checked against the attachment's
-	 * own real file extension, case-insensitively.
+	 * image WP actually generated intermediate sizes for -- a File
+	 * field's own attachment, or any other one whose metadata is
+	 * missing/stale, simply never has `min_width`/`max_height`/etc. in
+	 * its own settings in the first place -- see `sanitize_settings()` --
+	 * so those two checks are naturally skipped rather than needing a
+	 * type check here); file size is measured directly off disk
+	 * (`filesize()` on `get_attached_file()`'s own path), in MB, matching
+	 * the same unit `min_size`/`max_size` are entered in on the
+	 * Validation tab -- also skipped, not rejected, if the file itself is
+	 * missing from disk (an attachment whose real file was since deleted
+	 * by hand, say). `allowed_types` is a free-text, comma-or-space
+	 * -separated list of file extensions (`"jpg,png,gif"`, or `"pdf,zip,docx"`
+	 * for a File field) checked against the attachment's own real file
+	 * extension, case-insensitively.
 	 *
 	 * A field whose own Conditional Logic evaluates to "hidden" for this
 	 * record is skipped entirely here too, the same as every other
@@ -757,14 +764,14 @@ class Model_Fields {
 	 *                                     own docblock.
 	 * @return true|\WP_Error
 	 */
-	public static function validate_image_constraints( $class_name, array $data, $effective_data = null ) {
+	public static function validate_attachment_constraints( $class_name, array $data, $effective_data = null ) {
 		$effective_data = is_array( $effective_data ) ? $effective_data : $data;
 		$problems       = array();
 
 		foreach ( self::all( $class_name ) as $field ) {
 			$type_class = Field_Type_Registry::get( $field['type'] );
 
-			if ( ! $type_class || ! $type_class::supports_media_settings() ) {
+			if ( ! $type_class || ( ! $type_class::supports_media_settings() && ! $type_class::supports_file_settings() ) ) {
 				continue;
 			}
 
@@ -858,10 +865,10 @@ class Model_Fields {
 		}
 
 		return new \WP_Error(
-			'gateway_record_image_constraint_failed',
+			'gateway_record_attachment_constraint_failed',
 			sprintf(
 				/* translators: %s: comma-separated list of "field label (must be ...)" */
-				__( 'The following images don\'t meet their configured requirements: %s.', 'gateway' ),
+				__( 'The following files don\'t meet their configured requirements: %s.', 'gateway' ),
 				implode( ', ', $problems )
 			),
 			array( 'status' => 400 )
@@ -1001,6 +1008,24 @@ class Model_Fields {
 			);
 		}
 
+		if ( $type_class::supports_file_settings() ) {
+			// File_Field_Type's own close sibling of the bundle above --
+			// `return_format`/`min_size`/`max_size`/`allowed_types` are
+			// the SAME keys (and share the exact same validation checks
+			// below, keyed by name not by which flag included them); no
+			// `min_width`/`max_width`/`min_height`/`max_height` at all,
+			// since a generic file has no dimensions to bound.
+			$recognized_keys = array_merge(
+				$recognized_keys,
+				array(
+					'return_format',
+					'min_size',
+					'max_size',
+					'allowed_types',
+				)
+			);
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -1033,21 +1058,21 @@ class Model_Fields {
 				continue;
 			}
 
-			// Image_Field_Type's own width/height/file-size bounds --
-			// numeric like min_value/max_value above, but a negative
-			// dimension or file size is never legitimate the way a
-			// negative min_value can be (a temperature range, say), so
-			// this drops those too, not just non-numeric input.
+			// Image_Field_Type's and File_Field_Type's own width/height/
+			// file-size bounds -- numeric like min_value/max_value above,
+			// but a negative dimension or file size is never legitimate
+			// the way a negative min_value can be (a temperature range,
+			// say), so this drops those too, not just non-numeric input.
 			if ( in_array( $key, array( 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size' ), true )
 				&& ( ! is_numeric( $value ) || $value < 0 ) ) {
 				continue;
 			}
 
-			// 'return_format' is Image_Field_Type's own General-tab
-			// select -- a fixed, small vocabulary, unlike every other key
-			// here; anything outside it is dropped rather than stored as
-			// junk RecordForm's own <select> would never have actually
-			// offered.
+			// 'return_format' is Image_Field_Type's/File_Field_Type's own
+			// General-tab select -- a fixed, small vocabulary, unlike
+			// every other key here; anything outside it is dropped
+			// rather than stored as junk RecordForm's own <select> would
+			// never have actually offered.
 			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id' ), true ) ) {
 				continue;
 			}

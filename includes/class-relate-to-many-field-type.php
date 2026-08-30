@@ -157,4 +157,11 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	public static function supports_media_settings() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_file_settings() {
+		return false;
+	}
 }

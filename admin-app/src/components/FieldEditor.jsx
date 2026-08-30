@@ -217,14 +217,18 @@ const normalizeSettings = ( settings ) =>
  * `supports_default_value` is true -- Text, Number, and Range today -- a
  * Default Value input, applied by `RecordForm` as the initial value of
  * its own "Add New" form and nowhere else, with its own small "Appears
- * when creating a new record." note underneath; Image is the one type
- * whose General tab looks different again -- no Default Value at all
- * (`supports_default_value` false; there's no sensible "default
- * attachment" for a brand new record to start from), but, gated on the
- * picked type's own `supports_media_settings` instead, a Return Format
- * `<select>` (Image Array/Image URL/Image ID -- `settings.return_format`,
- * what shape `Records_REST_Controller::resolve_image_value()` gives this
- * field's own value in every GET response); plus -- further below,
+ * when creating a new record." note underneath; Image and File are the
+ * two types whose General tab looks different again -- no Default Value
+ * at all for either (`supports_default_value` false; there's no
+ * sensible "default attachment" for a brand new record to start from),
+ * but, gated on the picked type's own `supports_media_settings`
+ * (Image)/`supports_file_settings` (File) instead, a Return Format
+ * `<select>` sharing the same three underlying values and the same
+ * `settings.return_format` field either way, just labeled differently
+ * per type (Image Array/Image URL/Image ID vs. File Array/File URL/File
+ * ID) -- what shape `Records_REST_Controller::resolve_image_value()`/
+ * `resolve_file_value()` gives this field's own value in every GET
+ * response); plus -- further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -240,21 +244,26 @@ const normalizeSettings = ( settings ) =>
  * optional ("Leave blank for no minimum/maximum." notes underneath),
  * actually enforced server-side by Gateway\\Model_Fields::
  * validate_range_values() -- neither of these two is just recorded);
- * Image's own Validation tab is a fifth, unrelated shape gated on the
- * same `supports_media_settings` flag as its General tab additions: a
- * Minimum/Maximum grid (`.gateway-field-editor-media-bounds-row`, two
- * columns) each with Width/Height/File Size rows laid out as a prepend-
- * label/`<input>`/append-unit group (`Width`/px, `Height`/px,
- * `File Size`/MB -- `settings.min_width`/`max_width`/`min_height`/
- * `max_height`/`min_size`/`max_size`, all independently optional) plus
- * a free-text Allowed File Types input (`settings.allowed_types`, a
- * comma/space-separated extension list, e.g. "jpg,png") -- all seven
- * enforced server-side by the new `Gateway\\Model_Fields::
- * validate_image_constraints()`, the same "client hint, server
- * enforces" split Character Limit/Range already have, and mirrored
- * client-side again by `ImagePicker.jsx`'s own `validateAttachment()`
- * for an immediate rejection at pick time rather than waiting on a
- * failed save,
+ * Image's own Validation tab is a fifth, unrelated shape gated on its
+ * own `supports_media_settings` flag: a Minimum/Maximum grid
+ * (`.gateway-field-editor-media-bounds-row`, two columns) each with
+ * Width/Height/File Size rows laid out as a prepend-label/`<input>`/
+ * append-unit group (`Width`/px, `Height`/px, `File Size`/MB --
+ * `settings.min_width`/`max_width`/`min_height`/`max_height`/`min_size`/
+ * `max_size`, all independently optional) plus a free-text Allowed File
+ * Types input (`settings.allowed_types`, a comma/space-separated
+ * extension list, e.g. "jpg,png"). File's own Validation tab (gated on
+ * `supports_file_settings` instead) is the same shape minus the
+ * Width/Height rows -- just a Minimum/Maximum File Size pair (the exact
+ * same `settings.min_size`/`max_size` keys Image's own bundle already
+ * uses) plus its own Allowed File Types input (e.g. "pdf,docx,zip"). All
+ * of these are enforced server-side by the same `Gateway\\Model_Fields::
+ * validate_attachment_constraints()` regardless of which of the two
+ * types is active, the same "client hint, server enforces" split
+ * Character Limit/Range already have, and mirrored client-side again by
+ * `ImagePicker.jsx`'s/`FilePicker.jsx`'s own `validateAttachment()` for
+ * an immediate rejection at pick time rather than waiting on a failed
+ * save,
  * then **Presentation** (one `<input>`/`<textarea>`/`<select>`
  * per key in the picked type's own `presentation_fields` -- see
  * `PRESENTATION_FIELD_META` above, and `Field_Type::presentation_fields()`'s
@@ -449,6 +458,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsMediaSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_media_settings );
 
+	const supportsFileSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_file_settings );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
@@ -456,6 +468,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editSupportsCharacterLimit = supportsCharacterLimitFor( editType );
 	const editSupportsRangeLimits = supportsRangeLimitsFor( editType );
 	const editSupportsMediaSettings = supportsMediaSettingsFor( editType );
+	const editSupportsFileSettings = supportsFileSettingsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -513,6 +526,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		( editSettings.min_value && String( editSettings.min_value ).trim() ) ||
 			( editSettings.max_value && String( editSettings.max_value ).trim() )
 	);
+	// Covers both Image's own bundle (width/height/size) and File's own
+	// narrower one (just size) -- checked by key name, not gated on
+	// editSupportsMediaSettings/editSupportsFileSettings, the same
+	// "doesn't need to know which type is active" reasoning
+	// rangeLimitsTabHasContent already has for min_value/max_value: a
+	// File field's settings simply never carry min_width/etc. in the
+	// first place, so those keys are always blank for it regardless.
 	const mediaValidationTabHasContent = Boolean(
 		[ 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size', 'allowed_types' ].some(
 			( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
@@ -1210,7 +1230,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							</span>
 						</label>
 					) }
-					{ editSupportsMediaSettings && (
+					{ ( editSupportsMediaSettings || editSupportsFileSettings ) && (
 						<label>
 							<span>Return Format</span>
 							<select
@@ -1218,9 +1238,19 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								defaultValue="array"
 								{ ...register( 'settings.return_format' ) }
 							>
-								<option value="array">Image Array</option>
-								<option value="url">Image URL</option>
-								<option value="id">Image ID</option>
+								{ editSupportsFileSettings ? (
+									<>
+										<option value="array">File Array</option>
+										<option value="url">File URL</option>
+										<option value="id">File ID</option>
+									</>
+								) : (
+									<>
+										<option value="array">Image Array</option>
+										<option value="url">Image URL</option>
+										<option value="id">Image ID</option>
+									</>
+								) }
 							</select>
 						</label>
 					) }
@@ -1348,6 +1378,44 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								type="text"
 								className="regular-text"
 								placeholder="e.g. jpg,png,gif"
+								{ ...register( 'settings.allowed_types' ) }
+							/>
+							<span className="description">
+								Comma-separated file extensions. Leave blank to allow any.
+							</span>
+						</label>
+					</div>
+				) }
+				{ editSupportsFileSettings && (
+					<div className="gateway-field-editor-form-grid gateway-field-editor-validation-extra">
+						<div className="gateway-field-editor-media-bounds-row">
+							<div className="gateway-field-editor-media-bounds">
+								<span className="gateway-field-editor-media-bounds-heading">
+									Minimum
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">File Size</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.min_size' ) } />
+									<span className="gateway-record-form-input-addon">MB</span>
+								</span>
+							</div>
+							<div className="gateway-field-editor-media-bounds">
+								<span className="gateway-field-editor-media-bounds-heading">
+									Maximum
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">File Size</span>
+									<input type="number" min="0" step="any" className="regular-text" { ...register( 'settings.max_size' ) } />
+									<span className="gateway-record-form-input-addon">MB</span>
+								</span>
+							</div>
+						</div>
+						<label>
+							<span>Allowed File Types</span>
+							<input
+								type="text"
+								className="regular-text"
+								placeholder="e.g. pdf,docx,zip"
 								{ ...register( 'settings.allowed_types' ) }
 							/>
 							<span className="description">

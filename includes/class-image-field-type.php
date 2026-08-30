@@ -161,4 +161,15 @@ class Image_Field_Type implements Field_Type {
 	public static function supports_media_settings() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * This is an image type, not a generic-file one -- see
+	 * File_Field_Type's own `supports_file_settings()` for its
+	 * equivalent bundle.
+	 */
+	public static function supports_file_settings() {
+		return false;
+	}
 }
