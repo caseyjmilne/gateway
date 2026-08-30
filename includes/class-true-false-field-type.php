@@ -32,6 +32,13 @@ class True_False_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function category() {
+		return 'Choice';
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function blueprint_method() {
 		return 'boolean';
 	}

@@ -5141,6 +5141,64 @@ link, not a thumbnail** -- there's nothing meaningful to render visually
 for a .zip or a .docx, so it links straight to the file itself using
 whichever of `filename`/`title`/the bare URL is available.
 
+### The Type picker: searchable, grouped by category like ACF's own
+
+`FieldEditor`'s General tab used to pick a field's own type from a plain
+`<select>` -- fine for a handful of options, unusable once the type
+list grew past a dozen with no way to tell related ones apart. It's now
+a small searchable popover (`admin-app/src/components/TypeSelect.jsx`):
+a search box filtering by label, and the remaining options grouped
+under the same six category headings ACF's own "Add Field" type picker
+uses -- **Basic**, **Content**, **Choice**, **Relational**, **Advanced**,
+**Layout** -- in that fixed order regardless of registration order. A
+category with nothing currently registered in it (Gateway has nothing
+in Advanced/Layout today -- no date/color/map pickers, no repeater/
+group/tab constructs) simply never renders a heading, rather than
+showing up empty.
+
+**`Field_Type::category()`** (new interface method, one of the six
+fixed strings above) is what assigns each type to a group -- purely
+cosmetic metadata, unlike every other `Field_Type` method: nothing
+server-side reads or enforces it, it only decides which heading
+`TypeSelect` files a type under. Text/Number/Text Area/Range/Email/
+URL/Password are `'Basic'`; Image/File are `'Content'`; Buttons/Select/
+Radio/Checkbox/True-False are `'Choice'`; Relate to One/Relate to Many
+are `'Relational'` -- the same grouping ACF itself uses for the
+built-in types Gateway's own overlap with. `Field_Type_Registry::
+describe_all()` exposes it as `category` alongside every other flag the
+admin app already reads from there, so a future field type is filed
+under whichever category its own class names, automatically.
+
+**A real, subtle bug this surfaced and fixed**: wrapping `TypeSelect` in
+a `<label>` -- the same pattern every other General-tab field already
+uses (`<label><span>...</span><input/></label>`) -- broke it in a way
+that only showed up once the control had more than one of its own
+`<button>`s. Per the HTML label-forwarding behavior, a `<label>` with
+several labelable descendants still only ever designates ONE of them
+(the first in tree order) as its own "labeled control"; clicking
+*any other* labelable descendant inside that label -- an option deep in
+`TypeSelect`'s own open panel, say -- also fires a synthetic click on
+that first one (here, the toggle button), immediately after the real
+click's own handler already ran. The result: picking an option correctly
+updated the field's type and closed the panel, and then, in the very
+same event, the forwarded click on the toggle reopened it right back up
+-- a plain `<select>`/`<input>` never hits this (it *is* the label's own
+one control, so the browser's own "don't also forward when you clicked
+the control itself" rule already covers it), only a custom widget
+rendering multiple buttons of its own does. Fixed by giving the Type
+field a plain `<div className="gateway-field-editor-form-field">`
+instead of a `<label>` (a new CSS rule matches both selectors, so the
+visual layout is unchanged) and an explicit `aria-label` on
+`TypeSelect`'s own toggle button, since it no longer gets one for free
+from an enclosing `<label>`.
+
+Structurally mirrors `RelateAutocomplete.jsx`'s own search-and-select
+pattern (a `containerRef` closing the panel on an outside click and
+Escape) -- the search itself is a plain client-side filter over the
+already-fully-loaded `fieldTypes` list, not a debounced server request,
+since (unlike a Relate field's own potentially large related table)
+every field type is already known up front.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

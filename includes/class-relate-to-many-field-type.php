@@ -42,6 +42,13 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function category() {
+		return 'Relational';
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * '' -- not a real Schema Blueprint method at all -- signals "this
 	 * field has no column of its own" to Model_Fields, which skips

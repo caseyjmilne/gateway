@@ -49,6 +49,13 @@ class Image_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function category() {
+		return 'Content';
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function blueprint_method() {
 		return 'unsignedBigInteger';
 	}

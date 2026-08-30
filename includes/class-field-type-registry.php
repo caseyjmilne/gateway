@@ -76,6 +76,13 @@ class Field_Type_Registry extends Registry {
 	 * render, and know whether to mask a value in a list view, without
 	 * duplicating that knowledge in JavaScript.
 	 *
+	 * `category` (`Field_Type::category()`) is what FieldEditor.jsx's own
+	 * searchable Type picker groups its options by -- one of `'Basic'`/
+	 * `'Content'`/`'Choice'`/`'Relational'`/`'Advanced'`/`'Layout'`, the
+	 * same six ACF itself uses. Purely cosmetic (see that interface
+	 * method's own docblock), never read for anything behavioral the way
+	 * `relationship_type`/`has_choices`/etc. below are.
+	 *
 	 * `relationship_type` is `null` for every plain field type, or one of
 	 * Model_Relationships::TYPES' own keys ('belongsTo'/'belongsToMany')
 	 * for a Relationship_Field_Type (Relate_To_One_Field_Type/
@@ -141,7 +148,7 @@ class Field_Type_Registry extends Registry {
 	 * for why this is a second flag rather than folded into
 	 * `supports_media_settings` above.
 	 *
-	 * @return array<int,array{key:string,label:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool}>
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -156,6 +163,7 @@ class Field_Type_Registry extends Registry {
 			$described[] = array(
 				'key'                      => $class::key(),
 				'label'                    => $class::label(),
+				'category'                 => $class::category(),
 				'input_type'               => $class::input_type(),
 				'is_sensitive'             => $class::is_sensitive(),
 				'relationship_type'        => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,

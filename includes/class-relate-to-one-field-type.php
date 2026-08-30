@@ -38,6 +38,13 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function category() {
+		return 'Relational';
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function blueprint_method() {
 		return 'unsignedBigInteger';
 	}

@@ -35,6 +35,30 @@ interface Field_Type {
 	public static function label();
 
 	/**
+	 * Which group `FieldEditor.jsx`'s own Type picker files this type
+	 * under -- one of `'Basic'`/`'Content'`/`'Choice'`/`'Relational'`/
+	 * `'Advanced'`/`'Layout'`, the same six ACF itself groups its own
+	 * field types into (mirrored here specifically so this stays a
+	 * familiar picker to anyone who's used ACF's own, not because
+	 * anything server-side reads or enforces the value). Purely cosmetic
+	 * grouping/searchability, unlike every other method here -- nothing
+	 * about how a field type actually behaves depends on which category
+	 * it's in, so this is safe to get "wrong" (there's no canonical
+	 * answer for a type ACF itself doesn't have, e.g. Relate to One/Many)
+	 * without breaking anything.
+	 *
+	 * A category with no registered type in it simply never renders a
+	 * heading in the picker -- Gateway has nothing in `'Advanced'`/
+	 * `'Layout'` today (no date/color/map pickers, no repeater/group/tab
+	 * constructs), but the six-category vocabulary stays fixed so a
+	 * future type effectively picks its own home rather than the picker
+	 * needing a seventh category invented for it.
+	 *
+	 * @return string
+	 */
+	public static function category();
+
+	/**
 	 * @return string Schema Blueprint column-builder method this type's
 	 *                 column is created/modified with (see Model_Fields),
 	 *                 e.g. "string".

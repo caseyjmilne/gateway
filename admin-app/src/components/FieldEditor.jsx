@@ -7,6 +7,7 @@ import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import useImageSizes from '../hooks/useImageSizes.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
+import TypeSelect from './TypeSelect.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -187,9 +188,13 @@ const normalizeSettings = ( settings ) =>
  * there's nothing meaningful to drop a row onto while its own name/
  * position is still unsettled.
  *
- * The type dropdown is built from useFieldTypes() (Gateway\Field_Type_Registry,
- * via GET /field-types) rather than a hardcoded list here, so a future
- * field type shows up automatically.
+ * The Type picker (`TypeSelect.jsx`, a searchable popover grouped by
+ * category -- ACF's own "Add Field" picker's layout, `Basic`/`Content`/
+ * `Choice`/`Relational`/`Advanced`/`Layout`) is built from useFieldTypes()
+ * (Gateway\Field_Type_Registry, via GET /field-types) rather than a
+ * hardcoded list here, so a future field type shows up automatically,
+ * filed under whichever category its own `Field_Type::category()`
+ * names.
  *
  * "Relate to One"/"Relate to Many" (Relate_To_One_Field_Type/Relate_To_Many_
  * Field_Type) are special-cased throughout: each one's `relationship_type`
@@ -1147,16 +1152,38 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 			<div hidden={ 'general' !== editTab }>
 				<div className="gateway-field-editor-form-grid">
-					<label>
+					{ /* A plain <div>, NOT <label> like every sibling field in
+					   * this grid -- deliberately, not an oversight. A <label>
+					   * with more than one labelable descendant still only
+					   * designates ONE of them (the first, in tree order) as
+					   * its own "labeled control"; clicking anywhere else
+					   * inside the label -- including TypeSelect's own OTHER
+					   * buttons, e.g. an option deep in its open panel -- also
+					   * fires a synthetic click on that first one (the
+					   * toggle), re-opening the panel the instant the real
+					   * click that just closed it finishes handling. A plain
+					   * `<input>`/`<select>`/single-button field never hits
+					   * this (it IS the label's own one control, so the
+					   * browser's own "don't also forward when you clicked
+					   * the control itself" rule already covers it) -- only a
+					   * custom widget rendering MULTIPLE of its own buttons,
+					   * like this one, actually needs the label dropped. */ }
+					<div className="gateway-field-editor-form-field">
 						<span>Type</span>
-						<select disabled={ editingIsRelate } { ...register( 'type' ) }>
-							{ fieldTypes.map( ( type ) => (
-								<option key={ type.key } value={ type.key }>
-									{ type.label }
-								</option>
-							) ) }
-						</select>
-					</label>
+						<Controller
+							control={ control }
+							name="type"
+							render={ ( { field } ) => (
+								<TypeSelect
+									fieldTypes={ fieldTypes }
+									value={ field.value }
+									onChange={ field.onChange }
+									disabled={ editingIsRelate }
+									ariaLabel="Type"
+								/>
+							) }
+						/>
+					</div>
 					{ editingIsRelate && (
 						<p className="description">
 							This field&rsquo;s relationship can&rsquo;t be
