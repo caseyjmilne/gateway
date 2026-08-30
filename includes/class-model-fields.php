@@ -1026,6 +1026,20 @@ class Model_Fields {
 			);
 		}
 
+		if ( $type_class::supports_embed_settings() ) {
+			// OEmbed_Field_Type's own -- both live on General, unlike
+			// every other numeric bound above (Validation), but share
+			// the exact same "numeric and non-negative" check below,
+			// keyed by name same as the rest.
+			$recognized_keys = array_merge(
+				$recognized_keys,
+				array(
+					'embed_width',
+					'embed_height',
+				)
+			);
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -1059,11 +1073,12 @@ class Model_Fields {
 			}
 
 			// Image_Field_Type's and File_Field_Type's own width/height/
-			// file-size bounds -- numeric like min_value/max_value above,
-			// but a negative dimension or file size is never legitimate
-			// the way a negative min_value can be (a temperature range,
+			// file-size bounds, plus OEmbed_Field_Type's own embed_width/
+			// embed_height -- numeric like min_value/max_value above, but
+			// a negative dimension or file size is never legitimate the
+			// way a negative min_value can be (a temperature range,
 			// say), so this drops those too, not just non-numeric input.
-			if ( in_array( $key, array( 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size' ), true )
+			if ( in_array( $key, array( 'min_width', 'min_height', 'min_size', 'max_width', 'max_height', 'max_size', 'embed_width', 'embed_height' ), true )
 				&& ( ! is_numeric( $value ) || $value < 0 ) ) {
 				continue;
 			}

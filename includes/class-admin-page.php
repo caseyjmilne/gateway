@@ -110,10 +110,16 @@ class Admin_Page {
 			self::HANDLE,
 			'GatewayAdmin',
 			array(
-				'apiUrl'   => esc_url_raw( rest_url( 'gateway/v1' ) ),
-				'nonce'    => wp_create_nonce( 'wp_rest' ),
-				'rootId'   => self::APP_ROOT_ID,
-				'adminUrl' => esc_url_raw( admin_url( 'admin.php?page=' . self::PAGE_SLUG ) ),
+				'apiUrl'         => esc_url_raw( rest_url( 'gateway/v1' ) ),
+				'nonce'          => wp_create_nonce( 'wp_rest' ),
+				'rootId'         => self::APP_ROOT_ID,
+				'adminUrl'       => esc_url_raw( admin_url( 'admin.php?page=' . self::PAGE_SLUG ) ),
+				// WordPress's own oEmbed proxy route -- a different REST
+				// namespace entirely (`oembed/1.0`, not this plugin's own
+				// `gateway/v1`), so it needs its own full URL rather than
+				// being reachable through `apiUrl` above. `OEmbedPicker.jsx`
+				// is the only thing that reads this.
+				'oembedProxyUrl' => esc_url_raw( rest_url( 'oembed/1.0/proxy' ) ),
 			)
 		);
 	}

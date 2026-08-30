@@ -645,6 +645,33 @@
 	margin: 6px 0 0;
 }
 
+.gateway-admin-app .gateway-oembed-picker-preview {
+	margin-top: 8px;
+	max-width: 100%;
+	overflow: hidden;
+}
+
+/* The proxy's own returned markup (an <iframe>, mostly) rarely respects
+ * a wrapping container's own width on its own -- constraining both
+ * dimensions here is what actually keeps a wide embed from overflowing
+ * this form. */
+.gateway-admin-app .gateway-oembed-picker-preview iframe,
+.gateway-admin-app .gateway-oembed-picker-preview img,
+.gateway-admin-app .gateway-oembed-picker-preview embed {
+	max-width: 100%;
+}
+
+.gateway-admin-app .gateway-oembed-picker-status {
+	margin: 8px 0 0;
+}
+
+.gateway-admin-app .gateway-oembed-picker-error {
+	display: block;
+	color: #d63638;
+	font-size: 13px;
+	margin: 8px 0 0;
+}
+
 .gateway-admin-app .gateway-relate-autocomplete {
 	max-width: 320px;
 }

@@ -451,4 +451,31 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_file_settings();
+
+	/**
+	 * Whether a field of this type has its own "Embed Size" bundle --
+	 * `true` only for `OEmbed_Field_Type` today. Gates `embed_width`/
+	 * `embed_height` (both in px, both independently optional, each
+	 * numeric and non-negative -- the exact same validation branch
+	 * `Model_Fields::sanitize_settings()` already runs for Image's own
+	 * `min_width`/etc., this just adds two more keys to it), read by
+	 * `OEmbedPicker.jsx` as the `maxwidth`/`maxheight` it passes to
+	 * WordPress's own oEmbed proxy (`GET /wp-json/oembed/1.0/proxy`) when
+	 * fetching a preview -- unset falls back to WordPress's/ACF's own
+	 * conventional default of 640×390, not a literal default stored
+	 * here.
+	 *
+	 * Unlike `supports_media_settings()`/`supports_file_settings()`
+	 * above, both of which gate settings shown on the **Validation**
+	 * tab, this one's own two keys live on **General** instead -- ACF's
+	 * own oEmbed field puts its "Embed Size" there too, since it's not a
+	 * constraint on what can be saved (nothing here is actually
+	 * enforced against the submitted value the way Image's own width/
+	 * height bounds are against an uploaded file) but a display setting
+	 * for how big the live preview/front-end embed renders, the same
+	 * category of thing Return Format already is for Image/File.
+	 *
+	 * @return bool
+	 */
+	public static function supports_embed_settings();
 }

@@ -233,7 +233,14 @@ const normalizeSettings = ( settings ) =>
  * per type (Image Array/Image URL/Image ID vs. File Array/File URL/File
  * ID) -- what shape `Records_REST_Controller::resolve_image_value()`/
  * `resolve_file_value()` gives this field's own value in every GET
- * response); plus -- further below,
+ * response). oEmbed's own General tab (`supports_embed_settings`) is a
+ * fourth shape again -- also no Default Value, but an "Embed Size" row
+ * (`settings.embed_width`/`embed_height`, both in px, both independently
+ * optional -- a plain `<div>` wrapper here too, not `<label>`, same
+ * reasoning as the Type field's own wrapper: two `<input>`s means two
+ * labelable descendants for a real `<label>` to get confused about)
+ * feeding `OEmbedPicker`'s own `maxwidth`/`maxheight` request to
+ * WordPress's oEmbed proxy; plus -- further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -466,6 +473,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsFileSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_file_settings );
 
+	const supportsEmbedSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_embed_settings );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
@@ -474,6 +484,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editSupportsRangeLimits = supportsRangeLimitsFor( editType );
 	const editSupportsMediaSettings = supportsMediaSettingsFor( editType );
 	const editSupportsFileSettings = supportsFileSettingsFor( editType );
+	const editSupportsEmbedSettings = supportsEmbedSettingsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -1280,6 +1291,52 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 								) }
 							</select>
 						</label>
+					) }
+					{ /* A plain <div>, not <label> -- same reasoning as the
+					   * Type field's own wrapper above it in this same tab:
+					   * two <input>s means two labelable descendants, and a
+					   * real <label> only ever designates the FIRST one
+					   * (Width) as its own "labeled control." Clicking
+					   * directly into Height would still work for typing,
+					   * but the label's own click-forwarding would ALSO fire
+					   * a synthetic click on Width right after, stealing
+					   * focus back to it -- the same class of bug
+					   * TypeSelect's own comment describes in more detail,
+					   * just manifesting as a focus steal here instead of a
+					   * reopened panel. */ }
+					{ editSupportsEmbedSettings && (
+						<div className="gateway-field-editor-form-field">
+							<span>Embed Size</span>
+							<div className="gateway-field-editor-media-bounds-row">
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Width</span>
+									<input
+										type="number"
+										min="0"
+										step="1"
+										className="regular-text"
+										placeholder="640"
+										{ ...register( 'settings.embed_width' ) }
+									/>
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+								<span className="gateway-record-form-input-group">
+									<span className="gateway-record-form-input-addon">Height</span>
+									<input
+										type="number"
+										min="0"
+										step="1"
+										className="regular-text"
+										placeholder="390"
+										{ ...register( 'settings.embed_height' ) }
+									/>
+									<span className="gateway-record-form-input-addon">px</span>
+								</span>
+							</div>
+							<span className="description">
+								Leave blank for the default embed size.
+							</span>
+						</div>
 					) }
 				</div>
 

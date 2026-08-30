@@ -323,6 +323,21 @@ export default function RecordsCrud() {
 				: stripped;
 		}
 
+		// An oEmbed field's own stored value is just a URL (unlike
+		// Image/File, there's no enriched object/id/url three-way shape
+		// to branch on -- see OEmbed_Field_Type's own docblock) -- the
+		// generic branch below would already render it safely as plain
+		// text, this just makes it clickable, the same small polish
+		// File's own filename link already has.
+		if ( 'oembed' === inputType ) {
+			const value = record[ field.name ];
+			return value ? (
+				<a href={ value } target="_blank" rel="noreferrer">
+					{ value }
+				</a>
+			) : '';
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};

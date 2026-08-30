@@ -5276,6 +5276,75 @@ already-fully-loaded `fieldTypes` list, not a debounced server request,
 since (unlike a Relate field's own potentially large related table)
 every field type is already known up front.
 
+### oEmbed fields (`OEmbed_Field_Type`) -- a plain URL, plus a live preview from WordPress's own oEmbed proxy
+
+An oEmbed field stores exactly what was typed and nothing else -- a
+single URL, cast as a plain string, with no `resolve_*_value()`/
+`enrich_*_fields()` pair at all (unlike Image/File): there's no
+attachment id to resolve, no `return_format` shape to pick between, the
+saved value on a `create_record()`/`get_record()` round trip is
+byte-for-byte what was submitted. `is_text_renderable()` is `true` for
+exactly that reason -- unlike WYSIWYG's own `false`, a bare URL is
+always safe to print as plain text. `is_filterable()` stays `true` too,
+a "contains" search against the URL still means something. No Default
+Value, unlike `URL_Field_Type`'s own -- ACF's own oEmbed field doesn't
+offer one either, and there's no obviously useful meaning for "default
+embed" the way a default string makes sense for a plain URL field.
+
+**Embed Size (Width / Height, in px) lives on the General tab, not
+Validation** -- the one place this type's own settings genuinely diverge
+from Image/File's pattern. Image/File's own min/max width/height on
+Validation are *constraints*, enforced against whatever gets picked, and
+rejecting a pick that doesn't satisfy them. Embed Size is not a
+constraint on anything: it's a *display* setting -- the size requested
+from the oEmbed provider when rendering a preview -- with nothing to
+enforce and nothing that could fail validation, so it belongs alongside
+Default Value/Return Format among General's other per-value-shape
+settings instead. A new `Field_Type::supports_embed_settings()` flag
+(alongside the existing `supports_media_settings()`/
+`supports_file_settings()`, `false` on every other type) gates it in
+both `FieldEditor.jsx`'s own General tab and `Model_Fields::
+sanitize_settings()`'s settings-bundle merge -- `embed_width`/
+`embed_height` reuse the exact same numeric-non-negative validation
+Image/File's own bounds already share, just merged in under a different
+flag. Both are optional; a field with neither configured falls back to
+640×390 (the same default ACF's own oEmbed field uses) wherever a
+preview is actually requested.
+
+**`admin-app/src/components/OEmbedPicker.jsx`** is the Records-screen
+control, rendered for `input_type === 'oembed'`. Unlike ImagePicker/
+FilePicker/WysiwygEditor, this is a genuinely *controlled* input --
+`value` is always a plain string (or `null`), never an enriched object,
+so there's no reduction needed anywhere else in `RecordForm.jsx`: a
+plain `<input type="url">` fires `onChange` with the raw string on
+every keystroke, the same as any other text-shaped field already does.
+Alongside the input, a live embed preview is fetched (debounced 500ms --
+longer than `RelateAutocomplete`'s own 300ms search debounce, since a
+real fetch to an external provider is slower and more expensive than a
+local database search) from **`GET /wp-json/oembed/1.0/proxy`** --
+WordPress core's own oEmbed proxy route (namespace `oembed/1.0`, a
+different REST namespace entirely from this plugin's own `gateway/v1`),
+the exact same route the block editor's own Embed block and ACF's own
+oEmbed field both use, rather than this plugin implementing its own
+oEmbed discovery/caching. `Admin_Page::enqueue_assets()` localizes its
+own full URL as `GatewayAdmin.oembedProxyUrl` (`api.js`'s new
+`fetchOembedPreview()` reads it directly, bypassing `apiFetch()`, since
+it isn't a `gateway/v1` request); the proxy is what actually makes
+`dangerouslySetInnerHTML`-rendering its `.html` response safe -- it's
+WordPress itself doing the discovery/fetch server-side, against its own
+allow-list of providers, and returning already-sanitized markup, the
+same trust boundary every other oEmbed consumer in WordPress already
+relies on. The fetch is keyed off both the URL and the field's own
+`embed_width`/`embed_height`, so changing either re-fetches and the
+preview always reflects the field's current settings; a request-id ref
+guards against a slow, now-stale request clobbering a newer one's
+preview if the visitor keeps typing.
+
+`RecordsCrud`'s own list view renders the stored URL as a clickable
+link rather than falling through to the generic plain-text branch --
+the same small polish File's own filename link and Image's own
+thumbnail already have for their own list-view columns.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

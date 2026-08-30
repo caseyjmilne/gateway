@@ -3,6 +3,7 @@ import RelateAutocomplete from './RelateAutocomplete.jsx';
 import ImagePicker from './ImagePicker.jsx';
 import FilePicker from './FilePicker.jsx';
 import WysiwygEditor from './WysiwygEditor.jsx';
+import OEmbedPicker from './OEmbedPicker.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -25,9 +26,14 @@ import WysiwygEditor from './WysiwygEditor.jsx';
  * the same classic editor a post's own content field and ACF's own
  * WYSIWYG field both use) instead of a plain `<textarea>` -- see that
  * component's own docblock for why it's deliberately uncontrolled from
- * React's own side, unlike every other field here. "range" is a real
- * `<input>` type, but a bare slider with no visible number is barely
- * usable, so it gets its own small live readout alongside it.
+ * React's own side, unlike every other field here. "oembed"
+ * (OEmbed_Field_Type) is a plainer case again -- same plain-string form
+ * state/payload as "text"/"url" (a genuinely controlled input, unlike
+ * "wysiwyg"'s own), just rendering an `OEmbedPicker` (a URL `<input>`
+ * plus a live preview from WordPress's own oEmbed proxy) instead of a
+ * bare `<input type="url">`. "range" is a real `<input>` type, but a
+ * bare slider with no visible number is barely usable, so it gets its
+ * own small live readout alongside it.
  *
  * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
  * are two more special cases: Records_REST_Controller enriches a relate
@@ -624,6 +630,18 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'oembed' === inputType && (
+							<OEmbedPicker
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -636,6 +654,7 @@ export default function RecordForm( {
 							'image' !== inputType &&
 							'file' !== inputType &&
 							'wysiwyg' !== inputType &&
+							'oembed' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

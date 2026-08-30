@@ -148,7 +148,14 @@ class Field_Type_Registry extends Registry {
 	 * for why this is a second flag rather than folded into
 	 * `supports_media_settings` above.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool}>
+	 * `supports_embed_settings` (`Field_Type::supports_embed_settings()`)
+	 * is a much smaller bundle, entirely on General -- `embed_width`/
+	 * `embed_height`, both in px -- `true` only for `OEmbed_Field_Type`
+	 * today. See that interface method's own docblock for why these two
+	 * live on General rather than Validation the way Image/File's own
+	 * numeric bounds do.
+	 *
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -175,6 +182,7 @@ class Field_Type_Registry extends Registry {
 				'supports_range_limits'    => $class::supports_range_limits(),
 				'supports_media_settings'  => $class::supports_media_settings(),
 				'supports_file_settings'   => $class::supports_file_settings(),
+				'supports_embed_settings'  => $class::supports_embed_settings(),
 			);
 		}
 

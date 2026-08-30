@@ -179,4 +179,11 @@ class Image_Field_Type implements Field_Type {
 	public static function supports_file_settings() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_embed_settings() {
+		return false;
+	}
 }
