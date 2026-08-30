@@ -164,4 +164,11 @@ class OEmbed_Field_Type implements Field_Type {
 	public static function supports_embed_settings() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_user_settings() {
+		return false;
+	}
 }

@@ -1043,6 +1043,17 @@ class Model_Fields {
 			);
 		}
 
+		if ( $type_class::supports_user_settings() ) {
+			// User_Field_Type's own -- the narrowest bundle of all, just
+			// General's own Return Format, reusing the exact same
+			// 'return_format' key/enum check below Image/File's own
+			// bundles already share (FieldEditor.jsx's own <select> just
+			// never offers 'url' for this type -- see
+			// Field_Type::supports_user_settings()'s own docblock for
+			// why nothing here needs a narrower enum to match).
+			$recognized_keys[] = 'return_format';
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {

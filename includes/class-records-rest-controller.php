@@ -702,6 +702,7 @@ class Records_REST_Controller {
 		$relate_fields = array();
 		$image_fields  = array();
 		$file_fields   = array();
+		$user_fields   = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
@@ -717,14 +718,18 @@ class Records_REST_Controller {
 			if ( $type_class && $type_class::supports_file_settings() ) {
 				$file_fields[] = $field;
 			}
+
+			if ( $type_class && $type_class::supports_user_settings() ) {
+				$user_fields[] = $field;
+			}
 		}
 
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields, $file_fields ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -738,6 +743,7 @@ class Records_REST_Controller {
 
 					self::enrich_image_fields( $array, $image_fields );
 					self::enrich_file_fields( $array, $file_fields );
+					self::enrich_user_fields( $array, $user_fields );
 
 					return $array;
 				}
@@ -761,7 +767,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -804,6 +810,7 @@ class Records_REST_Controller {
 
 				self::enrich_image_fields( $array, $image_fields );
 				self::enrich_file_fields( $array, $file_fields );
+				self::enrich_user_fields( $array, $user_fields );
 
 				return $array;
 			}
@@ -994,6 +1001,82 @@ class Records_REST_Controller {
 			'title'     => get_the_title( $attachment_id ),
 			'mime_type' => get_post_mime_type( $attachment_id ),
 			'filesize'  => ( $file_path && file_exists( $file_path ) ) ? filesize( $file_path ) : null,
+		);
+	}
+
+	/**
+	 * User_Field_Type's own close sibling of `enrich_image_fields()`/
+	 * `enrich_file_fields()` above -- same "replace the raw stored id
+	 * with whatever return_format asks for" shape, just via
+	 * `resolve_user_value()` instead.
+	 *
+	 * @param array $array       A record's own toArray(), modified in place.
+	 * @param array $user_fields Every field on this model with
+	 *                            `supports_user_settings()` true (this
+	 *                            method's own caller already resolved
+	 *                            this once per `enrich_records()` call,
+	 *                            not per record).
+	 */
+	private static function enrich_user_fields( array &$array, array $user_fields ) {
+		foreach ( $user_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$user_id = $array[ $field['name'] ];
+
+			if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
+				$array[ $field['name'] ] = null;
+				continue;
+			}
+
+			$user_id                 = (int) $user_id;
+			$return_format           = $field['settings']['return_format'] ?? 'array';
+			$array[ $field['name'] ] = self::resolve_user_value( $user_id, $return_format );
+		}
+	}
+
+	/**
+	 * User_Field_Type's own close sibling of `resolve_image_value()`/
+	 * `resolve_file_value()` above -- but simpler, with only two
+	 * `return_format` shapes (bare id / an enriched object), never a
+	 * `'url'` one -- see `Field_Type::supports_user_settings()`'s own
+	 * docblock for why. Public for the same reason those two are:
+	 * `User_REST_Controller::get_user()` builds this exact shape for
+	 * `UserPicker.jsx`'s own preview needs when a field's `return_format`
+	 * is `'id'` (the record's own value is then a bare integer with
+	 * nothing else to build a preview from).
+	 *
+	 * @param int    $user_id       WP user id.
+	 * @param string $return_format One of 'array'/'id' (anything else,
+	 *                                including missing/invalid, is
+	 *                                treated as 'array' -- the same
+	 *                                "invalid falls back to the rich
+	 *                                shape, not an error" convention
+	 *                                every other return_format already
+	 *                                has).
+	 * @return array{id:int,name:string,email:string,avatar_url:string}|int|null
+	 */
+	public static function resolve_user_value( $user_id, $return_format ) {
+		$user = get_userdata( $user_id );
+
+		if ( ! $user ) {
+			// No real user behind this id any more (deleted by hand,
+			// e.g.) -- same "don't invent data for something that isn't
+			// there" reasoning a since-deleted attachment's own id
+			// already gets from resolve_image_value()/resolve_file_value().
+			return null;
+		}
+
+		if ( 'id' === $return_format ) {
+			return $user_id;
+		}
+
+		return array(
+			'id'         => $user_id,
+			'name'       => $user->display_name,
+			'email'      => $user->user_email,
+			'avatar_url' => get_avatar_url( $user_id ),
 		);
 	}
 

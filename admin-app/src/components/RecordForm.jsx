@@ -2,6 +2,7 @@ import { useState } from 'react';
 import RelateAutocomplete from './RelateAutocomplete.jsx';
 import ImagePicker from './ImagePicker.jsx';
 import FilePicker from './FilePicker.jsx';
+import UserPicker from './UserPicker.jsx';
 import WysiwygEditor from './WysiwygEditor.jsx';
 import OEmbedPicker from './OEmbedPicker.jsx';
 
@@ -85,6 +86,20 @@ import OEmbedPicker from './OEmbedPicker.jsx';
  * reduces whatever richer shape is currently in form state back down to
  * a bare id (or `null`) the same way relate_one's own `{id, label}` gets
  * reduced to just `.id`.
+ *
+ * "user" (User_Field_Type) is Image/File's own close cousin -- its form
+ * state can likewise start out richer than the bare WP user id its own
+ * DB column stores (a bare number for `return_format: 'id'`, or an
+ * enriched `{id, name, email, avatar_url}` object for `'array'` --
+ * never a `'url'`-shaped string; see `Field_Type::supports_user_settings()`'s
+ * own docblock for why) -- but unlike Image/File, `handleSubmit()` needs
+ * NO special-casing for it at all: `UserPicker` (rendered in its place
+ * below) normalizes form state down to just the id itself, synchronously
+ * on mount, so by the time any submit is possible `values[field.name]`
+ * is already the same bare-id-or-`null` shape every other plain field
+ * already has (see that component's own docblock for why it can do this
+ * up front, unlike Image/File's own `'url'` case which genuinely needs
+ * an async round trip first).
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -320,13 +335,19 @@ export default function RecordForm( {
 					: [];
 			} else if ( 'boolean' === inputType ) {
 				initial[ field.name ] = Boolean( existing );
-			} else if ( 'image' === inputType || 'file' === inputType ) {
+			} else if ( 'image' === inputType || 'file' === inputType || 'user' === inputType ) {
 				// Passed through exactly as the record's own GET response
 				// gave it -- null, a bare id, a URL string, or the full
 				// enriched object, depending on this field's own
-				// configured return_format. ImagePicker/FilePicker
-				// themselves are what make sense of whichever shape this
-				// turns out to be -- see those components' own docblocks.
+				// configured return_format. ImagePicker/FilePicker/
+				// UserPicker themselves are what make sense of whichever
+				// shape this turns out to be -- see those components' own
+				// docblocks. Unlike Image/File, a User field's own
+				// return_format never gives a URL string here (see
+				// Field_Type::supports_user_settings()'s own docblock for
+				// why) -- only a bare id or the enriched object, both
+				// already handled generically by "passed through
+				// unchanged" either way.
 				initial[ field.name ] = existing;
 			} else if (
 				null === existing &&
@@ -431,7 +452,17 @@ export default function RecordForm( {
 				// "boolean" (already a real bool) as-is, alongside every
 				// plain-string field type (text/number/textarea/wysiwyg/
 				// select/radio/buttons/...) -- none of those need
-				// converting either.
+				// converting either. "user" also falls through to here,
+				// unlike "image"/"file" above, even though its own form
+				// state can likewise start out as a richer `{id, name,
+				// email, avatar_url}` object: UserPicker.jsx itself
+				// normalizes that down to a bare id (via its own onChange)
+				// the moment it mounts, well before any submit is
+				// possible, so by the time this ever runs `values[field.name]`
+				// is already just the id (or null) -- see that
+				// component's own docblock for why it can do this
+				// up-front, in a way Image/File's own `'url'`-shaped
+				// value can't (that one needs an async round trip first).
 				payload[ field.name ] = values[ field.name ];
 			}
 		} );
@@ -646,6 +677,17 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'user' === inputType && (
+							<UserPicker
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -659,6 +701,7 @@ export default function RecordForm( {
 							'file' !== inputType &&
 							'wysiwyg' !== inputType &&
 							'oembed' !== inputType &&
+							'user' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

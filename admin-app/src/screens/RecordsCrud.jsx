@@ -304,6 +304,28 @@ export default function RecordsCrud() {
 			return `File #${ value }`;
 		}
 
+		// A User field's own value is enriched the SAME two ways
+		// UserPicker/RecordForm already handle -- just the plain name
+		// (never a link -- unlike Image/File, there's no obvious "visit
+		// this" URL for a person the way there is for an attachment) for
+		// the enriched object, or a named placeholder for a bare id
+		// (return_format 'id') -- resolving that to a real name would
+		// need a per-row fetch this list view has no reason to make,
+		// same reasoning Image's own bare-id branch above already gives.
+		if ( 'user' === inputType ) {
+			const value = record[ field.name ];
+
+			if ( ! value ) {
+				return '';
+			}
+
+			if ( 'object' === typeof value ) {
+				return value.name || `User #${ value.id }`;
+			}
+
+			return `User #${ value }`;
+		}
+
 		// A WYSIWYG field's own stored value is genuine HTML
 		// (WYSIWYG_Field_Type::is_text_renderable() is false for exactly
 		// this reason) -- showing it here as literal escaped markup

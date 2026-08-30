@@ -155,7 +155,15 @@ class Field_Type_Registry extends Registry {
 	 * live on General rather than Validation the way Image/File's own
 	 * numeric bounds do.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool}>
+	 * `supports_user_settings` (`Field_Type::supports_user_settings()`)
+	 * is the narrowest bundle of all -- just `return_format`, reusing
+	 * `supports_media_settings`'s/`supports_file_settings`'s own General
+	 * -tab setting and the same `Model_Fields::sanitize_settings()` enum
+	 * check, restricted client-side to `'array'`/`'id'` (no `'url'` --
+	 * see that interface method's own docblock for why) -- `true` only
+	 * for `User_Field_Type` today.
+	 *
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -183,6 +191,7 @@ class Field_Type_Registry extends Registry {
 				'supports_media_settings'  => $class::supports_media_settings(),
 				'supports_file_settings'   => $class::supports_file_settings(),
 				'supports_embed_settings'  => $class::supports_embed_settings(),
+				'supports_user_settings'   => $class::supports_user_settings(),
 			);
 		}
 

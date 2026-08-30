@@ -96,6 +96,8 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-file-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-wysiwyg-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-oembed-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
@@ -139,6 +141,7 @@ function gateway_boot() {
 	\Gateway\Model_Relationship_REST_Controller::init();
 	\Gateway\Records_REST_Controller::init();
 	\Gateway\Media_REST_Controller::init();
+	\Gateway\User_REST_Controller::init();
 
 	// The built-in field types -- registered the same way as any other
 	// Registry subclass, then a plain action so a future type can hook in
@@ -154,6 +157,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\File_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\WYSIWYG_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\OEmbed_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\User_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Buttons_Field_Type::class );

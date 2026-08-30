@@ -240,7 +240,13 @@ const normalizeSettings = ( settings ) =>
  * reasoning as the Type field's own wrapper: two `<input>`s means two
  * labelable descendants for a real `<label>` to get confused about)
  * feeding `OEmbedPicker`'s own `maxwidth`/`maxheight` request to
- * WordPress's oEmbed proxy; plus -- further below,
+ * WordPress's oEmbed proxy. User's own General tab (`supports_user_settings`)
+ * is a fifth shape, and the plainest of the three Return Format variants
+ * -- also no Default Value, and the SAME shared `<select>`/`settings.return_format`
+ * field as Image/File, just narrowed to two options (User Array/User
+ * ID, never a "User URL" -- see `Field_Type::supports_user_settings()`'s
+ * own docblock for why) feeding `Records_REST_Controller::resolve_user_value()`
+ * instead; plus -- further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -476,6 +482,9 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsEmbedSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_embed_settings );
 
+	const supportsUserSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_user_settings );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
@@ -485,6 +494,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editSupportsMediaSettings = supportsMediaSettingsFor( editType );
 	const editSupportsFileSettings = supportsFileSettingsFor( editType );
 	const editSupportsEmbedSettings = supportsEmbedSettingsFor( editType );
+	const editSupportsUserSettings = supportsUserSettingsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -1275,7 +1285,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							</span>
 						</label>
 					) }
-					{ ( editSupportsMediaSettings || editSupportsFileSettings ) && (
+					{ ( editSupportsMediaSettings || editSupportsFileSettings || editSupportsUserSettings ) && (
 						<label>
 							<span>Return Format</span>
 							<select
@@ -1288,6 +1298,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 										<option value="array">File Array</option>
 										<option value="url">File URL</option>
 										<option value="id">File ID</option>
+									</>
+								) : editSupportsUserSettings ? (
+									// No "User URL" option -- a WP user has no
+									// single canonical URL the way an
+									// attachment does. See Field_Type::
+									// supports_user_settings()'s own docblock.
+									<>
+										<option value="array">User Array</option>
+										<option value="id">User ID</option>
 									</>
 								) : (
 									<>

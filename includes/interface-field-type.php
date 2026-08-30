@@ -478,4 +478,39 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_embed_settings();
+
+	/**
+	 * Whether a field of this type has its own "Return Format" setting --
+	 * `true` only for `User_Field_Type` today. Gates exactly one key,
+	 * `return_format` (General), reusing the SAME setting name AND the
+	 * same `Model_Fields::sanitize_settings()` enum check
+	 * `supports_media_settings()`/`supports_file_settings()` already
+	 * have -- just a narrower slice of it: `'array'` (an enriched
+	 * `{id, name, email, avatar_url}` object) or `'id'` (the bare WP user
+	 * id) only, never `'url'` -- a WP user has no single canonical URL
+	 * the way an attachment does (`get_author_posts_url()` names an
+	 * archive-of-posts-by, not "the URL of this user", and would be a
+	 * confusing thing to hand back under a generic `'url'` format).
+	 * `FieldEditor.jsx`'s own Return Format `<select>` simply never
+	 * offers a "User URL" option for this type -- there's no need for
+	 * `Model_Fields::sanitize_settings()`'s own shared enum to be
+	 * narrowed to match, the same "validated broadly, offered narrowly"
+	 * split every other reused enum value in this interface already has.
+	 *
+	 * Unlike `supports_media_settings()`/`supports_file_settings()`,
+	 * there's no Validation-tab bundle at all here -- a bare user id has
+	 * no width/height/file-size/allowed-extension to bound the way an
+	 * attachment does, so this gates General's own Return Format alone,
+	 * nothing else.
+	 *
+	 * `true` only for `User_Field_Type` -- `false` for every other
+	 * built-in type, including `Relate_To_One_Field_Type`/
+	 * `Relate_To_Many_Field_Type` (a genuinely different kind of
+	 * reference: another GATEWAY model's own record, resolved through
+	 * `Model_Relationships`, not a bare WP user id resolved by hand the
+	 * way `Records_REST_Controller::resolve_user_value()` does).
+	 *
+	 * @return bool
+	 */
+	public static function supports_user_settings();
 }

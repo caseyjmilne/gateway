@@ -140,4 +140,11 @@ class Buttons_Field_Type implements Choice_Field_Type {
 	public static function supports_embed_settings() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_user_settings() {
+		return false;
+	}
 }

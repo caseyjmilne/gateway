@@ -5378,6 +5378,101 @@ link rather than falling through to the generic plain-text branch --
 the same small polish File's own filename link and Image's own
 thumbnail already have for their own list-view columns.
 
+### User fields (`User_Field_Type`) -- a bare WP user id, resolved and searched by hand rather than through `Model_Relationships`
+
+A User field picks one of this site's own registered WP users -- stored
+as that user's own `wp_users.ID` (`unsignedBigInteger()`, the exact same
+column shape `Relate_To_One_Field_Type`'s own foreign key and
+`Image_Field_Type`'s own attachment id both use). It's filed under
+`category() === 'Relational'` alongside Relate to One/Relate to Many
+(matching ACF's own grouping for its "User" field), but it deliberately
+does **not** implement `Relationship_Field_Type` -- that interface, and
+`Model_Relationships` underneath it, exist specifically for a reference
+to another GATEWAY model's own record; a WP user is a real WordPress
+entity this plugin doesn't own the schema for, the exact same
+relationship `Image_Field_Type`'s own attachment id already has to
+`wp_posts`. There's no multi-select "Users" variant (ACF's own User
+field offers one) -- picking a single user is what was asked for; the
+same field storing several ids the way Relate to Many does is a
+separate, unimplemented feature, not something this type's own shape
+tries to anticipate.
+
+**`supports_user_settings()`** (new `Field_Type` interface method, `true`
+only for `User_Field_Type`) gates General's own Return Format setting --
+the SAME `settings.return_format` key, and the exact same
+`Model_Fields::sanitize_settings()` enum check, `supports_media_settings()`/
+`supports_file_settings()` already share for Image/File, just offered
+narrower: **User Array** or **User ID**, never a "User URL" (a WP user
+has no single canonical URL the way an attachment does -- `get_author_posts_url()`
+names an archive-of-posts-by, not "the URL of this user", and would be a
+confusing thing to hand back under a generic `'url'` format). Nothing
+server-side needed its own narrower enum to enforce this -- `FieldEditor.jsx`'s
+own `<select>` simply never renders a "User URL" `<option>` for this
+type, the same "validated broadly, offered narrowly" split already
+established. No Validation-tab bundle at all -- a bare user id has no
+width/height/file-size/allowed-extension to bound the way an attachment
+does.
+
+**`Records_REST_Controller::resolve_user_value( $user_id, $return_format )`**
+is `resolve_image_value()`/`resolve_file_value()`'s own close sibling,
+just simpler (only two shapes, never three): `'id'` returns the bare id,
+anything else (including missing/invalid, same "falls back to the rich
+shape" convention every other `return_format` already has) resolves via
+`get_userdata()` into `{id, name, email, avatar_url}` (`display_name`/
+`user_email`/`get_avatar_url()`) -- `null` if the id no longer names a
+real user (deleted since, e.g.), the same "don't invent data for
+something that isn't there" reasoning a since-deleted attachment's own
+id already gets. `enrich_user_fields()` threads this through
+`enrich_records()` exactly like `enrich_image_fields()`/`enrich_file_fields()`
+already do.
+
+**`User_REST_Controller`** (`includes/class-user-rest-controller.php`) is
+a small, admin-only pair of routes purpose-built for `UserPicker.jsx`,
+the same role `Media_REST_Controller` plays for Image/File and
+`Records_REST_Controller::search_records()` plays for Relate to One/
+Many:
+- `GET /gateway/v1/users/search?q=&exclude=` -- searches this site's own
+  users by login/email/**display name** (`get_users()`'s own default
+  `search_columns` covers the first two but not the third -- widened
+  explicitly, since a site owner overwhelmingly searches by the name
+  they see in wp-admin's own Users list, not a login/nicename that may
+  well differ from it), wrapped in `'*...*'` for a genuine "contains"
+  match. Returns `{id, label}` pairs -- the same minimal shape
+  `search_records()` already returns for a Relate field's own search.
+  `exclude` keeps the currently-selected user out of its own results.
+- `GET /gateway/v1/users/<id>` -- one user's own `{id, label}` shape,
+  found by id -- what `UserPicker.jsx` calls when a field's own
+  `return_format` is `'id'`: the record's own value is then a bare
+  integer, with nothing else to build a chip from without this.
+
+**`admin-app/src/components/UserPicker.jsx`** is the Records-screen
+control, rendered for `input_type === 'user'` -- `RelateAutocomplete.jsx`'s
+own close cousin (search-as-you-type, an outside-click-closes dropdown,
+a removable chip once something's picked), simplified to single-select
+only and pointed at `/users/search`/`/users/<id>` instead of a Gateway
+model's own records endpoint. The one genuine difference from Image/
+File's own pickers: **`RecordForm`'s `handleSubmit()` needs NO
+special-casing for a User field at all**, unlike Image/File's own
+object-to-id reduction at submit time. `UserPicker` itself normalizes
+form state down to just the bare id, synchronously on mount, the instant
+it receives the enriched `{id, name, email, avatar_url}` shape (calling
+`onChange( value.id )` right away, the same "one-time, transparent
+normalization the person editing the record never sees" `ImagePicker.jsx`'s
+own `'url'`-shaped value already gets) -- something Image/File's own
+`'url'` format can't do this simply, since resolving a URL back to a
+real id needs an async round trip first, while a User field's enriched
+object already carries its own id needing no resolution at all. By the
+time any submit is possible, `values[field.name]` is already the same
+plain id-or-`null` shape every other field's own form state has,
+falling through `handleSubmit()`'s generic branch unchanged.
+
+`RecordsCrud`'s own list view shows the enriched object's own `name`
+(never a link -- unlike Image/File, there's no obvious "visit this" URL
+for a person), or a named `User #<id>` placeholder for a bare id
+(`return_format: 'id'`) rather than resolving it to a real name, the
+same "no extra per-row fetch this list view has no reason to make"
+reasoning Image's own bare-id branch already gives.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for
