@@ -2,6 +2,7 @@ import { useState } from 'react';
 import RelateAutocomplete from './RelateAutocomplete.jsx';
 import ImagePicker from './ImagePicker.jsx';
 import FilePicker from './FilePicker.jsx';
+import WysiwygEditor from './WysiwygEditor.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -16,9 +17,17 @@ import FilePicker from './FilePicker.jsx';
  * One `input_type` value, "textarea", isn't a real HTML `<input>` type
  * at all (there's no `<input type="textarea">`) -- it's Text_Area_Field_Type's
  * own signal to render a `<textarea>` element instead, handled as a
- * special case below. "range" is a real `<input>` type, but a bare
- * slider with no visible number is barely usable, so it gets its own
- * small live readout alongside it.
+ * special case below. "wysiwyg" (WYSIWYG_Field_Type) is its own rich
+ * sibling: same plain-string form state and payload as "textarea" (no
+ * special handling needed in `handleSubmit()`/the values initializer at
+ * all, only the render branch differs), but renders a `WysiwygEditor`
+ * (a real `window.wp.editor.initialize()` TinyMCE/quicktags instance,
+ * the same classic editor a post's own content field and ACF's own
+ * WYSIWYG field both use) instead of a plain `<textarea>` -- see that
+ * component's own docblock for why it's deliberately uncontrolled from
+ * React's own side, unlike every other field here. "range" is a real
+ * `<input>` type, but a bare slider with no visible number is barely
+ * usable, so it gets its own small live readout alongside it.
  *
  * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
  * are two more special cases: Records_REST_Controller enriches a relate
@@ -410,8 +419,9 @@ export default function RecordForm( {
 			} else {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
-				// plain-string field type (text/number/select/radio/
-				// buttons/...) -- none of those need converting either.
+				// plain-string field type (text/number/textarea/wysiwyg/
+				// select/radio/buttons/...) -- none of those need
+				// converting either.
 				payload[ field.name ] = values[ field.name ];
 			}
 		} );
@@ -602,6 +612,18 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'wysiwyg' === inputType && (
+							<WysiwygEditor
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -613,6 +635,7 @@ export default function RecordForm( {
 							'boolean' !== inputType &&
 							'image' !== inputType &&
 							'file' !== inputType &&
+							'wysiwyg' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

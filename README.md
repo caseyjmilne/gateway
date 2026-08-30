@@ -5141,6 +5141,76 @@ link, not a thumbnail** -- there's nothing meaningful to render visually
 for a .zip or a .docx, so it links straight to the file itself using
 whichever of `filename`/`title`/the bare URL is available.
 
+### WYSIWYG fields (`WYSIWYG_Field_Type`) -- the real classic editor, not a bundled rich-text library
+
+A WYSIWYG field is `Text_Area_Field_Type`'s own rich sibling: same
+underlying storage (a real `text()` column, no arbitrary length cap)
+and same plain-string `cast()`, but edited through WordPress's own
+classic editor -- `window.wp.editor.initialize()`, wrapping TinyMCE and
+quicktags, the exact same API a post's own content field and ACF's own
+WYSIWYG field both use -- rather than a bundled rich-text library of
+this plugin's own. `Admin_Page::enqueue_assets()` gained a
+`wp_enqueue_editor()` call (right alongside its existing
+`wp_enqueue_media()`) to make `window.wp.editor` available on the
+Gateway admin screen at all, same "load WP's own JS, don't reimplement
+it" pattern that call already established for Image/File's own
+`wp.media()` pickers.
+
+**`is_text_renderable()` is `false`**, unlike Text_Area's own `true`:
+the stored value is genuine HTML, and `Column_Registry`'s own "render
+this field's value as plain text" concept (currently only consumed by
+Data Table/Data Cards columns) assumes a value that's safe to print
+as-is. Showing raw markup as literal escaped text there would be both
+ugly and, more importantly, not what "renderable" is supposed to mean --
+there's no "render as trusted HTML" story built for this type yet, and
+leaving the flag `false` keeps that gap explicit rather than silently
+picking a wrong answer. `is_filterable()` stays `true`, though -- a
+"contains" search still means something against the raw markup, the
+same way WordPress's own `post_content` search already works. No
+Default Value, Character Limit, or any of the other Validation-tab
+settings -- ACF's own WYSIWYG field does offer a default HTML value,
+but General's own Default Value input here is a plain single-line
+`<input>` (see `RecordForm.jsx`'s own docblock), never itself a rich
+editor, which would make typing a meaningful HTML default awkward at
+best; nothing asked for this yet.
+
+**`admin-app/src/components/WysiwygEditor.jsx`** is the Records-screen
+control, rendered for `input_type === 'wysiwyg'`. Deliberately
+*uncontrolled* from React's own side, unlike every other field in this
+form: TinyMCE owns the actual DOM/content once initialized (its own
+iframe, toolbar, undo history, ...), so fighting it with a React
+`value` prop on every keystroke is a well-known anti-pattern for
+wrapping this kind of imperative editor -- the cursor would jump back
+to the start of the content on every character typed. `value` is read
+exactly once, to seed the underlying `<textarea>`'s own initial content
+before `wp.editor.initialize()` reads it; every change after that flows
+the other way, out to `onChange`, via two separate listeners covering
+both tabs the classic editor has: TinyMCE's own `editor.on('change
+input undo redo setcontent', ...)` for the "Visual" tab, and the
+underlying `<textarea>`'s own native `input` event for the "Text" tab
+(switching tabs just hides/shows the TinyMCE iframe over the same
+textarea -- typing directly into it while "Text" is showing never fires
+any TinyMCE event, since the editor itself is merely hidden, not
+destroyed). A fresh, randomly-suffixed DOM id per mounted instance
+(not just the field's own name) is what keeps two simultaneously
+-mounted instances of the same field -- the always-inline "Add New" form
+and an open Edit modal, say -- from colliding on one shared id.
+`wp.editor.remove()` on unmount is what actually tears the TinyMCE
+instance down; skipping it would leak one every time a field closes and
+reopens (the Edit modal, most commonly). If `window.wp.editor` isn't
+available at all (e.g. this admin app's own `npm run dev`, with no real
+WordPress admin screen behind it), the component falls back to a plain
+`<textarea>` rather than failing outright -- the same graceful
+-degradation `ImagePicker.jsx`'s own "media library isn't available"
+message already has for a missing `window.wp.media`.
+
+`RecordsCrud`'s own list view strips HTML tags and truncates to 140
+characters for a WYSIWYG field's own preview, rather than falling
+through to the generic branch and showing literal, escaped `<p>` tags --
+the same "don't just dump the raw value" polish Image's own thumbnail
+and File's own filename link already have for their own list-view
+columns.
+
 ### The Type picker: searchable, grouped by category like ACF's own
 
 `FieldEditor`'s General tab used to pick a field's own type from a plain

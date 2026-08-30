@@ -82,6 +82,13 @@ class Admin_Page {
 		// scratch.
 		wp_enqueue_media();
 
+		// Loads TinyMCE/quicktags and everything else `window.wp.editor.
+		// initialize()` needs -- a WYSIWYG field's own editor is the
+		// exact same classic editor a post's own content field (and
+		// ACF's own WYSIWYG field) uses, not a bundled rich-text library
+		// of this plugin's own.
+		wp_enqueue_editor();
+
 		wp_enqueue_script(
 			self::HANDLE,
 			GATEWAY_ADMIN_APP_URL . '/build/app.js',

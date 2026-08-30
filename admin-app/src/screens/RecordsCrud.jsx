@@ -300,6 +300,25 @@ export default function RecordsCrud() {
 			return `File #${ value }`;
 		}
 
+		// A WYSIWYG field's own stored value is genuine HTML
+		// (WYSIWYG_Field_Type::is_text_renderable() is false for exactly
+		// this reason) -- showing it here as literal escaped markup
+		// ("<p>Hello</p>") would be both ugly and unhelpful, and there's
+		// no "render as trusted HTML" story for this list either, so a
+		// stripped, truncated plain-text preview is the safe middle
+		// ground rather than falling through to the generic branch
+		// below.
+		if ( 'wysiwyg' === inputType ) {
+			const value = record[ field.name ] || '';
+			const stripped = value
+				.replace( /<[^>]*>/g, ' ' )
+				.replace( /\s+/g, ' ' )
+				.trim();
+			return stripped.length > 140
+				? `${ stripped.slice( 0, 140 ) }…`
+				: stripped;
+		}
+
 		const value = record[ field.name ] ?? '';
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};
