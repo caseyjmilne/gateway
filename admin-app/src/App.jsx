@@ -1,4 +1,4 @@
-import { HashRouter, NavLink, Route, Routes } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import DatabaseConfig from './screens/DatabaseConfig.jsx';
 import ModelsList from './screens/ModelsList.jsx';
 import ModelDetail from './screens/ModelDetail.jsx';
@@ -21,17 +21,7 @@ export default function App() {
 		<HashRouter>
 			<div className="wrap gateway-admin-app">
 				<h1>Gateway</h1>
-				<nav className="nav-tab-wrapper">
-					<NavLink to="/" end className={ navTabClass }>
-						Models
-					</NavLink>
-					<NavLink to="/records" className={ navTabClass }>
-						Records
-					</NavLink>
-					<NavLink to="/database" className={ navTabClass }>
-						Database
-					</NavLink>
-				</nav>
+				<MainTabs />
 				<Routes>
 					<Route path="/" element={ <ModelsList /> } />
 					<Route path="/models/:className" element={ <ModelDetail /> } />
@@ -44,6 +34,44 @@ export default function App() {
 	);
 }
 
-function navTabClass( { isActive } ) {
+/**
+ * The app's own top-level Models/Records/Database tab strip -- plain
+ * `Link`s, not `NavLink`, with each one's own "active" state computed by
+ * hand from the current pathname rather than left to `NavLink`'s own
+ * built-in matching. `NavLink` alone can't express what the Models tab
+ * actually needs: `to="/"` has to pass `end` (or it would match every
+ * route, "/records" and "/database" included, since every path starts
+ * with "/"), but `end` means an EXACT match only -- so the Models tab
+ * went dark the moment you followed a row into `/models/:className`
+ * (`ModelDetail`), even though that page is still very much "Models".
+ * Records never had this problem (`/records/:className` already starts
+ * with `/records`, which `NavLink`'s own default, non-`end` prefix match
+ * already covers) -- but computing all three the same explicit way here
+ * keeps the whole strip's own active-state logic in one place instead of
+ * two different matching rules for what should be one consistent
+ * behavior.
+ */
+function MainTabs() {
+	const { pathname } = useLocation();
+	const isModelsActive = '/' === pathname || pathname.startsWith( '/models' );
+	const isRecordsActive = pathname.startsWith( '/records' );
+	const isDatabaseActive = pathname.startsWith( '/database' );
+
+	return (
+		<nav className="nav-tab-wrapper">
+			<Link to="/" className={ navTabClass( isModelsActive ) }>
+				Models
+			</Link>
+			<Link to="/records" className={ navTabClass( isRecordsActive ) }>
+				Records
+			</Link>
+			<Link to="/database" className={ navTabClass( isDatabaseActive ) }>
+				Database
+			</Link>
+		</nav>
+	);
+}
+
+function navTabClass( isActive ) {
 	return `nav-tab${ isActive ? ' nav-tab-active' : '' }`;
 }

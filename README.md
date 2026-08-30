@@ -5526,6 +5526,36 @@ editor's own scripts receive REST connection details -- `admin-app/src/
 api.js` reads it to authenticate `fetch()` calls against `gateway/v1`
 routes as the logged-in administrator viewing the page.
 
+### The top-level Models/Records/Database tab strip -- active state computed by hand, not left to `NavLink`
+
+`App.jsx`'s own `MainTabs` renders the three top-level tabs (WordPress
+core's own boxed `nav-tab`/`nav-tab-active` look, unrelated to
+`ModelDetail`'s own flat underlined `.gateway-subtab` style further
+down) as plain `Link`s rather than `react-router-dom`'s `NavLink`, with
+each one's own active/inactive class computed by hand from
+`useLocation()`'s current pathname instead of left to `NavLink`'s own
+built-in matching.
+
+**The real bug this fixes**: `NavLink`'s own matching can't express what
+the Models tab actually needs. `to="/"` has to pass `end` -- otherwise
+it would match every route at all (`/records`, `/database`, anything),
+since every path starts with `/` -- but `end` means an EXACT match
+only, so the Models tab went dark the moment a row was followed into
+`/models/:className` (`ModelDetail`), even though that page is still
+very much part of "Models". Records never had this problem
+(`/records/:className` already starts with `/records`, which
+`NavLink`'s own default, non-`end` PREFIX match already covers) -- only
+Models, the one tab whose own root path is `/` itself, needed the
+narrower `end` match that then broke its own sub-routes. Computing all
+three tabs' own active state the same explicit way here (`'/' ===
+pathname || pathname.startsWith('/models')` for Models,
+`pathname.startsWith('/records')`/`pathname.startsWith('/database')`
+for the other two) keeps the whole strip's own logic in one place
+instead of two different matching rules for what should be one
+consistent behavior -- and means the Models tab now correctly stays
+highlighted for the entire time a visitor is anywhere under Models,
+detail page included.
+
 ### Models screens (list + detail)
 
 One of the app's three tabs (alongside Records, above, and Database
