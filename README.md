@@ -3097,6 +3097,19 @@ to independently arrive at the same string -- one computation, used by
 both the model and the migration, instead of two that merely usually
 agree.
 
+`Str::studly()` treats a space, a hyphen, AND an underscore as
+equivalent word breaks -- "Vehicle Makes", "Vehicle-Makes", and
+"Vehicle_Makes" all studly-case to the identical `VehicleMakes`, so
+nothing here actually needed a space to be rejected. The admin app's
+own Title input (`ModelsList.jsx`, see "Models screens" below)
+restricts what can be TYPED into it anyway -- letters/digits/underscores
+only, spaces and hyphens silently stripped on every keystroke -- purely
+so the input itself never shows something that only LOOKS like a
+model's real name ("Vehicle Makes") while silently becoming something
+else by the time it's saved; server-side, `create()`/`rename()` still
+accept a space/hyphen from any OTHER caller of this same method
+(a REST request built by hand, e.g.) exactly as they always have.
+
 **Generated files are unnamespaced**, and reference Illuminate classes by
 fully-qualified name (`\Illuminate\Database\Eloquent\Model`) rather than
 a `use` import. This avoids a real, if narrow, hazard: a title like
@@ -5527,9 +5540,12 @@ bookmark to actually hit -- the hash fragment sidesteps needing one
 entirely, while still making each model's own URL bookmarkable and the
 back button behave normally.
 
-`ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is the
-Title + Plural Title form described above, plus the list of every model
-that already exists (`GET /gateway/v1/models`) -- each row links to
+`ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is a
+"Create Model" button opening the Title + Plural Title form described
+above in a `Modal` (the same one Records' own "Add New"/"Edit" already
+use, rather than the form sitting permanently inline above the list),
+plus the list of every model that already exists (`GET /gateway/v1/models`)
+-- each row links to
 `ModelDetail` (`admin-app/src/screens/ModelDetail.jsx`, route
 `/models/:className`), which fetches that one model's detail (`GET
 /gateway/v1/models/<class>`) and shows its table name plus its
