@@ -203,7 +203,13 @@
 	margin: 0;
 }
 
-.gateway-admin-app .gateway-field-editor-edit-panel .gateway-field-editor-subtabs {
+/* Text-based, underlined tab strip -- FieldEditor's own edit panel
+ * (General/Validation/Presentation/Conditional Logic) originated this
+ * look; ModelDetail's own top-level tab strip (General/Fields/
+ * Relationships) reuses the exact same class rather than a second,
+ * visually-identical rule of its own, so both read as one consistent
+ * tab system rather than two that merely happen to look alike. */
+.gateway-admin-app .gateway-subtabs {
 	display: flex;
 	gap: 24px;
 	border-bottom: 1px solid #dcdcde;

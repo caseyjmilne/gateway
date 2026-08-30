@@ -1105,7 +1105,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 
 	const renderEditPanel = () => (
 		<div className="gateway-field-editor-edit-panel">
-			<div className="gateway-field-editor-subtabs">
+			<div className="gateway-subtabs">
 				<button
 					type="button"
 					className={

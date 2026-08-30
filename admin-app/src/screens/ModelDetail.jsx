@@ -7,7 +7,18 @@ import RelationshipEditor from '../components/RelationshipEditor.jsx';
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
- * run) and lets its Title and Plural Title be changed.
+ * run), lets its Title and Plural Title be changed, and hosts its own
+ * Fields/Relationships editors, all three behind one text-based tab strip:
+ * **General** (Title/Plural Title/Table/Migration/Status), **Fields**
+ * (`FieldEditor`), **Relationships** (`RelationshipEditor`). The same
+ * `.gateway-subtab`/`.gateway-subtab-active` classes `FieldEditor`'s own
+ * inner General/Validation/Presentation/Conditional Logic tabs already
+ * use, not a second, visually-different tab style of this page's own --
+ * before this, General's own content (Title/Plural Title/Table/Migration/
+ * Status) sat permanently visible above a SEPARATE, differently-styled
+ * `nav-tab`/`nav-tab-active` (WordPress core's own boxed look) strip for
+ * just Fields/Relationships; now every section is a tab, all three
+ * sharing one consistent look.
  *
  * Title alone drives naming (the class and table names) -- see
  * Model_Builder's own docblock. Plural Title is just a stored display
@@ -53,12 +64,15 @@ export default function ModelDetail() {
 	// window entirely.
 	const [ relationships, setRelationships ] = useState( [] );
 
-	// Which of Fields/Relationships is showing -- both FieldEditor and
-	// RelationshipEditor stay mounted the whole time (see the `hidden`
-	// attribute below, not conditional rendering), so switching tabs never
-	// loses an in-progress edit in the other one, and neither ever needs to
-	// re-fetch on switching back.
-	const [ activeTab, setActiveTab ] = useState( 'fields' );
+	// Which of General/Fields/Relationships is showing -- General's own
+	// Title/Plural Title form, FieldEditor, and RelationshipEditor all stay
+	// mounted the whole time (see the `hidden` attribute below, not
+	// conditional rendering), so switching tabs never loses an in-progress
+	// edit in any of the other two, and none of them ever needs to re-fetch
+	// (or, for General, re-type) on switching back. Defaults to 'general' --
+	// the same section that used to just be the top of the page, unconditionally
+	// visible, before every section here became a tab.
+	const [ activeTab, setActiveTab ] = useState( 'general' );
 
 	useEffect( () => {
 		let cancelled = false;
@@ -185,145 +199,25 @@ export default function ModelDetail() {
 						<code>{ model.class }</code>
 					</h2>
 
-					<form onSubmit={ handleSubmit }>
-						<table className="form-table" role="presentation">
-							<tbody>
-								<tr>
-									<th scope="row">
-										<label htmlFor="gateway-model-edit-title">
-											Title
-										</label>
-									</th>
-									<td>
-										<input
-											id="gateway-model-edit-title"
-											type="text"
-											className="regular-text"
-											value={ title }
-											onChange={ handleFieldChange(
-												setTitle
-											) }
-										/>
-										<p className="description">
-											Changing this creates a new model
-											and table under the new name, and
-											permanently deletes the current
-											one (including its data).
-										</p>
-									</td>
-								</tr>
-								<tr>
-									<th scope="row">
-										<label htmlFor="gateway-model-edit-plural-title">
-											Plural Title
-										</label>
-									</th>
-									<td>
-										<input
-											id="gateway-model-edit-plural-title"
-											type="text"
-											className="regular-text"
-											value={ pluralTitle }
-											onChange={ handleFieldChange(
-												setPluralTitle
-											) }
-										/>
-										<p className="description">
-											Optional display label -- doesn
-											&rsquo;t affect the table, so
-											changing just this saves right
-											away.
-										</p>
-									</td>
-								</tr>
-								<tr>
-									<th scope="row">Table</th>
-									<td>
-										<code>{ model.table }</code>
-									</td>
-								</tr>
-								{ model.migration && (
-									<>
-										<tr>
-											<th scope="row">Migration</th>
-											<td>
-												<code>
-													{ model.migration.class }
-												</code>{ ' ' }
-												(version{ ' ' }
-												{ model.migration.version })
-											</td>
-										</tr>
-										<tr>
-											<th scope="row">Status</th>
-											<td>
-												{ model.migration.has_run
-													? '✅ Table created'
-													: '⚠️ Migration not yet run' }
-											</td>
-										</tr>
-									</>
-								) }
-							</tbody>
-						</table>
-
-						{ confirming ? (
-							<div className="notice notice-warning gateway-inline-confirm">
-								<p>
-									This creates a new database table under
-									the new name and permanently deletes the
-									current one, including any data in it.
-									This can&rsquo;t be undone.
-								</p>
-								<p>
-									<button
-										type="button"
-										className="button button-primary"
-										onClick={ performSave }
-										disabled={ saving }
-									>
-										{ saving
-											? 'Saving…'
-											: 'Yes, rename it' }
-									</button>{ ' ' }
-									<button
-										type="button"
-										className="button"
-										onClick={ () => setConfirming( false ) }
-										disabled={ saving }
-									>
-										Cancel
-									</button>
-								</p>
-							</div>
-						) : (
-							<p>
-								<button
-									type="submit"
-									className="button button-primary"
-									disabled={
-										saving || ! title.trim() || unchanged
-									}
-								>
-									{ saving ? 'Saving…' : 'Save' }
-								</button>
-							</p>
-						) }
-					</form>
-
-					{ saveResult && ! saveResult.success && (
-						<div className="notice notice-error">
-							<p>{ saveResult.message }</p>
-						</div>
-					) }
-
-					<h2 className="nav-tab-wrapper">
+					<div className="gateway-subtabs">
 						<button
 							type="button"
 							className={
-								'nav-tab' +
+								'gateway-subtab' +
+								( 'general' === activeTab
+									? ' gateway-subtab-active'
+									: '' )
+							}
+							onClick={ () => setActiveTab( 'general' ) }
+						>
+							General
+						</button>
+						<button
+							type="button"
+							className={
+								'gateway-subtab' +
 								( 'fields' === activeTab
-									? ' nav-tab-active'
+									? ' gateway-subtab-active'
 									: '' )
 							}
 							onClick={ () => setActiveTab( 'fields' ) }
@@ -333,16 +227,150 @@ export default function ModelDetail() {
 						<button
 							type="button"
 							className={
-								'nav-tab' +
+								'gateway-subtab' +
 								( 'relationships' === activeTab
-									? ' nav-tab-active'
+									? ' gateway-subtab-active'
 									: '' )
 							}
 							onClick={ () => setActiveTab( 'relationships' ) }
 						>
 							Relationships
 						</button>
-					</h2>
+					</div>
+
+					<div hidden={ 'general' !== activeTab }>
+						<form onSubmit={ handleSubmit }>
+							<table className="form-table" role="presentation">
+								<tbody>
+									<tr>
+										<th scope="row">
+											<label htmlFor="gateway-model-edit-title">
+												Title
+											</label>
+										</th>
+										<td>
+											<input
+												id="gateway-model-edit-title"
+												type="text"
+												className="regular-text"
+												value={ title }
+												onChange={ handleFieldChange(
+													setTitle
+												) }
+											/>
+											<p className="description">
+												Changing this creates a new model
+												and table under the new name, and
+												permanently deletes the current
+												one (including its data).
+											</p>
+										</td>
+									</tr>
+									<tr>
+										<th scope="row">
+											<label htmlFor="gateway-model-edit-plural-title">
+												Plural Title
+											</label>
+										</th>
+										<td>
+											<input
+												id="gateway-model-edit-plural-title"
+												type="text"
+												className="regular-text"
+												value={ pluralTitle }
+												onChange={ handleFieldChange(
+													setPluralTitle
+												) }
+											/>
+											<p className="description">
+												Optional display label -- doesn
+												&rsquo;t affect the table, so
+												changing just this saves right
+												away.
+											</p>
+										</td>
+									</tr>
+									<tr>
+										<th scope="row">Table</th>
+										<td>
+											<code>{ model.table }</code>
+										</td>
+									</tr>
+									{ model.migration && (
+										<>
+											<tr>
+												<th scope="row">Migration</th>
+												<td>
+													<code>
+														{ model.migration.class }
+													</code>{ ' ' }
+													(version{ ' ' }
+													{ model.migration.version })
+												</td>
+											</tr>
+											<tr>
+												<th scope="row">Status</th>
+												<td>
+													{ model.migration.has_run
+														? '✅ Table created'
+														: '⚠️ Migration not yet run' }
+												</td>
+											</tr>
+										</>
+									) }
+								</tbody>
+							</table>
+
+							{ confirming ? (
+								<div className="notice notice-warning gateway-inline-confirm">
+									<p>
+										This creates a new database table under
+										the new name and permanently deletes the
+										current one, including any data in it.
+										This can&rsquo;t be undone.
+									</p>
+									<p>
+										<button
+											type="button"
+											className="button button-primary"
+											onClick={ performSave }
+											disabled={ saving }
+										>
+											{ saving
+												? 'Saving…'
+												: 'Yes, rename it' }
+										</button>{ ' ' }
+										<button
+											type="button"
+											className="button"
+											onClick={ () => setConfirming( false ) }
+											disabled={ saving }
+										>
+											Cancel
+										</button>
+									</p>
+								</div>
+							) : (
+								<p>
+									<button
+										type="submit"
+										className="button button-primary"
+										disabled={
+											saving || ! title.trim() || unchanged
+										}
+									>
+										{ saving ? 'Saving…' : 'Save' }
+									</button>
+								</p>
+							) }
+						</form>
+
+						{ saveResult && ! saveResult.success && (
+							<div className="notice notice-error">
+								<p>{ saveResult.message }</p>
+							</div>
+						) }
+					</div>
 
 					<div hidden={ 'fields' !== activeTab }>
 						<FieldEditor

@@ -5579,13 +5579,29 @@ and carries the result -- including any `warnings`, e.g. the old table
 failing to drop -- through React Router's navigation `state` so they can
 still be shown once on arrival.
 
-Below the Title/Plural Title form, `ModelDetail` renders a Fields/
-Relationships tab strip, `FieldEditor` (`admin-app/src/components/FieldEditor.jsx`
+**Every section of `ModelDetail` lives behind one text-based tab strip**
+-- **General** (the Title/Plural Title form above, plus Table/Migration/
+Status), **Fields** (`FieldEditor`, `admin-app/src/components/FieldEditor.jsx`
 -- see "Fields (`Model_Fields`)" above for what happens on the PHP side,
-and for its own single add-or-edit panel) under the first tab -- an
-editable table of the model's fields, seeded from the same initial
-`GET /models/<class>` response so it doesn't need its own request just
-to render.
+and for its own single add-or-edit panel), and **Relationships**
+(`RelationshipEditor`) -- rather than General sitting permanently visible
+above a SEPARATE tab strip for just the other two. The tab strip itself
+reuses `.gateway-subtab`/`.gateway-subtab-active` (renamed from
+`FieldEditor`'s own originally-private `.gateway-field-editor-subtabs`
+container class to the shared, unscoped `.gateway-subtabs`) -- the exact
+same flat, underlined look `FieldEditor`'s own inner General/Validation/
+Presentation/Conditional Logic tabs already use, not the boxed
+`nav-tab`/`nav-tab-active` wp-admin style this page's own Fields/
+Relationships strip used before. All three sections' own components stay
+mounted the whole time regardless of which tab is showing (a `hidden`
+attribute toggles visibility, never conditional rendering) -- General's
+own typed-but-unsaved Title/Plural Title input, `FieldEditor`'s
+currently-open edit panel, and `RelationshipEditor`'s own in-progress
+state all survive switching away to another tab and back, the same
+"never lose an in-progress edit by switching tabs" guarantee Fields/
+Relationships already had before General joined them. `FieldEditor`
+itself is seeded from the same initial `GET /models/<class>` response so
+it doesn't need its own request just to render.
 
 ### Database Connection screen
 
