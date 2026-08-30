@@ -9,8 +9,8 @@ const PER_PAGE = 20;
 
 /**
  * The actual CRUD UI for one model's records: a table of existing rows,
- * an "Add New" form above it, and an Edit form of its own for whichever
- * row's own Edit button was clicked -- opened in a `Modal`
+ * plus an "Add New" form and an Edit form of its own for whichever
+ * row's own Edit button was clicked, BOTH opened in a `Modal`
  * (`admin-app/src/components/Modal.jsx`) floating above the list rather
  * than growing inline as an extra `<tr>` under the row (FieldEditor's
  * own Fields table still does the latter, and that's the right call
@@ -19,11 +19,15 @@ const PER_PAGE = 20;
  * many more fields than that, and an inline form that size pushed every
  * row below the one being edited further down the page as it grew,
  * which is what the modal fixes: the list stays exactly where it is
- * underneath, whatever the form's own length). "Add New" stays inline,
- * above the table, unlike Edit -- it's already anchored at a fixed
- * position that never moves regardless of how long the form gets, so it
- * never had the growing-table problem Edit did. Every column and every
- * form input is driven entirely by the model's own fields
+ * underneath, whatever the form's own length). Add New used to stay
+ * inline instead -- already anchored at a fixed position above the
+ * table that never moved as the form grew, so it never had Edit's own
+ * growing-table problem to begin with -- but the two are now
+ * deliberately symmetric (same Modal, same "Add New "/"Edit " + model
+ * name title convention) rather than one action opening a floating
+ * dialog and the other growing the page, purely for a consistent feel
+ * between the two most common actions on this screen. Every column and
+ * every form input is driven entirely by the model's own fields
  * (Gateway\Model_Fields, fetched as part of the model detail response) --
  * there's no separate "which columns to show" configuration here at all.
  *
@@ -355,31 +359,11 @@ export default function RecordsCrud() {
 								<button
 									type="button"
 									className="button button-primary"
-									onClick={ () =>
-										setShowAddForm( ( current ) => ! current )
-									}
+									onClick={ () => setShowAddForm( true ) }
 								>
-									{ showAddForm ? 'Cancel' : 'Add New' }
+									Add New
 								</button>
 							</p>
-
-							{ showAddForm && (
-								<div className="gateway-record-form-wrap">
-									<RecordForm
-										fields={ fields }
-										fieldTypes={ fieldTypes }
-										onSubmit={ handleAdd }
-										onCancel={ () => setShowAddForm( false ) }
-										submitLabel="Add Record"
-										submitting={ addSubmitting }
-									/>
-									{ addError && (
-										<div className="notice notice-error">
-											<p>{ addError }</p>
-										</div>
-									) }
-								</div>
-							) }
 
 							{ recordsError && (
 								<div className="notice notice-error">
@@ -487,6 +471,29 @@ export default function RecordsCrud() {
 						</>
 					) }
 				</>
+			) }
+
+			{ showAddForm && (
+				<Modal
+					title={ `Add New ${ model.class }` }
+					onClose={ () => setShowAddForm( false ) }
+				>
+					<div className="gateway-record-form-wrap">
+						<RecordForm
+							fields={ fields }
+							fieldTypes={ fieldTypes }
+							onSubmit={ handleAdd }
+							onCancel={ () => setShowAddForm( false ) }
+							submitLabel="Add Record"
+							submitting={ addSubmitting }
+						/>
+						{ addError && (
+							<div className="notice notice-error">
+								<p>{ addError }</p>
+							</div>
+						) }
+					</div>
+				</Modal>
 			) }
 
 			{ editingRecord && (

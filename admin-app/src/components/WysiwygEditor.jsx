@@ -38,9 +38,13 @@ let instanceCounter = 0;
  * itself is merely hidden, not destroyed).
  *
  * A fresh, random DOM id per mounted instance (not just `field.name`)
- * is what keeps this safe when both the always-mounted "Add New" form
- * and an open Edit modal happen to have the same field -- two
- * `wp.editor.initialize()` calls sharing one id would collide.
+ * is what keeps two `wp.editor.initialize()` calls for the same field
+ * from ever colliding on one shared id -- RecordsCrud's own Add New and
+ * Edit are both modals now, so only one is ever actually showing at
+ * once in the current UI, but nothing here should have to assume that
+ * stays true forever (a future screen embedding two of these at once,
+ * or a remount racing a not-yet-finished `wp.editor.remove()` from the
+ * previous instance) for this to still behave correctly.
  */
 export default function WysiwygEditor( { field, value, onChange } ) {
 	const [ idSuffix ] = useState( () => ++instanceCounter );

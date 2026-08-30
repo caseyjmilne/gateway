@@ -4265,34 +4265,40 @@ this time with its row count, reusing `GET /gateway/v1/models` --
 for each one (wrapped in a `try`/`catch`: an unreachable database or a
 migration that never ran shows as "--" rather than breaking the whole
 list). Clicking a model opens `RecordsCrud` (route `/records/:className`),
-the actual CRUD screen: Add New (inline, above the table), edit an
-existing row (in a `Modal`), delete one.
+the actual CRUD screen: Add New, edit an existing row, delete one --
+Add New and Edit both open in the same `Modal`.
 
-**Add New stays inline; Edit opens in a `Modal`
+**Both Add New and Edit open in a `Modal`
 (`admin-app/src/components/Modal.jsx`), floating above the list rather
 than growing inline as an extra `<tr>` under the row.** `FieldEditor`'s
 own Fields table still uses the ACF-style "row becomes a form, right
 underneath it" interaction, and that's the right call there -- a
 field's own settings never grow large enough to be a problem. A model's
-RECORDS can carry many more fields than that, and an inline edit form
-that size pushed every row below the one being edited further down the
-page as it grew, reflowing the whole table underneath a form the site
-owner was still filling out. A modal doesn't have that problem: the list
+RECORDS can carry many more fields than that, and an inline form that
+size pushed every row below the one being edited further down the page
+as it grew, reflowing the whole table underneath a form the site owner
+was still filling out. A modal doesn't have that problem: the list
 stays exactly where it is underneath, whatever the form's own length,
 and the modal's own body scrolls independently (`max-height: 90vh`) once
 it's taller than the viewport rather than growing the page. Add New
-never had this problem to begin with -- it's already anchored at a fixed
-position above the table that doesn't move regardless of how long the
-form gets -- so it's left as it was, a plain inline form. `Modal` is
-hand-rolled rather than a library (`@wordpress/components`' own `Modal`,
-say): this app is plain React + Vite, deliberately kept separate from
-the Gutenberg blocks' own `@wordpress/scripts` build, so pulling in a
-Gutenberg-only dependency for one small dialog would be an odd fit. It
-closes on three equivalent gestures -- the × button, clicking the dimmed
-overlay outside the panel, or Escape -- all wired to the same handler
-Cancel already used, and carries no focus trap (an admin-only screen
-behind a login, not a public-facing surface with the same accessibility
-stakes a plugin's own front-end widgets would have).
+never actually HAD this problem -- it's already anchored at a fixed
+position above the table that never moved regardless of how long an
+inline form got -- but it now uses the same `Modal` as Edit anyway
+(`showAddForm`, mirroring `editingId`'s own "which record is open"
+role, just with no record to key off of yet), a deliberate consistency
+choice: the two most common actions on this screen reading the same
+way -- same dialog, same "Add New "/"Edit " + model name title
+convention -- outweighs Add New's own lack of an actual growing-table
+problem to justify staying different. `Modal` is hand-rolled rather
+than a library (`@wordpress/components`' own `Modal`, say): this app is
+plain React + Vite, deliberately kept separate from the Gutenberg
+blocks' own `@wordpress/scripts` build, so pulling in a Gutenberg-only
+dependency for one small dialog would be an odd fit. It closes on three
+equivalent gestures -- the × button, clicking the dimmed overlay outside
+the panel, or Escape -- all wired to the same handler Cancel already
+used, and carries no focus trap (an admin-only screen behind a login,
+not a public-facing surface with the same accessibility stakes a
+plugin's own front-end widgets would have).
 
 **Every column and every form input comes from the model's own fields**
 -- there's no separate "which columns to show" configuration anywhere.
@@ -5192,10 +5198,11 @@ underlying `<textarea>`'s own native `input` event for the "Text" tab
 textarea -- typing directly into it while "Text" is showing never fires
 any TinyMCE event, since the editor itself is merely hidden, not
 destroyed). A fresh, randomly-suffixed DOM id per mounted instance
-(not just the field's own name) is what keeps two simultaneously
--mounted instances of the same field -- the always-inline "Add New" form
-and an open Edit modal, say -- from colliding on one shared id.
-`wp.editor.remove()` on unmount is what actually tears the TinyMCE
+(not just the field's own name) is what keeps two `wp.editor.initialize()`
+calls for the same field from ever colliding on one shared id -- Add
+New and Edit are both modals now, so only one is ever actually showing
+at once in the current UI, but nothing here assumes that stays true
+forever. `wp.editor.remove()` on unmount is what actually tears the TinyMCE
 instance down; skipping it would leak one every time a field closes and
 reopens (the Edit modal, most commonly). If `window.wp.editor` isn't
 available at all (e.g. this admin app's own `npm run dev`, with no real
