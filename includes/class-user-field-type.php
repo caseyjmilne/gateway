@@ -193,4 +193,18 @@ class User_Field_Type implements Field_Type {
 	public static function supports_user_settings() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_permalink_settings() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function max_one_per_model() {
+		return false;
+	}
 }

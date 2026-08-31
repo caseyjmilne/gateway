@@ -355,6 +355,31 @@ class Model_Fields {
 	}
 
 	/**
+	 * The one canonical answer to "which field is the permalink field for
+	 * model X" -- called by `Records_REST_Controller` (slug computation),
+	 * `Permalink_Routes` (routing), and the admin app's own Permalinks
+	 * tab/`FieldEditor` alike, all through this single method rather than
+	 * each re-deriving the same `array_filter`. Never more than one match
+	 * is possible -- `Field_Type::max_one_per_model()` is what
+	 * `add()`/`update()` actually enforce that with -- so the first (and
+	 * only) one found is returned outright.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}|null
+	 *              One of `all()`'s own field arrays, or `null` if this
+	 *              model has no Permalink field configured yet.
+	 */
+	public static function permalink_field_for( $class_name ) {
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( 'permalink' === $field['type'] ) {
+				return $field;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Prepares a single field array (one of `all()`'s own return values,
 	 * or `add()`/`update()`'s) for a JSON REST response -- specifically,
 	 * casts `settings` to a real PHP object (`(object)`) rather than
@@ -1054,6 +1079,23 @@ class Model_Fields {
 			$recognized_keys[] = 'return_format';
 		}
 
+		if ( $type_class::supports_permalink_settings() ) {
+			// Permalink_Field_Type's own -- see that interface method's
+			// own docblock for what each of these three keys means.
+			// `source_field`'s own deeper validation (must name a real,
+			// is_text_renderable() sibling field) needs model context
+			// this method doesn't have -- see validate_permalink_settings(),
+			// called separately by add()/update().
+			$recognized_keys = array_merge(
+				$recognized_keys,
+				array(
+					'source_field',
+					'root',
+					'template_page_id',
+				)
+			);
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -1062,6 +1104,17 @@ class Model_Fields {
 			}
 
 			$value = sanitize_text_field( trim( (string) $raw_settings[ $key ] ) );
+
+			// Permalink_Field_Type's own 'root' is a URL path segment,
+			// not arbitrary text -- run through sanitize_title() (the
+			// same WordPress core function a post's own slug goes
+			// through) on top of the generic sanitize_text_field() above,
+			// so "Tickets!" is stored as "tickets", not left as
+			// something Permalink_Routes' own rewrite rule would have to
+			// re-sanitize itself later.
+			if ( 'root' === $key ) {
+				$value = sanitize_title( $value );
+			}
 
 			if ( '' === $value ) {
 				continue;
@@ -1103,6 +1156,14 @@ class Model_Fields {
 			// rather than stored as junk RecordForm's own <select> would
 			// never have actually offered.
 			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id' ), true ) ) {
+				continue;
+			}
+
+			// 'template_page_id' is Permalink_Field_Type's own -- a real
+			// WP post id, meaningless as anything but a positive whole
+			// number, the same "positive whole number or dropped"
+			// treatment 'character_limit' already gets above.
+			if ( 'template_page_id' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
 				continue;
 			}
 
@@ -1491,10 +1552,46 @@ class Model_Fields {
 			}
 		}
 
+		// A field type that declares max_one_per_model() (Permalink_Field_Type
+		// today -- see that interface method's own docblock) can never be
+		// added a second time to the same model, checked before anything
+		// else so a doomed add() never touches schema at all.
+		if ( $type_class && $type_class::max_one_per_model() ) {
+			foreach ( self::all( $class_name ) as $existing ) {
+				if ( $existing['type'] === $type_class::key() ) {
+					return new \WP_Error(
+						'gateway_field_max_one_per_model',
+						sprintf(
+							/* translators: 1: field type label, 2: existing field's own label */
+							__( 'This model already has a "%1$s" field ("%2$s") -- only one is allowed per model.', 'gateway' ),
+							$type_class::label(),
+							$existing['label']
+						),
+						array( 'status' => 409 )
+					);
+				}
+			}
+		}
+
 		$field = self::validate( $class_name, $name, $type, null, $label );
 
 		if ( is_wp_error( $field ) ) {
 			return $field;
+		}
+
+		// Sanitized (and, for a Permalink field, further validated) up
+		// front, before anything touches schema -- the exact same "fail
+		// fast, migrate only once everything else already checks out"
+		// discipline choices/relationships above already follow. Reused
+		// as-is at insert time below, not recomputed.
+		$sanitized_settings = self::sanitize_settings( $field['type'], $settings );
+
+		if ( $type_class::supports_permalink_settings() ) {
+			$permalink_settings_result = self::validate_permalink_settings( $class_name, null, $sanitized_settings );
+
+			if ( is_wp_error( $permalink_settings_result ) ) {
+				return $permalink_settings_result;
+			}
 		}
 
 		if ( ! Database_Connection::is_healthy() ) {
@@ -1533,6 +1630,19 @@ class Model_Fields {
 			}
 		}
 
+		// A Permalink field's own companion column -- see
+		// ensure_permalink_manual_column()'s own docblock for why this
+		// exists at all. Run right alongside the field's own column
+		// migration above, before any metadata is recorded, so a failure
+		// here leaves nothing half-set-up either.
+		if ( $type_class::supports_permalink_settings() ) {
+			$manual_column_result = self::ensure_permalink_manual_column( $table, $field['name'] );
+
+			if ( is_wp_error( $manual_column_result ) ) {
+				return $manual_column_result;
+			}
+		}
+
 		// Always appended after every existing field -- max() returns null
 		// when this is the model's first field, which is exactly position
 		// 0, not "null + 1".
@@ -1540,7 +1650,6 @@ class Model_Fields {
 		$field['position']  = null === $max_position ? 0 : ( (int) $max_position + 1 );
 
 		$required            = (bool) $required;
-		$sanitized_settings  = self::sanitize_settings( $field['type'], $settings );
 		$sanitized_cl        = self::sanitize_conditional_logic( $class_name, $field['name'], $conditional_logic );
 
 		$field_id = self::table()->insertGetId(
@@ -1689,6 +1798,31 @@ class Model_Fields {
 			);
 		}
 
+		// Retyping a DIFFERENT field into a max_one_per_model() type
+		// (Permalink_Field_Type today) is exactly as much a conflict as
+		// add()'s own identical check -- a field already of the old type
+		// (unaffected either way, since it isn't the one being retyped)
+		// doesn't collide with itself, so this only ever matters when
+		// $type_changed actually lands on a one-per-model type.
+		$new_type_class_for_check = Field_Type_Registry::get( $new_field['type'] );
+
+		if ( $type_changed && $new_type_class_for_check && $new_type_class_for_check::max_one_per_model() ) {
+			foreach ( self::all( $class_name ) as $existing ) {
+				if ( $existing['name'] !== $old_field['name'] && $existing['type'] === $new_type_class_for_check::key() ) {
+					return new \WP_Error(
+						'gateway_field_max_one_per_model',
+						sprintf(
+							/* translators: 1: field type label, 2: existing field's own label */
+							__( 'This model already has a "%1$s" field ("%2$s") -- only one is allowed per model.', 'gateway' ),
+							$new_type_class_for_check::label(),
+							$existing['label']
+						),
+						array( 'status' => 409 )
+					);
+				}
+			}
+		}
+
 		// Unlike a relate field's relationship, a Choice_Field_Type field's
 		// own choices ARE freely editable in place -- there's no schema
 		// reason not to (they're never part of the migration at all, just
@@ -1736,6 +1870,14 @@ class Model_Fields {
 		$sanitized_settings = self::sanitize_settings( $new_field['type'], $settings );
 		$settings_changed   = $old_field['settings'] !== $sanitized_settings;
 
+		if ( $new_type_class_for_check && $new_type_class_for_check::supports_permalink_settings() ) {
+			$permalink_settings_result = self::validate_permalink_settings( $class_name, $old_field['name'], $sanitized_settings );
+
+			if ( is_wp_error( $permalink_settings_result ) ) {
+				return $permalink_settings_result;
+			}
+		}
+
 		$sanitized_cl     = self::sanitize_conditional_logic( $class_name, $current_name, $conditional_logic );
 		$cl_changed       = $old_field['conditional_logic'] !== $sanitized_cl;
 
@@ -1761,6 +1903,10 @@ class Model_Fields {
 		$up   = array();
 		$down = array();
 
+		$old_type_class      = Field_Type_Registry::get( $old_field['type'] );
+		$old_is_permalink    = $old_type_class && $old_type_class::supports_permalink_settings();
+		$new_is_permalink    = $new_type_class_for_check && $new_type_class_for_check::supports_permalink_settings();
+
 		// Reversing a combined rename + type change means undoing the
 		// *last* thing up() did first -- down() modifies the type while
 		// the column still has its new name, then renames it back.
@@ -1769,10 +1915,8 @@ class Model_Fields {
 		}
 
 		if ( $type_changed ) {
-			$new_type_class = Field_Type_Registry::get( $new_field['type'] );
-			$old_type_class = Field_Type_Registry::get( $old_field['type'] );
-			$new_method     = $new_type_class::blueprint_method();
-			$old_method     = $old_type_class::blueprint_method();
+			$new_method = $new_type_class_for_check::blueprint_method();
+			$old_method = $old_type_class::blueprint_method();
 
 			$up[]   = self::column_statement( $table, "\$table->{$new_method}( '{$new_field['name']}' )->nullable()->change();" );
 			$down[] = self::column_statement( $table, "\$table->{$old_method}( '{$new_field['name']}' )->nullable()->change();" );
@@ -1780,6 +1924,27 @@ class Model_Fields {
 
 		if ( $name_changed ) {
 			$down[] = self::column_statement( $table, "\$table->renameColumn( '{$new_field['name']}', '{$old_field['name']}' );" );
+		}
+
+		// The Permalink field's own companion "{name}__manual" column --
+		// see ensure_permalink_manual_column()'s own docblock for why it
+		// exists at all -- folded into this SAME migration rather than a
+		// separate one, so a rename/retype and its companion column's own
+		// upkeep either both succeed together or neither does. Three
+		// cases: still Permalink either side of a pure rename (rename the
+		// companion column alongside the field's own), retyped AWAY from
+		// Permalink (drop it -- it's meaningless for any other type), or
+		// retyped INTO Permalink (create it, exactly like add() does for
+		// a brand new one).
+		if ( $old_is_permalink && $new_is_permalink && $name_changed ) {
+			$up[]   = self::column_statement( $table, "\$table->renameColumn( '{$old_field['name']}__manual', '{$new_field['name']}__manual' );" );
+			$down[] = self::column_statement( $table, "\$table->renameColumn( '{$new_field['name']}__manual', '{$old_field['name']}__manual' );" );
+		} elseif ( $old_is_permalink && ! $new_is_permalink ) {
+			$up[]   = self::column_statement( $table, "\$table->dropColumn( '{$old_field['name']}__manual' );" );
+			$down[] = self::column_statement( $table, "\$table->boolean( '{$old_field['name']}__manual' )->default( false );" );
+		} elseif ( ! $old_is_permalink && $new_is_permalink ) {
+			$up[]   = self::column_statement( $table, "\$table->boolean( '{$new_field['name']}__manual' )->default( false );" );
+			$down[] = self::column_statement( $table, "\$table->dropColumn( '{$new_field['name']}__manual' );" );
 		}
 
 		$migration_result = self::generate_and_run_migration(
@@ -1909,8 +2074,22 @@ class Model_Fields {
 		// like its own pivot table, it deliberately doesn't (see that
 		// class's own remove()).
 		if ( '' !== $method && ! is_subclass_of( $type_class, Relationship_Field_Type::class ) ) {
-			$up_body   = self::column_statement( $table, "\$table->dropColumn( '{$field['name']}' );" );
-			$down_body = self::column_statement( $table, "\$table->{$method}( '{$field['name']}' )->nullable();" );
+			$up_statements   = array( "\$table->dropColumn( '{$field['name']}' );" );
+			$down_statements = array( "\$table->{$method}( '{$field['name']}' )->nullable();" );
+
+			// A Permalink field's own companion "{name}__manual" column
+			// is exclusively owned by this one field (never shared the
+			// way a relationship's own FK column can be -- see
+			// ensure_permalink_manual_column()'s own docblock), so it's
+			// always safe to drop unconditionally here, folded into the
+			// same migration as the field's own column.
+			if ( $type_class::supports_permalink_settings() ) {
+				$up_statements[]   = "\$table->dropColumn( '{$field['name']}__manual' );";
+				$down_statements[] = "\$table->boolean( '{$field['name']}__manual' )->default( false );";
+			}
+
+			$up_body   = self::column_statement( $table, implode( "\n\t\t\t", $up_statements ) );
+			$down_body = self::column_statement( $table, implode( "\n\t\t\t", $down_statements ) );
 
 			$migration_result = self::generate_and_run_migration( "Remove{$field['name']}From{$table}Table", $up_body, $down_body );
 
@@ -2114,6 +2293,56 @@ class Model_Fields {
 	}
 
 	/**
+	 * Creates a Permalink field's own companion boolean column
+	 * (`{field_name}__manual`) -- remembers, per RECORD, whether that
+	 * ONE record's own slug is currently tracking its configured
+	 * `source_field` (`false`) or has been deliberately overridden by
+	 * hand (`true`) -- see `Model_Fields::resolve_permalink_value()`'s
+	 * own docblock for the full Auto/Manual mechanics this column exists
+	 * to support. Structurally identical to `Model_Relationships::
+	 * ensure_foreign_key_column()` (idempotent, via the same
+	 * `generate_and_run_migration()` helper `add()`/`update()` already
+	 * use for the field's own column) -- but simpler: unlike a
+	 * relationship's own FK column, this one is never shared with
+	 * anything else, so there's no "is it still needed elsewhere" check
+	 * on the way out (see `remove()`'s own unconditional drop).
+	 *
+	 * Never exposed as its own row in the Field Editor's own fields
+	 * table -- it's part of ONE field's own backing storage (two real
+	 * columns instead of one), the same way a Relate to One field's own
+	 * FK column isn't a separate field either. A double-underscore
+	 * suffix can never collide with a real, user-typed field name:
+	 * `sanitize_name()` collapses any RUN of non-alphanumeric characters
+	 * (a literal `__` included) down to a single `_`, so no sanitized
+	 * field name can ever contain two consecutive underscores to begin
+	 * with -- this is a structural guarantee, not a separate check this
+	 * method (or `validate()`) needs to make.
+	 *
+	 * @param string $table      Table name.
+	 * @param string $field_name The Permalink field's own (sanitized) name.
+	 * @return true|\WP_Error
+	 */
+	private static function ensure_permalink_manual_column( $table, $field_name ) {
+		$schema      = \Illuminate\Database\Capsule\Manager::schema();
+		$column_name = "{$field_name}__manual";
+
+		if ( $schema->hasColumn( $table, $column_name ) ) {
+			return true;
+		}
+
+		$up_body   = self::column_statement( $table, "\$table->boolean( '{$column_name}' )->default( false );" );
+		$down_body = self::column_statement( $table, "\$table->dropColumn( '{$column_name}' );" );
+
+		$migration_result = self::generate_and_run_migration( "Add{$column_name}To{$table}Table", $up_body, $down_body );
+
+		if ( is_wp_error( $migration_result ) ) {
+			return $migration_result;
+		}
+
+		return true;
+	}
+
+	/**
 	 * @param string $migration_class Migration class name.
 	 * @param int    $version         Migration version number.
 	 * @param string $up_body         up() method body.
@@ -2299,6 +2528,97 @@ PHP;
 		}
 
 		return $relationship;
+	}
+
+	/**
+	 * Validates a Permalink field's own `source_field`/`root` settings --
+	 * the two checks `sanitize_settings()` itself can't make, since
+	 * neither is answerable from a raw settings array alone (both need
+	 * this MODEL's other fields, and `root` needs every OTHER model's
+	 * own configuration too). Called by `add()`/`update()` right after
+	 * `sanitize_settings()` produces `$sanitized_settings`, before
+	 * anything touches schema -- the same "fail fast, before migrating"
+	 * discipline `require_relationship_for_field()`/`require_choices_for_field()`
+	 * already follow for their own type-specific extra requirements.
+	 *
+	 * - `source_field`, if set, must name a real, DIFFERENT field on this
+	 *   same model whose own type is `is_text_renderable()` -- reusing
+	 *   that existing flag as the eligibility signal (a Password or
+	 *   Relate to One/Many field, or another Permalink field, was never
+	 *   a sensible thing to slugify). Left unset entirely, a Permalink
+	 *   field is manual-only -- not an error.
+	 * - `root`, if set, must not already be claimed by any OTHER model's
+	 *   own Permalink field -- two models racing for the same URL prefix
+	 *   would otherwise make `Permalink_Routes`' own rewrite rules
+	 *   ambiguous. A full scan over every registered model, the same
+	 *   "small enough that a full scan costs nothing that matters, no
+	 *   reverse index needed" reasoning `Model_Relationships::
+	 *   all_relationships_everywhere()` already accepts for its own
+	 *   cross-cutting check.
+	 *
+	 * @param string      $class_name         Model class name.
+	 * @param string|null $exclude_field_name This field's own current
+	 *                                          name (so `source_field`
+	 *                                          can't reference the field
+	 *                                          it belongs to) -- `null`
+	 *                                          for `add()`, where the
+	 *                                          field doesn't exist in
+	 *                                          `self::all()`'s own
+	 *                                          results yet regardless.
+	 * @param array       $sanitized_settings `sanitize_settings()`'s own
+	 *                                          output.
+	 * @return true|\WP_Error
+	 */
+	private static function validate_permalink_settings( $class_name, $exclude_field_name, array $sanitized_settings ) {
+		$source_field = $sanitized_settings['source_field'] ?? '';
+
+		if ( '' !== $source_field ) {
+			$sibling = null;
+
+			foreach ( self::all( $class_name ) as $candidate ) {
+				if ( $candidate['name'] === $source_field && $candidate['name'] !== $exclude_field_name ) {
+					$sibling = $candidate;
+					break;
+				}
+			}
+
+			$sibling_type_class = $sibling ? Field_Type_Registry::get( $sibling['type'] ) : null;
+
+			if ( ! $sibling || ! $sibling_type_class || ! $sibling_type_class::is_text_renderable() ) {
+				return new \WP_Error(
+					'gateway_permalink_source_field_invalid',
+					__( 'Source Field must be a different, plain-text-renderable field on this same model.', 'gateway' ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+
+		$root = $sanitized_settings['root'] ?? '';
+
+		if ( '' !== $root ) {
+			foreach ( Model_Registry::all() as $other_class ) {
+				if ( $other_class === $class_name ) {
+					continue;
+				}
+
+				$other_permalink = self::permalink_field_for( $other_class );
+
+				if ( $other_permalink && ( $other_permalink['settings']['root'] ?? '' ) === $root ) {
+					return new \WP_Error(
+						'gateway_permalink_root_taken',
+						sprintf(
+							/* translators: 1: URL root, 2: model class name already using it */
+							__( 'The root "%1$s" is already used by "%2$s" -- pick a different one.', 'gateway' ),
+							$root,
+							$other_class
+						),
+						array( 'status' => 409 )
+					);
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/**

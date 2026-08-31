@@ -163,7 +163,27 @@ class Field_Type_Registry extends Registry {
 	 * see that interface method's own docblock for why) -- `true` only
 	 * for `User_Field_Type` today.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool}>
+	 * `supports_permalink_settings` (`Field_Type::supports_permalink_settings()`)
+	 * gates `source_field`/`root`/`template_page_id`, all General --
+	 * `true` only for `Permalink_Field_Type` today. `max_one_per_model`
+	 * (`Field_Type::max_one_per_model()`) is a separate, narrower flag --
+	 * also `true` only for `Permalink_Field_Type` today, but independent
+	 * of the settings bundle above (a future type could in principle
+	 * need one without the other) -- what `FieldEditor.jsx`'s own Type
+	 * picker reads to grey out an already-configured one-per-model type,
+	 * the client-side echo of the same check `Model_Fields::add()`/
+	 * `update()` already enforce server-side.
+	 *
+	 * `is_text_renderable` (`Field_Type::is_text_renderable()`) is ALSO
+	 * exposed here, unlike the rest of this method's own history of only
+	 * ever exposing `supports_*`/relationship/choice flags -- needed by
+	 * `FieldEditor.jsx`'s own Source Field select (a Permalink field's
+	 * own `source_field` setting), which must only ever offer a sibling
+	 * field whose type is text-renderable, the exact same eligibility
+	 * `Model_Fields::validate_permalink_settings()` enforces server-side
+	 * (see that method's own docblock).
+	 *
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,max_one_per_model:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -176,22 +196,25 @@ class Field_Type_Registry extends Registry {
 			$has_choices = is_subclass_of( $class, Choice_Field_Type::class );
 
 			$described[] = array(
-				'key'                      => $class::key(),
-				'label'                    => $class::label(),
-				'category'                 => $class::category(),
-				'input_type'               => $class::input_type(),
-				'is_sensitive'             => $class::is_sensitive(),
-				'relationship_type'        => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
-				'has_choices'              => $has_choices,
-				'is_multiple'              => $has_choices ? $class::is_multiple() : null,
-				'presentation_fields'      => $class::presentation_fields(),
-				'supports_default_value'   => $class::supports_default_value(),
-				'supports_character_limit' => $class::supports_character_limit(),
-				'supports_range_limits'    => $class::supports_range_limits(),
-				'supports_media_settings'  => $class::supports_media_settings(),
-				'supports_file_settings'   => $class::supports_file_settings(),
-				'supports_embed_settings'  => $class::supports_embed_settings(),
-				'supports_user_settings'   => $class::supports_user_settings(),
+				'key'                         => $class::key(),
+				'label'                       => $class::label(),
+				'category'                    => $class::category(),
+				'input_type'                  => $class::input_type(),
+				'is_sensitive'                => $class::is_sensitive(),
+				'is_text_renderable'          => $class::is_text_renderable(),
+				'relationship_type'           => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
+				'has_choices'                 => $has_choices,
+				'is_multiple'                 => $has_choices ? $class::is_multiple() : null,
+				'presentation_fields'         => $class::presentation_fields(),
+				'supports_default_value'      => $class::supports_default_value(),
+				'supports_character_limit'    => $class::supports_character_limit(),
+				'supports_range_limits'       => $class::supports_range_limits(),
+				'supports_media_settings'     => $class::supports_media_settings(),
+				'supports_file_settings'      => $class::supports_file_settings(),
+				'supports_embed_settings'     => $class::supports_embed_settings(),
+				'supports_user_settings'      => $class::supports_user_settings(),
+				'supports_permalink_settings' => $class::supports_permalink_settings(),
+				'max_one_per_model'           => $class::max_one_per_model(),
 			);
 		}
 

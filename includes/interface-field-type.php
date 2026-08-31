@@ -513,4 +513,74 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_user_settings();
+
+	/**
+	 * Whether a field of this type has its own bundle of permalink-specific
+	 * settings -- `true` only for `Permalink_Field_Type` today. Gates
+	 * `source_field`/`root`/`template_page_id` (all General-tab concerns --
+	 * there's no Validation-tab bundle here at all, unlike
+	 * `supports_media_settings()`/`supports_file_settings()`, since a
+	 * slug's own uniqueness is enforced unconditionally by
+	 * `Model_Fields::resolve_permalink_value()`, not something a site
+	 * owner opts into via a Validation-tab setting):
+	 *
+	 * - `source_field` -- the name of ANOTHER field on the SAME model
+	 *   whose value this field auto-slugifies from (e.g. tracking
+	 *   "title"). Must name a real sibling field whose own type is
+	 *   `is_text_renderable()` (reusing that existing flag as the
+	 *   eligibility signal -- a Password or Relate to One/Many field, or
+	 *   another Permalink field, was never a sensible thing to slugify),
+	 *   enforced by `Model_Fields::validate_permalink_settings()`
+	 *   (`FieldEditor.jsx`'s own Source Field `<select>` only ever offers
+	 *   an eligible field to begin with, but this is what actually
+	 *   enforces it against a hand-crafted request). Optional -- a
+	 *   Permalink field with no `source_field` is manual-only, a plain
+	 *   unique-slug input with no auto-slugify behavior at all.
+	 * - `root` -- the URL path prefix every one of this model's own
+	 *   records lives under, e.g. `"tickets"` for `/tickets/ticket-one`.
+	 *   Run through `sanitize_title()` (not just `sanitize_text_field()`),
+	 *   and rejected if any OTHER model's own Permalink field already
+	 *   claims it (`Model_Fields::validate_permalink_settings()` again --
+	 *   two models racing for the same `root` would otherwise make
+	 *   `Permalink_Routes`' own rewrite rules ambiguous).
+	 * - `template_page_id` -- the id of the WordPress Page a site owner
+	 *   has built (with Gateway's own blocks, `gateway/single-record`
+	 *   chief among them) to serve as this model's single-record
+	 *   template. `Permalink_Routes::register_rules()` only ever
+	 *   registers a rewrite rule for a model once BOTH `root` and this
+	 *   are set -- a `root` alone, with no template page chosen yet,
+	 *   simply doesn't route yet, a deliberate, explainable phase-1 gap
+	 *   rather than a bare built-in fallback template.
+	 *
+	 * Unlike every other `supports_*_settings()` flag above, this one's
+	 * own field type ALSO sets `max_one_per_model()` -- see that
+	 * method's own docblock for why a model only ever has at most one of
+	 * these to configure in the first place.
+	 *
+	 * @return bool
+	 */
+	public static function supports_permalink_settings();
+
+	/**
+	 * Whether a model can ever have more than one field of this type at
+	 * once -- `true` only for `Permalink_Field_Type` today, per the
+	 * user's own explicit request: a model's own single-record URL
+	 * (`root` + one field's own slug) is one fact about that model, not
+	 * something that makes sense to configure twice. A field type
+	 * declares this about *itself*, the same "declare it about yourself"
+	 * reasoning `is_filterable()`/`is_text_renderable()` already use,
+	 * rather than `Model_Fields::add()`/`update()` hardcoding a specific
+	 * type key (`'permalink' === $type`) that every future type with the
+	 * same constraint would need its own copy of.
+	 *
+	 * Enforced by `Model_Fields::add()` (a second field of a
+	 * `max_one_per_model()` type on the same model is rejected outright)
+	 * and `update()` (excludes the field currently being edited from that
+	 * same check, so re-saving it doesn't trip over itself, but still
+	 * blocks retyping a DIFFERENT field into one when the model already
+	 * has one). `false` for every other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function max_one_per_model();
 }

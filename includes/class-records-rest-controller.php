@@ -281,7 +281,18 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$raw_body = (array) $request->get_json_params();
+		$data     = Model_Fields::sanitize_record_data( $class, $raw_body );
+
+		// Computed before every other validate_*() call, same reasoning
+		// as those -- a freshly-computed slug (or a rejected Manual-mode
+		// collision) needs to already be settled before
+		// validate_required_fields() etc. ever look at $data.
+		$permalink_result = self::resolve_permalink_value( $class, $data, $raw_body );
+
+		if ( is_wp_error( $permalink_result ) ) {
+			return $permalink_result;
+		}
 
 		// Checked BEFORE extract_relate_many_data() strips a Relate to
 		// Many field's own value back out of $data -- see
@@ -316,6 +327,7 @@ class Records_REST_Controller {
 		try {
 			$record = $class::create( $data );
 			self::sync_relate_many( $record, $relate_many );
+			self::set_permalink_manual_flag( $record, $class, $permalink_result['manual'] );
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_record_create_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -364,7 +376,21 @@ class Records_REST_Controller {
 			return self::unavailable_error();
 		}
 
-		$data = Model_Fields::sanitize_record_data( $class, (array) $request->get_json_params() );
+		$raw_body = (array) $request->get_json_params();
+		$data     = Model_Fields::sanitize_record_data( $class, $raw_body );
+
+		// Same "before every other validate_*() call" reasoning as
+		// create_record()'s own identical call -- $record is passed
+		// through so Auto mode can read the source field's own EXISTING
+		// value when this request doesn't touch it, Manual mode's own
+		// collision check can exclude this record's own id, and an
+		// omitted {name}__manual key preserves whatever mode the record
+		// is already in.
+		$permalink_result = self::resolve_permalink_value( $class, $data, $raw_body, $record );
+
+		if ( is_wp_error( $permalink_result ) ) {
+			return $permalink_result;
+		}
 
 		// What this record will actually look like once $data's own
 		// changes are applied -- the record's own current attributes,
@@ -411,6 +437,7 @@ class Records_REST_Controller {
 		try {
 			$record->update( $data );
 			self::sync_relate_many( $record, $relate_many );
+			self::set_permalink_manual_flag( $record, $class, $permalink_result['manual'] );
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_record_update_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -579,6 +606,180 @@ class Records_REST_Controller {
 	}
 
 	/**
+	 * Computes this model's own Permalink field's real, unique slug value
+	 * for one create()/update() call, and reports which mode (Auto/
+	 * Manual) that computation ran in -- called right after
+	 * `Model_Fields::sanitize_record_data()`, before any of the other
+	 * `validate_*()` checks, so a freshly-computed slug is already
+	 * present in `$data` by the time those run (in particular,
+	 * `validate_required_fields()` sees a genuinely missing key, not a
+	 * stale/blank one, when nothing could be resolved).
+	 *
+	 * A no-op (`{manual: false}`) if this model has no Permalink field at
+	 * all -- `$data` is left completely untouched either way.
+	 *
+	 * **Mode resolution**: the request's own `{name}__manual` key wins if
+	 * present (a real, explicit choice this save is making); otherwise
+	 * an UPDATE preserves whatever mode the record is already in (its
+	 * own current `{name}__manual` column), and a CREATE defaults to
+	 * Auto. This is what makes an update that never touches the
+	 * Permalink field at all (most updates, most of the time) leave its
+	 * mode -- and therefore its slug -- exactly as it already was.
+	 *
+	 * **Manual mode**: whatever `$data` currently holds for this field is
+	 * taken as the site owner's own literal intent -- `sanitize_title()`'d
+	 * for URL-safety only, never silently rewritten further. A real
+	 * collision against another record of the same model is rejected
+	 * outright (`WP_Error`, 409) rather than mutated -- the site owner
+	 * typed this on purpose. Nothing submitted (the key absent, or blank
+	 * after trimming) leaves `$data` with no key for this field at all --
+	 * on create, `validate_required_fields()` reports the normal "missing
+	 * required field" if it's required; on update, the record's own
+	 * existing value is simply left alone.
+	 *
+	 * **Auto mode**: slugified from the field's own configured
+	 * `source_field` -- read from `$data` if THIS request touches it,
+	 * else from the record's own current value on an update. Made unique
+	 * by appending `-2`, `-3`, ... against a real collision check
+	 * (mirrors WordPress core's own `wp_unique_post_slug()`), excluding
+	 * this same record on an update so re-saving with an unchanged
+	 * source value never needlessly appends a suffix to itself. No
+	 * `source_field` configured, or nothing to slugify from yet (a brand
+	 * new record whose source field is also blank this same request),
+	 * behaves exactly like Manual mode's own "nothing submitted" case --
+	 * left unset, never a fabricated empty slug.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $data       `Model_Fields::sanitize_record_data()`'s
+	 *                             own output, modified in place.
+	 * @param array  $raw_body   The request's own full, raw JSON body --
+	 *                             needed for `{name}__manual`, which
+	 *                             `sanitize_record_data()` never carries
+	 *                             through (it isn't a real field).
+	 * @param \Illuminate\Database\Eloquent\Model|null $record The
+	 *                             existing record being updated, or
+	 *                             `null` on create.
+	 * @return array{manual:bool}|\WP_Error
+	 */
+	private static function resolve_permalink_value( $class_name, array &$data, array $raw_body, $record = null ) {
+		$field = Model_Fields::permalink_field_for( $class_name );
+
+		if ( ! $field ) {
+			return array( 'manual' => false );
+		}
+
+		$name       = $field['name'];
+		$manual_key = "{$name}__manual";
+
+		if ( array_key_exists( $manual_key, $raw_body ) ) {
+			$manual = filter_var( $raw_body[ $manual_key ], FILTER_VALIDATE_BOOLEAN );
+		} elseif ( $record ) {
+			$manual = (bool) $record->getAttribute( $manual_key );
+		} else {
+			$manual = false;
+		}
+
+		if ( $manual ) {
+			if ( ! array_key_exists( $name, $data ) || '' === trim( (string) $data[ $name ] ) ) {
+				unset( $data[ $name ] );
+				return array( 'manual' => true );
+			}
+
+			$slug = sanitize_title( trim( (string) $data[ $name ] ) );
+
+			if ( self::permalink_slug_exists( $class_name, $name, $slug, $record ) ) {
+				return new \WP_Error(
+					'gateway_permalink_slug_taken',
+					__( 'This permalink is already in use -- choose a different one.', 'gateway' ),
+					array( 'status' => 409 )
+				);
+			}
+
+			$data[ $name ] = $slug;
+
+			return array( 'manual' => true );
+		}
+
+		$source_field = $field['settings']['source_field'] ?? '';
+		$source_value = null;
+
+		if ( '' !== $source_field ) {
+			if ( array_key_exists( $source_field, $data ) ) {
+				$source_value = $data[ $source_field ];
+			} elseif ( $record ) {
+				$source_value = $record->getAttribute( $source_field );
+			}
+		}
+
+		if ( null === $source_value || '' === trim( (string) $source_value ) ) {
+			unset( $data[ $name ] );
+
+			return array( 'manual' => false );
+		}
+
+		$base_slug = sanitize_title( trim( (string) $source_value ) );
+		$slug      = $base_slug;
+		$suffix    = 2;
+
+		while ( self::permalink_slug_exists( $class_name, $name, $slug, $record ) ) {
+			$slug = "{$base_slug}-{$suffix}";
+			++$suffix;
+		}
+
+		$data[ $name ] = $slug;
+
+		return array( 'manual' => false );
+	}
+
+	/**
+	 * @param string                                     $class_name Model class name.
+	 * @param string                                     $field_name Permalink field's own column name.
+	 * @param string                                     $slug       Candidate slug value.
+	 * @param \Illuminate\Database\Eloquent\Model|null $exclude    The record currently being updated (excluded from
+	 *                                                                the collision check by its own id) -- `null` on create,
+	 *                                                                where every existing record is a real potential collision.
+	 * @return bool
+	 */
+	private static function permalink_slug_exists( $class_name, $field_name, $slug, $exclude = null ) {
+		$query = $class_name::where( $field_name, $slug );
+
+		if ( $exclude ) {
+			$query->where( 'id', '!=', $exclude->id );
+		}
+
+		return $query->exists();
+	}
+
+	/**
+	 * Records which mode (Auto/Manual) a just-saved record's own
+	 * Permalink field ended up in -- `resolve_permalink_value()`'s own
+	 * companion write, called once the record itself has actually been
+	 * created/updated successfully. Writes directly via `setAttribute()`
+	 * + `save()`, deliberately bypassing mass assignment (`fill()`/the
+	 * `create()`/`update()` call that just ran) entirely -- `{name}__manual`
+	 * is Gateway-internal bookkeeping, never a real, user-fillable field,
+	 * so it's never added to the generated model's own `$fillable` at
+	 * all (see `Model_Builder`'s own docblock for that list); this is
+	 * what keeps this whole feature from needing any change there.
+	 *
+	 * A no-op if this model has no Permalink field.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Model $record     The just-saved record.
+	 * @param string                                $class_name Model class name.
+	 * @param bool                                  $manual     `resolve_permalink_value()`'s own returned mode.
+	 */
+	private static function set_permalink_manual_flag( \Illuminate\Database\Eloquent\Model $record, $class_name, $manual ) {
+		$field = Model_Fields::permalink_field_for( $class_name );
+
+		if ( ! $field ) {
+			return;
+		}
+
+		$record->setAttribute( "{$field['name']}__manual", (bool) $manual );
+		$record->save();
+	}
+
+	/**
 	 * The one field resolve_display_field() (and therefore search_records()/
 	 * enrich_records()) call would consider showing a related record's
 	 * *label* as, if this model has one at all: the first field whose own
@@ -724,12 +925,17 @@ class Records_REST_Controller {
 			}
 		}
 
+		// At most one -- Field_Type::max_one_per_model() is what
+		// Model_Fields::add()/update() enforce that with -- so this is a
+		// single field, not another array like the others above.
+		$permalink_field = Model_Fields::permalink_field_for( $class_name );
+
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
 		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $permalink_field ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -744,6 +950,7 @@ class Records_REST_Controller {
 					self::enrich_image_fields( $array, $image_fields );
 					self::enrich_file_fields( $array, $file_fields );
 					self::enrich_user_fields( $array, $user_fields );
+					self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 					return $array;
 				}
@@ -767,7 +974,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -811,10 +1018,38 @@ class Records_REST_Controller {
 				self::enrich_image_fields( $array, $image_fields );
 				self::enrich_file_fields( $array, $file_fields );
 				self::enrich_user_fields( $array, $user_fields );
+				self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 				return $array;
 			}
 		)->values()->all();
+	}
+
+	/**
+	 * Normalizes a Permalink field's own companion `{name}__manual`
+	 * column to a real bool in the REST response -- unlike
+	 * `enrich_image_fields()`/`enrich_file_fields()`/`enrich_user_fields()`,
+	 * there's no shape to RESOLVE here (Eloquent's own `toArray()`
+	 * already includes the raw column -- it's a real DB column, and
+	 * `getFillable()` only restricts WRITES, not reads -- so this is
+	 * purely a type-normalization pass), and a no-op entirely if this
+	 * model has no Permalink field at all.
+	 *
+	 * @param array $array           A record's own toArray(), modified in place.
+	 * @param array|null $permalink_field This model's own Permalink field
+	 *                             (`Model_Fields::permalink_field_for()`'s
+	 *                             own return value), or `null`.
+	 */
+	private static function normalize_permalink_manual_flag( array &$array, $permalink_field ) {
+		if ( ! $permalink_field ) {
+			return;
+		}
+
+		$manual_key = "{$permalink_field['name']}__manual";
+
+		if ( array_key_exists( $manual_key, $array ) ) {
+			$array[ $manual_key ] = (bool) $array[ $manual_key ];
+		}
 	}
 
 	/**

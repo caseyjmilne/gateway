@@ -5486,6 +5486,121 @@ for a person), or a named `User #<id>` placeholder for a bare id
 same "no extra per-row fetch this list view has no reason to make"
 reasoning Image's own bare-id branch already gives.
 
+### Permalink fields (`Permalink_Field_Type`) -- one record, one URL, built toward single-page support
+
+A Permalink field is a model's own URL slug -- the "ticket-one" in
+`/tickets/ticket-one` -- stored as a plain string column, same as a Text
+field's own. **A model can only ever have one** (a new
+`Field_Type::max_one_per_model()` flag, `true` only for this type,
+`false` rolled out to every other built-in one, the same "a type
+declares this about itself" pattern `is_filterable()`/
+`is_text_renderable()` already use) -- enforced by `Model_Fields::add()`/
+`update()` rejecting a second one outright, which is also what makes
+"which field is the permalink field for model Ticket" a trivial, single
+-answer question: **`Model_Fields::permalink_field_for( $class_name )`**
+scans a model's own fields for the (at most one) match and returns it,
+or `null`. Every later consumer -- record save, the admin app, and
+eventually routing/rendering -- calls this one method rather than
+re-deriving the same filter.
+
+**`supports_permalink_settings()`** (new `Field_Type` bundle flag, same
+shape as `supports_media_settings()`/`supports_user_settings()`) gates
+three General-tab settings, all living in the field's own
+`gateway_fields.settings` JSON -- no new table, no new REST route:
+- `source_field` -- the name of another field on the SAME model this
+  one auto-slugifies from (e.g. tracking "title"). Optional -- left
+  unset, a Permalink field is manual-only. Validated (`Model_Fields::
+  validate_permalink_settings()`, called from `add()`/`update()` right
+  after `sanitize_settings()`, before anything touches schema) against
+  the model's OTHER fields, requiring the target's own type to be
+  `is_text_renderable()` -- reusing that existing flag as the
+  eligibility signal rather than inventing a new one; a Password or
+  Relate to One/Many field (or another Permalink field) was never a
+  sensible thing to slugify.
+- `root` -- the URL path prefix every one of this model's own records
+  will live under (e.g. `"tickets"`), run through `sanitize_title()`
+  (not just `sanitize_text_field()`) and checked against every OTHER
+  model's own Permalink field (`validate_permalink_settings()` again --
+  a small full scan over `Model_Registry::all()`, the same "small
+  enough that scanning costs nothing, no reverse index needed"
+  reasoning `Model_Relationships::all_relationships_everywhere()`
+  already accepts) so two models can never silently claim the same
+  root.
+- `template_page_id` -- reserved for the routing/rendering work this
+  field type is the first half of (see this section's own closing
+  paragraph) -- a positive whole number or dropped, the same treatment
+  `character_limit` already gets.
+
+**The trickiest part: remembering, per RECORD, whether that one
+record's own slug is currently tracking `source_field` (Auto) or has
+been deliberately typed by hand (Manual)** -- a real, sticky, per-record
+toggle, not something inferred from whether the stored value merely
+happens to still match what auto-slugifying would currently produce
+(that would have a real, if narrow, false-positive: a manual value that
+*coincidentally* matches the current auto-slug would silently start
+tracking again the next time the source field changed). Solved with an
+explicit companion boolean column, **`{field_name}__manual`**,
+auto-managed by `Model_Fields` -- created alongside the field's own
+column in `add()`, renamed alongside it in `update()` (folded into the
+very same rename migration, not a second one), dropped the moment the
+field is retyped away from Permalink or removed entirely
+(`ensure_permalink_manual_column()`, structurally identical to
+`Model_Relationships::ensure_foreign_key_column()`'s own idempotent,
+migration-backed approach, just simpler: this column is never shared
+with anything else the way a relationship's FK column can be, so there's
+no "is it still needed elsewhere" check on the way out). Never exposed
+as its own Field Editor row -- it's part of ONE field's own backing
+storage, two real columns instead of one, the same relationship a
+Relate to One field's own FK column already has to its own row. A
+double-underscore suffix can never collide with a real, user-typed
+field name: `Model_Fields::sanitize_name()` already collapses any RUN of
+non-alphanumeric characters (a literal `__` included) down to a single
+`_`, so no sanitized field name can ever contain two consecutive
+underscores to begin with -- a structural guarantee, not a separate
+check this needed to add.
+
+**`Records_REST_Controller::resolve_permalink_value( $class_name, &$data, $raw_body, $record = null )`**
+is where the actual slug gets computed, called by `create_record()`/
+`update_record()` right after `Model_Fields::sanitize_record_data()`,
+before any of the other `validate_*()` calls (so a freshly-computed slug
+-- or a rejected collision -- is already settled by the time those look
+at `$data`). Mode resolution: the request's own `{name}__manual` key
+wins if present; otherwise an UPDATE preserves whatever mode the record
+is already in (reading its own current `{name}__manual` column), and a
+CREATE defaults to Auto. **Manual** mode takes whatever's submitted for
+the field as the site owner's own literal intent -- `sanitize_title()`'d
+for URL-safety only, never further rewritten -- and rejects a real
+collision against another record outright (`WP_Error`, 409) rather than
+silently mutating it. **Auto** mode slugifies the current `source_field`
+value (from the request if touched, else the record's own existing
+value on an update) and appends `-2`, `-3`, ... on collision, excluding
+the record itself on an update (mirrors WordPress core's own
+`wp_unique_post_slug()`) -- so re-saving with an unchanged title never
+needlessly suffixes itself. No `source_field` configured, or nothing yet
+to slugify from, behaves like Manual mode's own "nothing submitted"
+case: the key is left out of `$data` entirely, never a fabricated empty
+slug -- on create, `validate_required_fields()` reports the ordinary
+"missing required field" if it's marked Required; on update, the
+record's existing value is simply left alone.
+**`Records_REST_Controller::set_permalink_manual_flag()`** records which
+mode a just-saved record ended up in, called once the create/update
+itself has actually succeeded -- via `setAttribute()` + `save()`,
+deliberately bypassing mass assignment entirely, since `{name}__manual`
+is Gateway-internal bookkeeping, never a real, user-fillable field. This
+is what keeps the whole feature from needing any change to
+`Model_Builder`'s generated model template (`$fillable`/`$casts`) at
+all.
+
+This is backend/data-layer work, deliberately shipped ahead of the admin
+UI (a "Permalinks" tab beside Relationships) and the WordPress routing/
+rendering layer (a rewrite rule per configured model, resolving through
+a site-owner-authored template page built from Gateway's own blocks) --
+both real, planned follow-on work, not yet built. `Permalink_Field_Type`
+and everything above it are already fully functional and covered by a
+standalone smoke test today; a site owner just has no admin-app surface
+yet to configure `source_field`/`root` through, or a live URL to visit
+once they do.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for
