@@ -258,7 +258,12 @@ class Column_Registry {
 			$facet_type = array();
 
 			if ( $is_filterable ) {
-				$facet_type = 'textarea' === $field['type']
+				// A Permalink field's own value is unique per record by
+				// construction (Records_REST_Controller::resolve_permalink_value()
+				// enforces that unconditionally) -- a Select/Checkboxes
+				// facet listing every distinct slug would be exactly as
+				// unusable as it already is for TextArea/post content.
+				$facet_type = in_array( $field['type'], array( 'textarea', 'permalink' ), true )
 					? array( 'input' )
 					: array( 'input', 'select', 'checkboxes' );
 			}

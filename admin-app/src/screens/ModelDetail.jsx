@@ -3,22 +3,24 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
+import PermalinkEditor from '../components/PermalinkEditor.jsx';
 
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
  * run), lets its Title and Plural Title be changed, and hosts its own
- * Fields/Relationships editors, all three behind one text-based tab strip:
- * **General** (Title/Plural Title/Table/Migration/Status), **Fields**
- * (`FieldEditor`), **Relationships** (`RelationshipEditor`). The same
- * `.gateway-subtab`/`.gateway-subtab-active` classes `FieldEditor`'s own
- * inner General/Validation/Presentation/Conditional Logic tabs already
- * use, not a second, visually-different tab style of this page's own --
- * before this, General's own content (Title/Plural Title/Table/Migration/
- * Status) sat permanently visible above a SEPARATE, differently-styled
- * `nav-tab`/`nav-tab-active` (WordPress core's own boxed look) strip for
- * just Fields/Relationships; now every section is a tab, all three
- * sharing one consistent look.
+ * Fields/Relationships/Permalinks editors, all four behind one text-based
+ * tab strip: **General** (Title/Plural Title/Table/Migration/Status),
+ * **Fields** (`FieldEditor`), **Relationships** (`RelationshipEditor`),
+ * **Permalinks** (`PermalinkEditor`). The same `.gateway-subtab`/
+ * `.gateway-subtab-active` classes `FieldEditor`'s own inner General/
+ * Validation/Presentation/Conditional Logic tabs already use, not a
+ * second, visually-different tab style of this page's own -- before this,
+ * General's own content (Title/Plural Title/Table/Migration/Status) sat
+ * permanently visible above a SEPARATE, differently-styled `nav-tab`/
+ * `nav-tab-active` (WordPress core's own boxed look) strip for just
+ * Fields/Relationships; now every section is a tab, all four sharing one
+ * consistent look.
  *
  * Title alone drives naming (the class and table names) -- see
  * Model_Builder's own docblock. Plural Title is just a stored display
@@ -64,14 +66,25 @@ export default function ModelDetail() {
 	// window entirely.
 	const [ relationships, setRelationships ] = useState( [] );
 
-	// Which of General/Fields/Relationships is showing -- General's own
-	// Title/Plural Title form, FieldEditor, and RelationshipEditor all stay
-	// mounted the whole time (see the `hidden` attribute below, not
-	// conditional rendering), so switching tabs never loses an in-progress
-	// edit in any of the other two, and none of them ever needs to re-fetch
-	// (or, for General, re-type) on switching back. Defaults to 'general' --
-	// the same section that used to just be the top of the page, unconditionally
-	// visible, before every section here became a tab.
+	// Same reasoning, same shape, for `fields` -- PermalinkEditor's own
+	// Source Field eligibility list (which of this model's OTHER fields are
+	// is_text_renderable()) needs FieldEditor's live, up-to-the-moment
+	// fields, not a copy fetched once on this page's own initial load. This
+	// used to be FieldEditor's own local state, seeded once from an
+	// `initialFields` prop and never shared -- lifted here the moment
+	// PermalinkEditor needed the same live view RelationshipEditor already
+	// had.
+	const [ fields, setFields ] = useState( [] );
+
+	// Which of General/Fields/Relationships/Permalinks is showing --
+	// General's own Title/Plural Title form, FieldEditor, RelationshipEditor,
+	// and PermalinkEditor all stay mounted the whole time (see the `hidden`
+	// attribute below, not conditional rendering), so switching tabs never
+	// loses an in-progress edit in any of the other three, and none of them
+	// ever needs to re-fetch (or, for General, re-type) on switching back.
+	// Defaults to 'general' -- the same section that used to just be the
+	// top of the page, unconditionally visible, before every section here
+	// became a tab.
 	const [ activeTab, setActiveTab ] = useState( 'general' );
 
 	useEffect( () => {
@@ -92,6 +105,7 @@ export default function ModelDetail() {
 				setTitle( data.class );
 				setPluralTitle( data.plural_title || '' );
 				setRelationships( data.relationships || [] );
+				setFields( data.fields || [] );
 			} )
 			.catch( ( error ) => {
 				if ( ! cancelled ) {
@@ -236,6 +250,18 @@ export default function ModelDetail() {
 						>
 							Relationships
 						</button>
+						<button
+							type="button"
+							className={
+								'gateway-subtab' +
+								( 'permalinks' === activeTab
+									? ' gateway-subtab-active'
+									: '' )
+							}
+							onClick={ () => setActiveTab( 'permalinks' ) }
+						>
+							Permalinks
+						</button>
 					</div>
 
 					<div hidden={ 'general' !== activeTab }>
@@ -376,7 +402,8 @@ export default function ModelDetail() {
 						<FieldEditor
 							key={ model.class }
 							modelClass={ model.class }
-							initialFields={ model.fields }
+							fields={ fields }
+							onFieldsChange={ setFields }
 							relationships={ relationships }
 						/>
 					</div>
@@ -387,6 +414,15 @@ export default function ModelDetail() {
 							modelClass={ model.class }
 							relationships={ relationships }
 							onRelationshipsChange={ setRelationships }
+						/>
+					</div>
+
+					<div hidden={ 'permalinks' !== activeTab }>
+						<PermalinkEditor
+							key={ model.class }
+							modelClass={ model.class }
+							fields={ fields }
+							onFieldsChange={ setFields }
 						/>
 					</div>
 				</>

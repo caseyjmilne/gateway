@@ -246,7 +246,23 @@ const normalizeSettings = ( settings ) =>
  * field as Image/File, just narrowed to two options (User Array/User
  * ID, never a "User URL" -- see `Field_Type::supports_user_settings()`'s
  * own docblock for why) feeding `Records_REST_Controller::resolve_user_value()`
- * instead; plus -- further below,
+ * instead; Permalink's own General tab (`supports_permalink_settings`) is
+ * a sixth shape again -- also no Default Value, but a **Source Field**
+ * `<select>` (`settings.source_field`) built from this model's OTHER
+ * fields, filtered client-side to `is_text_renderable` -- the exact
+ * eligibility `Model_Fields::validate_permalink_settings()` enforces
+ * server-side, mirrored here so an ineligible field is never even offered
+ * -- plus a plain note pointing at the separate **Permalinks** tab
+ * (`PermalinkEditor.jsx`, on `ModelDetail`) for the URL root and template
+ * page, which aren't per-field settings at all (Root is validated for
+ * cross-model uniqueness, so it belongs with the rest of that
+ * model-level configuration, not buried in one field's own panel). The
+ * Type picker (`TypeSelect.jsx`) also greys out "Permalink" once this
+ * model already has one on some OTHER field (`disabledTypeKeys`, computed
+ * from `Field_Type::max_one_per_model()` -- see that component's own
+ * docblock) -- a client-side nicety on top of the same rejection
+ * `Model_Fields::add()`/`update()` already enforce server-side; plus --
+ * further below,
  * never a tab of its own -- a ChoicesEditor for the field's own
  * orderable choice list, Gateway\\Model_Field_Choices on the server,
  * shown only when the picked type's own `has_choices` is true),
@@ -358,11 +374,11 @@ const normalizeSettings = ( settings ) =>
  * "immutable once created" rule for choices the way there is for a
  * relate field's own relationship (above).
  */
-export default function FieldEditor( { modelClass, initialFields, relationships = [] } ) {
+export default function FieldEditor( { modelClass, fields, onFieldsChange, relationships = [] } ) {
 	const fieldTypes = useFieldTypes();
 	const relationshipTypes = useRelationshipTypes();
 	const imageSizes = useImageSizes();
-	const [ fields, setFields ] = useState( initialFields || [] );
+	const setFields = onFieldsChange;
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
 
@@ -485,6 +501,15 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const supportsUserSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_user_settings );
 
+	const supportsPermalinkSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_permalink_settings );
+
+	const isTextRenderableFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
+
+	const maxOnePerModelFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.max_one_per_model );
+
 	const editRelationshipType = relationshipTypeFor( editType );
 	const editHasChoices = hasChoicesFor( editType );
 	const editPresentationFields = presentationFieldsFor( editType );
@@ -495,6 +520,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const editSupportsFileSettings = supportsFileSettingsFor( editType );
 	const editSupportsEmbedSettings = supportsEmbedSettingsFor( editType );
 	const editSupportsUserSettings = supportsUserSettingsFor( editType );
+	const editSupportsPermalinkSettings = supportsPermalinkSettingsFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -524,6 +550,37 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 		.filter( ( _field, index ) => index !== editingIndex )
 		.map( ( field ) => ( { name: field.name, label: field.label || field.name } ) );
 
+	// Permalink's own Source Field dropdown -- same "every OTHER field"
+	// exclusion as Conditional Logic above (a permalink can't slugify
+	// itself), further narrowed to whichever of those are
+	// is_text_renderable() -- the exact eligibility
+	// Model_Fields::validate_permalink_settings() enforces server-side,
+	// mirrored here client-side so an ineligible field is never even
+	// offered rather than being picked and only rejected once autosave
+	// actually runs.
+	const permalinkSourceFieldOptions = fields
+		.filter( ( _field, index ) => index !== editingIndex )
+		.filter( ( field ) => isTextRenderableFor( field.type ) )
+		.map( ( field ) => ( { name: field.name, label: field.label || field.name } ) );
+
+	// The Type picker's own client-side echo of Model_Fields::add()/
+	// update()'s server-side max_one_per_model() rejection -- see
+	// TypeSelect.jsx's own docblock on `disabledKeys` for the full
+	// reasoning. A type counts as "already in use" only via some OTHER
+	// field (by index, not name -- a still-unsaved draft has none yet to
+	// exclude by, same reasoning conditionalLogicOtherFields/
+	// permalinkSourceFieldOptions already use), so re-opening the one
+	// field that IS a Permalink and leaving its own type alone is never
+	// blocked.
+	const disabledTypeKeys = fieldTypes
+		.filter( ( type ) => maxOnePerModelFor( type.key ) )
+		.filter( ( type ) =>
+			fields.some(
+				( field, index ) => index !== editingIndex && field.type === type.key
+			)
+		)
+		.map( ( type ) => type.key );
+
 	// A tab's own dot reflects whether it currently holds real content --
 	// the live (already-autosaved-or-about-to-be) values, not a diff
 	// against this session's own starting point, so it's still showing
@@ -540,7 +597,13 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 	const defaultValueTabHasContent = Boolean(
 		editSettings.default && String( editSettings.default ).trim()
 	);
-	const generalTabHasContent = choicesTabHasContent || defaultValueTabHasContent;
+	const permalinkSourceFieldTabHasContent = Boolean(
+		editSettings.source_field && String( editSettings.source_field ).trim()
+	);
+	const generalTabHasContent =
+		choicesTabHasContent ||
+		defaultValueTabHasContent ||
+		permalinkSourceFieldTabHasContent;
 	// Validation's own dot covers everything that can live there:
 	// Required, a configured Character Limit, and a configured Minimum/
 	// Maximum Value (each checked directly for the same reason Default
@@ -1208,6 +1271,7 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 									onChange={ field.onChange }
 									disabled={ editingIsRelate }
 									ariaLabel="Type"
+									disabledKeys={ disabledTypeKeys }
 								/>
 							) }
 						/>
@@ -1361,6 +1425,47 @@ export default function FieldEditor( { modelClass, initialFields, relationships 
 							</div>
 							<span className="description">
 								Leave blank for the default embed size.
+							</span>
+						</div>
+					) }
+					{ /* A plain <div>, not <label> -- Source Field is the only
+					   * real INPUT here (the note above it is just text), so
+					   * this doesn't strictly need dropping for the same
+					   * multi-control reason Type/Embed Size do above -- kept
+					   * consistent with every other settings block in this
+					   * tab anyway. */ }
+					{ editSupportsPermalinkSettings && (
+						<div className="gateway-field-editor-form-field">
+							<span>Source Field</span>
+							{ permalinkSourceFieldOptions.length > 0 ? (
+								<select
+									className="regular-text"
+									defaultValue=""
+									{ ...register( 'settings.source_field' ) }
+								>
+									<option value="">
+										None -- manual only
+									</option>
+									{ permalinkSourceFieldOptions.map( ( option ) => (
+										<option key={ option.name } value={ option.name }>
+											{ option.label }
+										</option>
+									) ) }
+								</select>
+							) : (
+								<span className="description">
+									No eligible text fields on this model
+									yet -- add one (Text, Text Area, Email,
+									URL, etc.) to auto-slugify from it, or
+									leave this manual-only.
+								</span>
+							) }
+							<span className="description">
+								When set, this field&rsquo;s slug tracks
+								that field&rsquo;s value automatically
+								until switched to manual on a given record.
+								The URL root and template page are
+								configured on the Permalinks tab.
 							</span>
 						</div>
 					) }

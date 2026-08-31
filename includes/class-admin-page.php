@@ -120,6 +120,13 @@ class Admin_Page {
 				// being reachable through `apiUrl` above. `OEmbedPicker.jsx`
 				// is the only thing that reads this.
 				'oembedProxyUrl' => esc_url_raw( rest_url( 'oembed/1.0/proxy' ) ),
+				// The bare WP REST root (no namespace) -- same reasoning as
+				// oembedProxyUrl above, one route below it
+				// (`wp/v2/pages`) is WordPress core's own, not this
+				// plugin's `gateway/v1`. `PermalinkEditor.jsx` is the only
+				// thing that reads this, to build its own Template Page
+				// picker from the site's real Pages.
+				'wpApiUrl'       => esc_url_raw( rest_url() ),
 			)
 		);
 	}

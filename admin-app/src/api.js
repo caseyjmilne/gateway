@@ -17,7 +17,7 @@
 const config =
 	typeof window !== 'undefined' && window.GatewayAdmin
 		? window.GatewayAdmin
-		: { apiUrl: '', nonce: '', oembedProxyUrl: '' };
+		: { apiUrl: '', nonce: '', oembedProxyUrl: '', wpApiUrl: '' };
 
 export async function apiFetch( path, options = {} ) {
 	const response = await fetch( `${ config.apiUrl }${ path }`, {
@@ -83,4 +83,48 @@ export async function fetchOembedPreview( url, maxwidth, maxheight ) {
 	}
 
 	return response.json();
+}
+
+/**
+ * Searches WordPress's own core Pages via `GET /wp-json/wp/v2/pages` --
+ * used by `PermalinkEditor.jsx`'s own Template Page picker. A different
+ * REST namespace again (`wp/v2`, not this plugin's own `gateway/v1`, and
+ * not the oEmbed proxy either), so it goes through `config.wpApiUrl`
+ * (the bare REST root) the same way `fetchOembedPreview()` above goes
+ * through its own separate `oembedProxyUrl` rather than `apiFetch()`.
+ *
+ * `search`, when given, is passed straight through as `wp/v2`'s own
+ * `search` query param (a plain substring match against title/content --
+ * core's own behavior, nothing this plugin implements). Results are
+ * capped at a generous `per_page` -- a full, unpaginated picker isn't
+ * worth building for what's expected to be a short list of candidate
+ * template pages.
+ *
+ * @param {string} search Optional title search string.
+ * @return {Promise<Array<{id: number, title: string}>>}
+ */
+export async function fetchWpPages( search = '' ) {
+	const params = new URLSearchParams( {
+		per_page: '50',
+		status: 'any',
+		_fields: 'id,title',
+	} );
+	if ( search.trim() ) {
+		params.set( 'search', search.trim() );
+	}
+
+	const response = await fetch(
+		`${ config.wpApiUrl }wp/v2/pages?${ params.toString() }`,
+		{ headers: { 'X-WP-Nonce': config.nonce } }
+	);
+
+	if ( ! response.ok ) {
+		throw new Error( `Could not load pages (${ response.status }).` );
+	}
+
+	const pages = await response.json();
+	return pages.map( ( page ) => ( {
+		id: page.id,
+		title: page.title && page.title.rendered ? page.title.rendered : `(#${ page.id })`,
+	} ) );
 }

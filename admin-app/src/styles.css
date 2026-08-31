@@ -937,6 +937,15 @@
 	color: #2271b1;
 }
 
+.gateway-admin-app .gateway-type-select-option-disabled {
+	cursor: not-allowed;
+	color: #a7aaad;
+}
+
+.gateway-admin-app .gateway-type-select-option-disabled:hover {
+	background: none;
+}
+
 .gateway-admin-app .gateway-type-select-empty {
 	padding: 6px 10px;
 	color: #646970;

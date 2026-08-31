@@ -5591,15 +5591,54 @@ is what keeps the whole feature from needing any change to
 `Model_Builder`'s generated model template (`$fillable`/`$casts`) at
 all.
 
-This is backend/data-layer work, deliberately shipped ahead of the admin
-UI (a "Permalinks" tab beside Relationships) and the WordPress routing/
-rendering layer (a rewrite rule per configured model, resolving through
-a site-owner-authored template page built from Gateway's own blocks) --
-both real, planned follow-on work, not yet built. `Permalink_Field_Type`
-and everything above it are already fully functional and covered by a
-standalone smoke test today; a site owner just has no admin-app surface
-yet to configure `source_field`/`root` through, or a live URL to visit
-once they do.
+**Admin UI.** `FieldEditor.jsx`'s own General tab gains a sixth shape,
+gated on `supports_permalink_settings`: a **Source Field** `<select>`
+built from the model's OTHER fields, filtered client-side to
+`is_text_renderable` -- the exact eligibility
+`validate_permalink_settings()` enforces server-side, mirrored here so an
+ineligible field is never even offered -- plus a plain note pointing at
+a new, separate **Permalinks** tab (beside Relationships, on
+`ModelDetail`) for Root and Template Page, which aren't per-field
+settings at all: Root is validated for uniqueness across every OTHER
+model, so it belongs with the rest of this model's own configuration,
+not buried in one field's own settings panel. `PermalinkEditor.jsx` is
+that tab -- finds the model's (at most one) permalink field client-side,
+and a small form for Root and Template Page (a plain `<select>` built
+from WordPress's own `GET /wp-json/wp/v2/pages`, `status=any`), a Save
+button (not autosave -- a rejected cross-model Root collision is a real,
+expected possibility that deserves a deliberate "try again" moment,
+unlike a single field's own row), and a `/{root}/example-slug` preview
+once both are set. Both PUT through the *same* existing
+`PUT /gateway/v1/models/<class>/fields/<name>` endpoint `FieldEditor`
+already uses -- no new REST route -- carrying the field's entire body
+forward each time (that endpoint replaces `settings` wholesale, it
+doesn't merge, so `source_field` has to ride along even though this tab
+never touches it itself). The Type picker (`TypeSelect.jsx`) also greys
+out "Permalink" once a model already has one on some OTHER field
+(`disabledKeys`, built from `Field_Type::max_one_per_model()`) -- a
+client-side nicety on top of the same rejection `Model_Fields::add()`/
+`update()` already enforce server-side.
+
+On `RecordForm`, a Permalink field renders as a `PermalinkControl` --
+classic WordPress permalink-editing UX: read-only text while in Auto
+mode, with an "Edit" link that reveals a real text input and switches to
+Manual, and "Revert to automatic" to switch back -- rather than a bare
+`<input>`. Its form state is a plain string slug plus one synthetic
+companion key, `{name}__manual`, seeded from the record's own real
+`{name}__manual` column (defaulting to Auto/`false` for a brand new
+record); submitting sends both keys together, since
+`resolve_permalink_value()` needs the flag to know whether to take the
+submitted slug literally or ignore it and recompute fresh from
+`source_field`.
+
+The WordPress routing/rendering layer (a rewrite rule per configured
+model, resolving through a site-owner-authored template page built from
+Gateway's own blocks) is still real, planned follow-on work, not yet
+built -- everything above it, backend and admin UI alike, is already
+fully functional and covered by a standalone PHP smoke test plus an
+ad-hoc Playwright pass; a site owner can fully configure a Permalink
+field and its per-record Auto/Manual slug today, there's just no live
+URL to visit yet.
 
 ## The Gateway admin app
 

@@ -39,8 +39,18 @@ const CATEGORY_ORDER = [ 'Basic', 'Content', 'Choice', 'Relational', 'Advanced',
  * browser re-forwards a click on any OTHER button here to the toggle,
  * the label's own implicit "labeled control", reopening the panel the
  * instant a pick closes it).
+ *
+ * `disabledKeys` (an array of `Field_Type::key()` values, e.g.
+ * `['permalink']`) greys out -- shown, but unclickable, with a `title`
+ * explaining why -- rather than hiding, any option in that list: what
+ * `FieldEditor.jsx` passes for a `max_one_per_model()` type the model
+ * already has configured on some OTHER field, the client-side echo of
+ * the same check `Model_Fields::add()`/`update()` already enforce
+ * server-side (this doesn't replace that -- it's just a clearer failure
+ * mode than picking it here and only finding out it's rejected once
+ * autosave actually runs).
  */
-export default function TypeSelect( { fieldTypes, value, onChange, disabled, ariaLabel } ) {
+export default function TypeSelect( { fieldTypes, value, onChange, disabled, ariaLabel, disabledKeys = [] } ) {
 	const [ query, setQuery ] = useState( '' );
 	const [ open, setOpen ] = useState( false );
 	const containerRef = useRef( null );
@@ -134,24 +144,36 @@ export default function TypeSelect( { fieldTypes, value, onChange, disabled, ari
 								<div className="gateway-type-select-group-heading">
 									{ category }
 								</div>
-								{ options.map( ( type ) => (
-									<button
-										key={ type.key }
-										type="button"
-										className={
-											'gateway-type-select-option' +
-											( type.key === value
-												? ' gateway-type-select-option-selected'
-												: '' )
-										}
-										onClick={ () => handleSelect( type.key ) }
-									>
-										<span>{ type.label }</span>
-										{ type.key === value && (
-											<span aria-hidden="true">✓</span>
-										) }
-									</button>
-								) ) }
+								{ options.map( ( type ) => {
+									const isDisabled = disabledKeys.includes( type.key );
+									return (
+										<button
+											key={ type.key }
+											type="button"
+											className={
+												'gateway-type-select-option' +
+												( type.key === value
+													? ' gateway-type-select-option-selected'
+													: '' ) +
+												( isDisabled
+													? ' gateway-type-select-option-disabled'
+													: '' )
+											}
+											disabled={ isDisabled }
+											title={
+												isDisabled
+													? `${ type.label } is already in use on this model and can only be added once.`
+													: undefined
+											}
+											onClick={ () => handleSelect( type.key ) }
+										>
+											<span>{ type.label }</span>
+											{ type.key === value && (
+												<span aria-hidden="true">✓</span>
+											) }
+										</button>
+									);
+								} ) }
 							</div>
 						) ) }
 					</div>

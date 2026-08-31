@@ -5,6 +5,7 @@ import FilePicker from './FilePicker.jsx';
 import UserPicker from './UserPicker.jsx';
 import WysiwygEditor from './WysiwygEditor.jsx';
 import OEmbedPicker from './OEmbedPicker.jsx';
+import PermalinkControl from './PermalinkControl.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -100,6 +101,20 @@ import OEmbedPicker from './OEmbedPicker.jsx';
  * already has (see that component's own docblock for why it can do this
  * up front, unlike Image/File's own `'url'` case which genuinely needs
  * an async round trip first).
+ *
+ * "permalink" (Permalink_Field_Type) is the last of the richer-than-a-
+ * -plain-scalar cases, but in a different way from Image/File/User above:
+ * its form state is still just a plain string (the slug itself), plus
+ * one synthetic companion key, `{name}__manual`, seeded from the
+ * record's own real `{name}__manual` column (`initialValues` -- a genuine
+ * DB column, not something this component invents) and defaulting to
+ * `false` (Auto) for a brand new record, matching
+ * `Records_REST_Controller::resolve_permalink_value()`'s own default.
+ * Renders as a `PermalinkControl` (read-only text with an "Edit"/"Revert
+ * to automatic" toggle -- see that component's own docblock) rather than
+ * a bare `<input>`; `handleSubmit()` sends both keys together, since the
+ * server needs the flag to know whether to take the submitted value
+ * literally or recompute it fresh from `source_field`.
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -335,6 +350,18 @@ export default function RecordForm( {
 					: [];
 			} else if ( 'boolean' === inputType ) {
 				initial[ field.name ] = Boolean( existing );
+			} else if ( 'permalink' === inputType ) {
+				initial[ field.name ] = null === existing ? '' : String( existing );
+				// `initialValues` (not `existing`, which only ever reads
+				// `field.name` itself) -- the manual flag is a real, separate
+				// column on the record, `{name}__manual`, not part of this
+				// field's own value. Defaults to Auto (`false`) for a brand
+				// new record ( `!initialValues` ), matching
+				// Records_REST_Controller::resolve_permalink_value()'s own
+				// create-time default.
+				initial[ `${ field.name }__manual` ] = initialValues
+					? Boolean( initialValues[ `${ field.name }__manual` ] )
+					: false;
 			} else if ( 'image' === inputType || 'file' === inputType || 'user' === inputType ) {
 				// Passed through exactly as the record's own GET response
 				// gave it -- null, a bare id, a URL string, or the full
@@ -426,6 +453,17 @@ export default function RecordForm( {
 			} else if ( 'relate_many' === inputType ) {
 				payload[ field.name ] = ( values[ field.name ] || [] ).map(
 					( item ) => item.id
+				);
+			} else if ( 'permalink' === inputType ) {
+				// Both keys, always together -- resolve_permalink_value()
+				// needs the flag to know whether to take payload[field.name]
+				// literally (Manual) or ignore it and recompute fresh from
+				// source_field (Auto), so sending one without the other
+				// would leave the server guessing at intent it should never
+				// have to.
+				payload[ field.name ] = values[ field.name ];
+				payload[ `${ field.name }__manual` ] = Boolean(
+					values[ `${ field.name }__manual` ]
 				);
 			} else if ( 'image' === inputType || 'file' === inputType ) {
 				// Same reduction Relate to One's own {id, label} gets above
@@ -688,6 +726,27 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'permalink' === inputType && (
+							<PermalinkControl
+								id={ inputId }
+								value={ values[ field.name ] }
+								manual={ Boolean(
+									values[ `${ field.name }__manual` ]
+								) }
+								onValueChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+								onManualChange={ ( manual ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ `${ field.name }__manual` ]: manual,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -702,6 +761,7 @@ export default function RecordForm( {
 							'wysiwyg' !== inputType &&
 							'oembed' !== inputType &&
 							'user' !== inputType &&
+							'permalink' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (
