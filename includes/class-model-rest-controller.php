@@ -41,7 +41,7 @@ class Model_REST_Controller {
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'create_model' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-					'args'                => self::title_args(),
+					'args'                => self::create_args(),
 				),
 			)
 		);
@@ -81,6 +81,30 @@ class Model_REST_Controller {
 				'required' => false,
 				'type'     => 'string',
 			),
+		);
+	}
+
+	/**
+	 * create_model()'s own 'args' -- title_args() plus 'type', which only
+	 * ever applies at creation: Model_Builder::get_model_type()'s own
+	 * docblock covers why there's no way to change it afterward, so
+	 * rename_model() has no equivalent of this and keeps using
+	 * title_args() alone -- a 'type' in that request body is simply
+	 * never read.
+	 *
+	 * @return array
+	 */
+	private static function create_args() {
+		return array_merge(
+			self::title_args(),
+			array(
+				'type' => array(
+					'required' => false,
+					'type'     => 'string',
+					'enum'     => array( Model_Builder::TYPE_CONTENT_TYPE, Model_Builder::TYPE_DATA_MODEL ),
+					'default'  => Model_Builder::TYPE_DATA_MODEL,
+				),
+			)
 		);
 	}
 
@@ -145,7 +169,8 @@ class Model_REST_Controller {
 	public static function create_model( \WP_REST_Request $request ) {
 		$result = Model_Builder::create(
 			$request->get_param( 'title' ),
-			(string) $request->get_param( 'plural_title' )
+			(string) $request->get_param( 'plural_title' ),
+			(string) $request->get_param( 'type' )
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -176,17 +201,20 @@ class Model_REST_Controller {
 	/**
 	 * Shape a registered model class into what the list, detail, and
 	 * Records screens all need -- its table, its stored Plural Title
-	 * label (if any), its fields (Gateway\Model_Fields -- the detail
-	 * screen's Field Editor uses these as its initial list, avoiding a
-	 * second request), its relationships (Gateway\Model_Relationships,
-	 * same reasoning -- the detail screen's Relationship Editor's own
-	 * initial list), its row count (for the Records list screen), and
-	 * its migration's version/run status (looked up via the same naming
-	 * convention Model_Builder itself used to generate it, since that
-	 * link isn't stored anywhere separately).
+	 * label (if any), its Type (Model_Builder::get_model_type() -- fixed
+	 * at creation, so the detail screen's General tab shows this as a
+	 * plain static label, never an editable control), its fields
+	 * (Gateway\Model_Fields -- the detail screen's Field Editor uses
+	 * these as its initial list, avoiding a second request), its
+	 * relationships (Gateway\Model_Relationships, same reasoning -- the
+	 * detail screen's Relationship Editor's own initial list), its row
+	 * count (for the Records list screen), and its migration's version/
+	 * run status (looked up via the same naming convention Model_Builder
+	 * itself used to generate it, since that link isn't stored anywhere
+	 * separately).
 	 *
 	 * @param string $class Registered model class name.
-	 * @return array{class:string,table:string,plural_title:string,fields:array,relationships:array,count:?int,migration:?array}|null
+	 * @return array{class:string,table:string,plural_title:string,type:string,fields:array,relationships:array,count:?int,migration:?array}|null
 	 *              Null if $class is no longer a real, loaded class
 	 *              (shouldn't normally happen, but registration and the
 	 *              filesystem could in principle drift apart).
@@ -226,6 +254,7 @@ class Model_REST_Controller {
 			'class'         => $class,
 			'table'         => $table,
 			'plural_title'  => Model_Builder::get_plural_title( $class ),
+			'type'          => Model_Builder::get_model_type( $class ),
 			// for_rest_response() -- not the raw all() result -- casts
 			// each field's own `settings` to a real JSON object, never a
 			// bare (and, when empty, ambiguous) PHP array. See that

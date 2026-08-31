@@ -11,6 +11,27 @@ import Modal from '../components/Modal.jsx';
 // silently gets rewritten out from under whoever's typing it.
 const sanitizeTitleInput = ( raw ) => raw.replace( /[^A-Za-z0-9_]/g, '' );
 
+// Gateway\Model_Builder::TYPE_CONTENT_TYPE/TYPE_DATA_MODEL's own values --
+// a fixed, two-option vocabulary (not fetched from the server the way
+// Field Type/Relationship Type are -- there's no reasonable way a future
+// plugin or filter would add a third kind of model the way it might add a
+// new field type), so hardcoded here rather than round-tripped through
+// its own REST route for two static strings.
+const MODEL_TYPES = [
+	{
+		value: 'content_type',
+		label: 'Content Type',
+		description:
+			'Comes with a Title field and a Permalink field tracking it, ready for records that each need their own page.',
+	},
+	{
+		value: 'data_model',
+		label: 'Data Model',
+		description:
+			'Starts blank (just an internal id and timestamps) -- add whatever fields you need. The right choice for a lookup table, a join table, or anything with no single visitor-facing page of its own.',
+	},
+];
+
 /**
  * The Models home screen: a "Create Model" button opens a modal form that
  * turns "Title" into a real Eloquent model + migration (see Model_Builder
@@ -41,11 +62,26 @@ const sanitizeTitleInput = ( raw ) => raw.replace( /[^A-Za-z0-9_]/g, '' );
  * (e.g. for a future list heading); it never affects the class or table
  * name, which always come from Title alone, so it keeps its own free
  * -text input, unrestricted.
+ *
+ * **Type** (`MODEL_TYPES` above -- Gateway\Model_Builder's own
+ * `TYPE_CONTENT_TYPE`/`TYPE_DATA_MODEL`) is a one-time choice, only ever
+ * made HERE: a `<select>` on this create form, defaulting to Content
+ * Type (the more commonly wanted "give this a page of its own" shape).
+ * `Model_Builder::create()` records it permanently the moment the model
+ * is created, and there's no way to change it afterward -- `ModelDetail`'s
+ * own General tab shows it as a plain static label once a model exists,
+ * never a control of its own (see that screen's own docblock for why:
+ * there's no sensible migration path either direction once fields may
+ * already have been added by hand). Choosing Content Type doesn't just
+ * record the choice -- the server also seeds a real `title` (Text) field
+ * and a `permalink` (Permalink) field tracking it, the same two things a
+ * site owner would otherwise have to remember to add by hand every time.
  */
 export default function ModelsList() {
 	const [ showCreateForm, setShowCreateForm ] = useState( false );
 	const [ title, setTitle ] = useState( '' );
 	const [ pluralTitle, setPluralTitle ] = useState( '' );
+	const [ type, setType ] = useState( 'content_type' );
 	const [ submitting, setSubmitting ] = useState( false );
 	const [ createError, setCreateError ] = useState( '' );
 	const [ justCreated, setJustCreated ] = useState( null );
@@ -77,6 +113,7 @@ export default function ModelsList() {
 		setCreateError( '' );
 		setTitle( '' );
 		setPluralTitle( '' );
+		setType( 'content_type' );
 	};
 
 	const handleSubmit = async ( event ) => {
@@ -87,7 +124,7 @@ export default function ModelsList() {
 		try {
 			const data = await apiFetch( '/models', {
 				method: 'POST',
-				body: JSON.stringify( { title, plural_title: pluralTitle } ),
+				body: JSON.stringify( { title, plural_title: pluralTitle, type } ),
 			} );
 			setJustCreated( data );
 			closeCreateForm();
@@ -165,6 +202,43 @@ export default function ModelsList() {
 											class{ ' ' }
 											<code>VehicleMakes</code>, table{ ' ' }
 											<code>vehicle_makes</code>.
+										</p>
+									</td>
+								</tr>
+								<tr>
+									<th scope="row">
+										<label htmlFor="gateway-model-type">
+											Type
+										</label>
+									</th>
+									<td>
+										<select
+											id="gateway-model-type"
+											className="regular-text"
+											value={ type }
+											onChange={ ( event ) =>
+												setType( event.target.value )
+											}
+										>
+											{ MODEL_TYPES.map( ( option ) => (
+												<option
+													key={ option.value }
+													value={ option.value }
+												>
+													{ option.label }
+												</option>
+											) ) }
+										</select>
+										<p className="description">
+											{
+												MODEL_TYPES.find(
+													( option ) => option.value === type
+												).description
+											}
+										</p>
+										<p className="description">
+											This can&rsquo;t be changed once
+											the model is created.
 										</p>
 									</td>
 								</tr>

@@ -3206,6 +3206,56 @@ opposite -- the *old* class's stored label is forgotten and the *new*
 one's is set from whatever was submitted -- happens automatically
 whenever Title *does* change too, via the same call.
 
+### Type -- Content Type vs. Data Model, chosen once and fixed forever
+
+Create Model's third field, **Type**, is a `<select>` with exactly two
+options -- `Model_Builder::TYPE_CONTENT_TYPE`/`TYPE_DATA_MODEL` -- deciding
+what a brand new model starts with:
+
+- **Data Model** -- blank except for `id`/`timestamps`, the original,
+  only-ever-available shape every model had before Type existed as a
+  choice at all. The right pick for a lookup/join table, a settings-like
+  singleton, or anything with no natural "one visitor-facing page per
+  record" shape.
+- **Content Type** -- the same blank table, PLUS two real fields added
+  immediately afterward via genuine `Model_Fields::add()` calls (real ADD
+  COLUMN migrations, not something baked into `model_template()` itself):
+  a `title` **Text** field, and a `permalink` **Permalink** field
+  tracking it in Auto mode (`settings.source_field => 'title'`) -- the
+  two things this plugin's own single-page permalink support (see
+  "Permalink fields" above) needs before a record can have a real URL at
+  all. Root and Template Page are deliberately left unset -- those are
+  genuine per-site choices (which URL prefix, which template page) with
+  no sensible default, configured afterward on the model's own
+  Permalinks tab, unlike "does this kind of model want a title and a
+  slug at all," which Type answers once, up front.
+
+Stored the same way Plural Title is -- `gateway_model_types`, class name
+=> `TYPE_*` value, via `Model_Builder::get_model_type()`/`set_model_type()`/
+`forget_model_type()` -- with one key difference: **it's fixed forever
+once a model is created, with no way to change it afterward at all.**
+The admin app enforces this by construction, not just by convention:
+Create Model's own `<select>` (`ModelsList.jsx`'s `MODEL_TYPES`) is the
+ONLY place Type is ever chosen; the model detail screen shows it back as
+a plain static label (`MODEL_TYPE_LABELS`), never a control of its own.
+There's no real migration path either direction that wouldn't need a
+judgment call this class has no way to make on a site owner's behalf:
+Content Type -> Data Model would leave its seeded `title`/`permalink`
+fields orphaned rather than destroy real data by removing them
+outright, and Data Model -> Content Type has no way to infer which (if
+any) of a model's own existing fields should suddenly become "the"
+title. A model with no stored entry at all -- every model created
+before this feature existed -- resolves to `TYPE_DATA_MODEL`, the shape
+it already had; nothing already on a site silently starts behaving like
+a Content Type it never asked to be.
+
+`rename()` carries the old class's Type through to the new one
+unchanged (there's no parameter for it at all in that method's own
+signature) -- a renamed Content Type is still a Content Type afterward,
+with a *fresh* `title`/`permalink` pair on the new table, the same
+"starts fresh on fields" trade-off every other field already has across
+a rename (see below).
+
 ### Renaming a model
 
 The admin app's model detail screen (below) can edit a model's Title
@@ -5809,9 +5859,10 @@ entirely, while still making each model's own URL bookmarkable and the
 back button behave normally.
 
 `ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is a
-"Create Model" button opening the Title + Plural Title form described
-above in a `Modal` (the same one Records' own "Add New"/"Edit" already
-use, rather than the form sitting permanently inline above the list),
+"Create Model" button opening the Title + Type + Plural Title form
+described above in a `Modal` (the same one Records' own "Add New"/"Edit"
+already use, rather than the form sitting permanently inline above the
+list),
 plus the list of every model that already exists (`GET /gateway/v1/models`)
 -- each row links to
 `ModelDetail` (`admin-app/src/screens/ModelDetail.jsx`, route

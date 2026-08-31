@@ -5,6 +5,17 @@ import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
 import PermalinkEditor from '../components/PermalinkEditor.jsx';
 
+// Gateway\Model_Builder::TYPE_CONTENT_TYPE/TYPE_DATA_MODEL's own values --
+// same fixed, hardcoded vocabulary ModelsList.jsx's own create-form
+// dropdown (MODEL_TYPES there) is built from, just the label half of it:
+// there's no `<select>` here to build, only a fixed value to show back as
+// text (see this screen's own docblock on why Type is never editable
+// once a model exists).
+const MODEL_TYPE_LABELS = {
+	content_type: 'Content Type',
+	data_model: 'Data Model',
+};
+
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
@@ -35,6 +46,18 @@ import PermalinkEditor from '../components/PermalinkEditor.jsx';
  * beyond what actually matters: Title is pre-filled from the model's own
  * class name (the only thing Model_Builder persists for it), Plural
  * Title from its own stored label (blank if none was ever set).
+ *
+ * **Type** (Content Type/Data Model -- Model_Builder::get_model_type())
+ * sits right underneath Title as a plain, static label, never a control
+ * of its own -- unlike everything else on this tab, it was only ever a
+ * choice on the Create Model form (`ModelsList.jsx`'s own `MODEL_TYPES`),
+ * fixed forever the moment the model was actually created. There's no
+ * migration path this screen could sensibly offer either direction:
+ * Content Type -> Data Model would leave its seeded `title`/`permalink`
+ * fields orphaned rather than remove them out from under any real data
+ * they might already hold, and Data Model -> Content Type has no way to
+ * infer which (if any) of a model's existing fields should suddenly
+ * become "the" title.
  */
 export default function ModelDetail() {
 	const { className } = useParams();
@@ -289,6 +312,16 @@ export default function ModelDetail() {
 												and table under the new name, and
 												permanently deletes the current
 												one (including its data).
+											</p>
+										</td>
+									</tr>
+									<tr>
+										<th scope="row">Type</th>
+										<td>
+											{ MODEL_TYPE_LABELS[ model.type ] || model.type }
+											<p className="description">
+												Fixed when the model was created --
+												can&rsquo;t be changed afterward.
 											</p>
 										</td>
 									</tr>

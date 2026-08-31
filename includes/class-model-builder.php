@@ -57,25 +57,76 @@ class Model_Builder {
 	const OPTION_PLURAL_TITLES = 'gateway_model_plural_titles';
 
 	/**
+	 * Option name the stored model Type choice is kept under -- a plain
+	 * class name => TYPE_* constant map, the same shape as
+	 * OPTION_PLURAL_TITLES. A model with no entry here (any model created
+	 * before this feature existed) is treated as TYPE_DATA_MODEL by
+	 * get_model_type() -- the "blank except for id/timestamps" shape
+	 * every model already had before there was a choice to make at all,
+	 * so nothing already on a site silently starts behaving as a Content
+	 * Type it never asked to be.
+	 */
+	const OPTION_MODEL_TYPES = 'gateway_model_types';
+
+	/**
+	 * A blank model -- the "id + timestamps only, add whatever fields you
+	 * want" shape every model had before Type existed as a choice at all.
+	 * The right choice for a model that isn't really a piece of content
+	 * with its own URL (a join/lookup table, a settings-like singleton,
+	 * anything with no natural "one visitor-facing page per record"
+	 * shape).
+	 */
+	const TYPE_DATA_MODEL = 'data_model';
+
+	/**
+	 * A model pre-seeded with a `title` (Text) field and a `permalink`
+	 * (Permalink) field tracking it in Auto mode (`settings.source_field
+	 * => 'title'`) -- the two things this plugin's own single-page
+	 * permalink support (see Permalink_Field_Type/Permalink_Routes) needs
+	 * before a record can have its own real URL at all, added
+	 * automatically rather than left for a site owner to notice and add
+	 * by hand every single time. Root/Template Page (the rest of what a
+	 * working single page actually needs -- see PermalinkEditor.jsx) are
+	 * deliberately NOT set here: those are genuinely per-site choices
+	 * (what URL prefix, which template page) this class has no sensible
+	 * default for, unlike "does this kind of model want a title and a
+	 * slug at all," which Type answers once and for all up front.
+	 */
+	const TYPE_CONTENT_TYPE = 'content_type';
+
+	/**
 	 * Create a model: derive its class/table name from $title alone
 	 * (Plural Title, if given, never affects either -- see this class's
 	 * own docblock), write the model + migration files, load and register
 	 * both classes, and run the migration -- the table exists by the time
-	 * this returns successfully.
+	 * this returns successfully. $type is recorded once here and never
+	 * changeable afterward -- see get_model_type()'s own docblock for why.
 	 *
 	 * @param string $title        Free-text title, e.g. "Blog Post".
 	 * @param string $plural_title Optional free-text plural label, e.g.
 	 *                              "Blog Posts" -- stored for display,
 	 *                              never used for naming.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string}|\WP_Error
+	 * @param string $type         One of the TYPE_* constants -- defaults
+	 *                              to TYPE_DATA_MODEL (the original,
+	 *                              only-ever-blank behavior) for any
+	 *                              caller that doesn't pass one explicitly.
+	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
 	 */
-	public static function create( $title, $plural_title = '' ) {
+	public static function create( $title, $plural_title = '', $type = self::TYPE_DATA_MODEL ) {
 		$title = trim( (string) $title );
 
 		if ( '' === $title ) {
 			return new \WP_Error(
 				'gateway_model_title_required',
 				__( 'Please enter a title.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! in_array( $type, array( self::TYPE_DATA_MODEL, self::TYPE_CONTENT_TYPE ), true ) ) {
+			return new \WP_Error(
+				'gateway_model_invalid_type',
+				__( 'Type must be either "Content Type" or "Data Model".', 'gateway' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -184,14 +235,71 @@ class Model_Builder {
 		}
 
 		self::set_plural_title( $class_name, $plural_title );
+		self::set_model_type( $class_name, $type );
 
-		return array(
+		$warnings = array();
+
+		// A Content Type's own two defining fields -- see TYPE_CONTENT_TYPE's
+		// own docblock for why these two specifically, and why Root/
+		// Template Page are deliberately left for the site owner to set
+		// afterward instead. Added via the exact same Model_Fields::add()
+		// a site owner would use by hand -- real ADD COLUMN migrations,
+		// not something baked into model_template()/migration_template()
+		// above, so a Content Type's fields show up in the Field Editor
+		// exactly like any other field, freely editable (label, Character
+		// Limit, etc.) from that point on -- only Type itself, not what it
+		// seeded, is fixed forever.
+		if ( self::TYPE_CONTENT_TYPE === $type ) {
+			$title_field = Model_Fields::add( $class_name, 'title', 'text', __( 'Title', 'gateway' ) );
+
+			if ( is_wp_error( $title_field ) ) {
+				// The model/table already exist and are perfectly usable
+				// either way -- a failure seeding these two starter fields
+				// is reported, not fatal to the model as a whole, the same
+				// "non-fatal, surfaced as a warning" treatment
+				// rewrite_model_file() failures already get elsewhere in
+				// this class.
+				$warnings[] = sprintf(
+					/* translators: %s: error message */
+					__( 'Could not add the default Title field: %s', 'gateway' ),
+					$title_field->get_error_message()
+				);
+			} else {
+				$permalink_field = Model_Fields::add(
+					$class_name,
+					'permalink',
+					'permalink',
+					__( 'Permalink', 'gateway' ),
+					null,
+					null,
+					false,
+					array( 'source_field' => 'title' )
+				);
+
+				if ( is_wp_error( $permalink_field ) ) {
+					$warnings[] = sprintf(
+						/* translators: %s: error message */
+						__( 'Could not add the default Permalink field: %s', 'gateway' ),
+						$permalink_field->get_error_message()
+					);
+				}
+			}
+		}
+
+		$result = array(
 			'class'              => $class_name,
 			'table'              => $table_name,
 			'migration_class'    => $migration_class,
 			'migration_version'  => $version,
 			'plural_title'       => self::get_plural_title( $class_name ),
+			'type'               => $type,
 		);
+
+		if ( $warnings ) {
+			$result['warnings'] = $warnings;
+		}
+
+		return $result;
 	}
 
 	/**
@@ -211,11 +319,19 @@ class Model_Builder {
 	 * this way; anything that changes $title goes through the full
 	 * create-then-retire path below even if $plural_title also changed.
 	 *
+	 * Type is carried over from $old_class unchanged -- there's no
+	 * parameter for it here at all, matching get_model_type()'s own
+	 * "fixed forever, not just fixed until a rename" contract. A renamed
+	 * Content Type is still a Content Type afterward (with a fresh
+	 * `title`/`permalink` pair on the new table, the same "starts fresh
+	 * on fields" trade-off every other field already has across a
+	 * rename -- see the old field rows being forgotten, below).
+	 *
 	 * @param string $old_class    Existing, registered model class name.
 	 * @param string $title        New free-text title.
 	 * @param string $plural_title New free-text plural label -- see
 	 *                              create()'s own docblock.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,warnings?:string[]}|\WP_Error
+	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
 	 */
 	public static function rename( $old_class, $title, $plural_title = '' ) {
 		if ( ! Model_Registry::has( $old_class ) || ! class_exists( $old_class ) ) {
@@ -253,6 +369,7 @@ class Model_Builder {
 				'migration_class'   => $old_migration_class,
 				'migration_version' => self::registered_migration_version( $old_migration_class ),
 				'plural_title'      => self::get_plural_title( $old_class ),
+				'type'              => self::get_model_type( $old_class ),
 			);
 		}
 
@@ -278,11 +395,13 @@ class Model_Builder {
 
 		$old_instance = new $old_class();
 		$old_table    = $old_instance->getTable();
+		$old_type     = self::get_model_type( $old_class );
 
 		// Create the new model/migration/table first -- see this method's
 		// own docblock for why the old one is only touched after this
-		// succeeds.
-		$created = self::create( $title, $plural_title );
+		// succeeds. $old_type carried through unchanged -- see this
+		// method's own docblock for why there's no way to change it here.
+		$created = self::create( $title, $plural_title, $old_type );
 
 		if ( is_wp_error( $created ) ) {
 			return $created;
@@ -312,6 +431,7 @@ class Model_Builder {
 		Model_Registry::unregister( $old_class );
 		Migration_Registry::unregister( $old_migration_class );
 		self::forget_plural_title( $old_class );
+		self::forget_model_type( $old_class );
 		// The old table (and every field's own column on it) is already
 		// gone by this point -- the old field *rows* in gateway_fields
 		// aren't carried over to the new model either, so a renamed model
@@ -345,7 +465,12 @@ class Model_Builder {
 		}
 
 		if ( $warnings ) {
-			$created['warnings'] = $warnings;
+			// Merged, not overwritten -- create() above may already have
+			// set its own 'warnings' (e.g. a Content Type's default fields
+			// failing to seed); this rename's own warnings (the old
+			// table's own rollback failing) are additional, never a
+			// replacement for those.
+			$created['warnings'] = array_merge( $created['warnings'] ?? array(), $warnings );
 		}
 
 		return $created;
@@ -387,6 +512,55 @@ class Model_Builder {
 		if ( isset( $titles[ $class_name ] ) ) {
 			unset( $titles[ $class_name ] );
 			update_option( self::OPTION_PLURAL_TITLES, $titles );
+		}
+	}
+
+	/**
+	 * A model's Type, chosen once at create() time and never changeable
+	 * afterward -- the admin app shows this as a plain, static label on
+	 * an existing model's own General tab (never a dropdown there the way
+	 * it is on the Create Model form), the same "immutable once created"
+	 * treatment a Relate to One/Relate to Many field's own relationship
+	 * already gets in Model_Fields::update(). There's no real migration
+	 * path for switching a model between the two after the fact --
+	 * Content Type -> Data Model would leave an orphaned `title`/
+	 * `permalink` pair a site owner would have to notice and remove by
+	 * hand anyway (removing them outright would be needlessly
+	 * destructive if any of that data mattered), and Data Model ->
+	 * Content Type has no way to know WHICH of the model's existing
+	 * fields (if any) should suddenly become "the" title. Fixed at
+	 * creation sidesteps needing an answer to either.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return string One of the TYPE_* constants -- TYPE_DATA_MODEL for
+	 *                 any model with no stored entry at all (every model
+	 *                 created before this feature existed).
+	 */
+	public static function get_model_type( $class_name ) {
+		$types = get_option( self::OPTION_MODEL_TYPES, array() );
+
+		return isset( $types[ $class_name ] ) ? $types[ $class_name ] : self::TYPE_DATA_MODEL;
+	}
+
+	/**
+	 * @param string $class_name Model class name.
+	 * @param string $type       One of the TYPE_* constants.
+	 */
+	private static function set_model_type( $class_name, $type ) {
+		$types                = get_option( self::OPTION_MODEL_TYPES, array() );
+		$types[ $class_name ] = $type;
+		update_option( self::OPTION_MODEL_TYPES, $types );
+	}
+
+	/**
+	 * @param string $class_name Model class name.
+	 */
+	private static function forget_model_type( $class_name ) {
+		$types = get_option( self::OPTION_MODEL_TYPES, array() );
+
+		if ( isset( $types[ $class_name ] ) ) {
+			unset( $types[ $class_name ] );
+			update_option( self::OPTION_MODEL_TYPES, $types );
 		}
 	}
 
