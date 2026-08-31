@@ -5631,14 +5631,89 @@ record); submitting sends both keys together, since
 submitted slug literally or ignore it and recompute fresh from
 `source_field`.
 
-The WordPress routing/rendering layer (a rewrite rule per configured
-model, resolving through a site-owner-authored template page built from
-Gateway's own blocks) is still real, planned follow-on work, not yet
-built -- everything above it, backend and admin UI alike, is already
-fully functional and covered by a standalone PHP smoke test plus an
-ad-hoc Playwright pass; a site owner can fully configure a Permalink
-field and its per-record Auto/Manual slug today, there's just no live
-URL to visit yet.
+**WordPress routing (`Permalink_Routes`).** One rewrite rule per fully
+-configured model (both `root` and `template_page_id` set --
+`routable_models()` is the single source of truth both `register_rules()`
+and `resolve_record()` build off, so the two can never disagree about
+what's actually routed): `^{root}/([^/]+)/?$ -> index.php?page_id=
+{template_page_id}&gateway_model={class}&gateway_slug=$matches[1]`,
+`'top'` priority. Resolving through a real WordPress Page this way means
+WordPress's own normal template-loading/main-query machinery does the
+heavy lifting -- this plugin only needs to resolve the record and feed
+it into block context.
+
+Flushing is a version-counter compare, not a periodic TTL: `Model_Fields`
+calls `Permalink_Routes::bump_config_version()` (a plain option bump)
+wherever a Permalink field's own config changes in a way that could
+affect routing -- added, removed, retyped into/out of Permalink, or its
+`root`/`template_page_id` settings edited (a pure rename, or any OTHER
+settings-only edit like `source_field`, never bumps -- neither changes
+what's routable). `register_rules()` (on `init`) compares that version
+against the one it last actually flushed and only calls
+`flush_rewrite_rules()` when they differ -- a stale rewrite rule means
+genuinely broken URLs, not tolerably-stale status info, so this has to
+flush exactly on change, never just eventually, mirroring
+`Migration_Runner`'s own has_run()/latest_ran_version() versioning
+rather than `Database_Connection`'s TTL cache.
+
+`resolve_record()` (on `wp`, once the main query has already matched the
+real `page_id`) looks the record up by the model's own CURRENT permalink
+field and slug -- re-derived fresh from `Model_Fields::permalink_field_for()`
+every time, never anything baked into the rewrite rule itself beyond the
+class name and root/template_page_id, which is exactly why renaming the
+field (routability-neutral, per the paragraph above) never needs a flush
+to keep resolving correctly. Not found -- or the model/field named in the
+URL doesn't actually exist or route at all -- forces a real 404
+(`set_404()` + `status_header( 404 )` + `nocache_headers()`, the same
+trio core's own `WP::handle_404()` applies) even though `page_id` already
+matched a real page: that page is only ever a template, never itself the
+thing being requested. `inject_record_context()` (on `render_block_context`,
+priority 1, mirroring `Data_Cards_Renderer`'s own identically-shaped
+filter) then sets `$context['record']` to whatever was resolved, for
+every block rendered the rest of the request.
+
+**Rendering (`gateway/single-record`).** A new block, placed on the
+model's own designated template Page, that does only one thing render.php
+-side: validates its own `collection` attribute against the CURRENTLY
+-resolved `get_query_var( 'gateway_model' )` (the same "never trust the
+editor's own picker blindly" discipline every other block's render.php in
+this plugin already follows for its own attributes) and, once that
+checks out, passes its already-rendered `$content` straight through.
+There's no per-item loop or synthetic `WP_Block` here the way `gateway/
+related-items` needs one -- `Permalink_Routes::inject_record_context()`
+already populated `'record'` in block context for the WHOLE page before
+this block's own InnerBlocks ever rendered, so by the time render.php
+runs, `$content` already reflects the real, resolved record everywhere
+it's referenced. Confirmed directly against both existing consumers'
+own `render.php`: `gateway/card-field-text` and `gateway/related-items`
+both already read `$block->context['record']` the exact same
+unnamespaced way `Data_Cards_Renderer` populates it for a Data Cards
+grid, so **both work inside a Single Record template with zero render
+-time code changes** -- the only actual edit either needed was adding
+`"gateway/single-record"` to their own block.json `ancestor` list, purely
+an editor-side insertion restriction (without it the block inserter
+simply refuses to let you place either block there at all; render.php
+itself was never the obstacle). `gateway/single-record` also provides
+`gateway/data-cards/sourceType`/`gateway/data-cards/collection` context
+(fixed to `'collection'` and the block's own chosen Collection,
+respectively) purely as an editor-experience nicety, reusing the exact
+two keys `gateway/data-cards` already provides -- without it, a nested
+`gateway/card-field-text`'s own Field picker would show its "Choose a
+Collection on the Data Cards block first" notice, which would be
+actively wrong advice on a page that never has a Data Cards block on it
+at all.
+
+Verified with a new standalone PHP smoke test (routable-model
+computation, the full flush-timing matrix -- first-ever flush, no flush
+on an unrelated request, a flush exactly on each actual config change,
+never on a routability-neutral rename -- query var registration, and the
+complete `resolve_record()`/`inject_record_context()` 404/found matrix,
+Auto and Manual slugs alike) alongside the full existing regression
+suite, plus a successful production build of the new block. Rewrite
+-flush timing, the real `/{root}/{slug}` HTTP round trip, and the block
+editor's own insertion/preview behavior are genuine WordPress runtime
+behavior a standalone stubbed script can't exercise -- those need
+verification against a real WP install.
 
 ## The Gateway admin app
 

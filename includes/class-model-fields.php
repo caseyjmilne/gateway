@@ -1693,6 +1693,18 @@ class Model_Fields {
 			$field['warnings'] = array( $rewrite_result->get_error_message() );
 		}
 
+		// A brand new Permalink field is never itself routable yet (no
+		// root/template_page_id configured on the way in here -- add()
+		// has no parameter for either), but bumping unconditionally
+		// anyway is simpler and cheaper than trying to prove it can't
+		// matter: Permalink_Routes::register_rules() only actually
+		// reflushes when the compared version differs at all, so one
+		// harmless extra bump costs nothing beyond that one comparison
+		// on the next request.
+		if ( $type_class::supports_permalink_settings() ) {
+			Permalink_Routes::bump_config_version();
+		}
+
 		return $field;
 	}
 
@@ -1897,7 +1909,20 @@ class Model_Fields {
 		// the new metadata below, the same way a truly no-op update
 		// (caught above) skips it entirely.
 		if ( ! $name_changed && ! $type_changed ) {
-			return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings, $sanitized_cl );
+			$saved = self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings, $sanitized_cl );
+
+			// Root/template_page_id (the only two settings that actually
+			// affect routing) live in this same $sanitized_settings object
+			// as source_field -- rather than pick those two keys out
+			// specifically, bumping on any settings change to an
+			// already-Permalink field costs nothing beyond one harmless
+			// extra version comparison on the next request (see add()'s
+			// own comment on this same trade-off).
+			if ( $settings_changed && $new_type_class_for_check && $new_type_class_for_check::supports_permalink_settings() ) {
+				Permalink_Routes::bump_config_version();
+			}
+
+			return $saved;
 		}
 
 		$up   = array();
@@ -1957,7 +1982,19 @@ class Model_Fields {
 			return $migration_result;
 		}
 
-		return self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
+		$saved = self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
+
+		// A rename/retype that's still Permalink either side never
+		// changes routability (root/template_page_id ride along in
+		// $sanitized_settings untouched by a pure name/type edit here --
+		// this method only runs when one of those DID change), but a
+		// retype INTO or AWAY from Permalink always does: the model
+		// either just started or just stopped being routable outright.
+		if ( $old_is_permalink !== $new_is_permalink ) {
+			Permalink_Routes::bump_config_version();
+		}
+
+		return $saved;
 	}
 
 	/**
@@ -2111,6 +2148,13 @@ class Model_Fields {
 		// a field succeeded regardless, and there's no freshly-added field
 		// whose immediate usability depends on this the way there is there.
 		Model_Builder::rewrite_model_file( $class_name, $table, self::all( $class_name ), Model_Relationships::all( $class_name ) );
+
+		// Removing this model's own (at most one) Permalink field always
+		// makes it unroutable outright -- same "always affects routability"
+		// reasoning as add()/update()'s own calls to this.
+		if ( $type_class::supports_permalink_settings() ) {
+			Permalink_Routes::bump_config_version();
+		}
 
 		return true;
 	}

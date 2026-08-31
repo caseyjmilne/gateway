@@ -117,6 +117,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationships.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationship-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
 
 /**
  * Boot the plugin.
@@ -143,6 +144,7 @@ function gateway_boot() {
 	\Gateway\Records_REST_Controller::init();
 	\Gateway\Media_REST_Controller::init();
 	\Gateway\User_REST_Controller::init();
+	\Gateway\Permalink_Routes::init();
 
 	// The built-in field types -- registered the same way as any other
 	// Registry subclass, then a plain action so a future type can hook in
