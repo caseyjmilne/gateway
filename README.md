@@ -5620,16 +5620,25 @@ client-side nicety on top of the same rejection `Model_Fields::add()`/
 `update()` already enforce server-side.
 
 On `RecordForm`, a Permalink field renders as a `PermalinkControl` --
-classic WordPress permalink-editing UX: read-only text while in Auto
-mode, with an "Edit" link that reveals a real text input and switches to
-Manual, and "Revert to automatic" to switch back -- rather than a bare
-`<input>`. Its form state is a plain string slug plus one synthetic
-companion key, `{name}__manual`, seeded from the record's own real
-`{name}__manual` column (defaulting to Auto/`false` for a brand new
-record); submitting sends both keys together, since
-`resolve_permalink_value()` needs the flag to know whether to take the
-submitted slug literally or ignore it and recompute fresh from
-`source_field`.
+classic WordPress permalink-editing UX, but LIVE: while in Auto mode it
+shows a real-time preview, client-side-slugified (a rough JS mirror of
+`sanitize_title()` -- an approximation good enough for a live preview,
+since the authoritative slug is always computed server-side on save,
+same "client hint, server enforces" split Character Limit's own
+`maxLength` already has) from the tracked `source_field`'s own CURRENT
+form value -- typing "Galaxy" into Title updates the preview to "galaxy"
+immediately, not just after a save. An "Edit" link switches to Manual and
+reveals a real text input, seeded with whatever the live Auto preview
+was just showing (never blank) so editing always starts from something
+real; "Revert to automatic" switches back, at which point the preview
+resumes tracking `source_field` live again (whatever was typed into the
+Manual input is simply abandoned, not remembered). Its form state is a
+plain string slug plus one synthetic companion key, `{name}__manual`,
+seeded from the record's own real `{name}__manual` column (defaulting to
+Auto/`false` for a brand new record); submitting sends both keys
+together, since `resolve_permalink_value()` needs the flag to know
+whether to take the submitted slug literally or ignore it and recompute
+fresh from `source_field`.
 
 **WordPress routing (`Permalink_Routes`).** One rewrite rule per fully
 -configured model (both `root` and `template_page_id` set --

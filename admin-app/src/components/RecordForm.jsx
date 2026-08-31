@@ -110,9 +110,14 @@ import PermalinkControl from './PermalinkControl.jsx';
  * DB column, not something this component invents) and defaulting to
  * `false` (Auto) for a brand new record, matching
  * `Records_REST_Controller::resolve_permalink_value()`'s own default.
- * Renders as a `PermalinkControl` (read-only text with an "Edit"/"Revert
- * to automatic" toggle -- see that component's own docblock) rather than
- * a bare `<input>`; `handleSubmit()` sends both keys together, since the
+ * Renders as a `PermalinkControl` (a LIVE, client-side-slugified preview
+ * of the tracked `source_field`'s own current value while in Auto mode,
+ * with an "Edit"/"Revert to automatic" toggle -- see that component's
+ * own docblock) rather than a bare `<input>`; `hasSourceField`/
+ * `sourceValue` (the tracked field's own name/current form value,
+ * looked up here since `PermalinkControl` only ever sees this one
+ * field's own settings, not the rest of `values`) are what make that
+ * preview possible. `handleSubmit()` sends both keys together, since the
  * server needs the flag to know whether to take the submitted value
  * literally or recompute it fresh from `source_field`.
  *
@@ -733,6 +738,14 @@ export default function RecordForm( {
 								manual={ Boolean(
 									values[ `${ field.name }__manual` ]
 								) }
+								hasSourceField={ Boolean(
+									field.settings?.source_field
+								) }
+								sourceValue={
+									field.settings?.source_field
+										? values[ field.settings.source_field ]
+										: ''
+								}
 								onValueChange={ ( newValue ) =>
 									setValues( ( current ) => ( {
 										...current,
