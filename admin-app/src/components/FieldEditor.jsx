@@ -1833,9 +1833,41 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 							const rowLabel = isEditingThisRow ? editLabel : field.label;
 							const rowType = isEditingThisRow ? editType : field.type;
 
+							// A real bug, reported directly: typing into a new
+							// field's Name/Label (or any input in an existing
+							// field's own panel) would suddenly lose focus a
+							// few characters in. Root cause: this row used to
+							// be keyed by `field.id ?? 'draft'` -- stable for
+							// an already-saved field (its `id` never changes),
+							// but NOT for a brand new, still-unsaved draft
+							// (`handleStartAdd()` appends one with no `id` at
+							// all). The moment autosave's first successful
+							// POST assigns it a real id (AUTOSAVE_DEBOUNCE_MS
+							// after typing stops -- see that constant), this
+							// row's own key flips from the string `'draft'` to
+							// a real number, and React -- seeing a changed key
+							// -- tears down the old `<tr>` (Label input mid
+							// -focus included) and mounts a brand new one
+							// rather than reusing it, stealing focus out from
+							// under whoever was still typing.
+							//
+							// A draft row is ALWAYS the one currently being
+							// edited (it can't exist any other way -- see
+							// finishEditing()'s own docblock: an unsaved draft
+							// is removed the moment its own panel closes), so
+							// `isEditingThisRow` alone is already a perfectly
+							// stable, collision-free key for it: there's only
+							// ever one editing row at a time, and its identity
+							// (draft or not) never needs to change across the
+							// save that assigns it a real id. Every OTHER
+							// (non-editing, already-saved) row keeps using its
+							// own real `field.id`, exactly as before -- that's
+							// what keeps drag-reorder's own DOM reuse working.
+							const rowKey = isEditingThisRow ? 'editing-row' : field.id;
+
 							return [
 								<tr
-									key={ field.id ?? 'draft' }
+									key={ rowKey }
 									onDragOver={
 										dragEnabled ? handleDragOver : undefined
 									}
@@ -1951,7 +1983,16 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 									</td>
 								</tr>,
 								isEditingThisRow && (
-									<tr key={ `${ field.id ?? 'draft' }-panel` }>
+									// Only ever rendered for the editing row (see
+									// the `isEditingThisRow &&` guard) -- same
+									// "never let the draft-to-saved id transition
+									// change this row's own key" fix as `rowKey`
+									// above, just simpler here: this one's ALWAYS
+									// the editing row, so a fixed literal is
+									// already a stable, collision-free key on its
+									// own (there's only ever one of these mounted
+									// at a time).
+									<tr key="editing-panel">
 										<td
 											colSpan={ 4 }
 											className="gateway-field-editor-panel-cell"

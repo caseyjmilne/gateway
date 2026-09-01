@@ -3818,6 +3818,37 @@ real RENAME COLUMN migrations if someone pauses mid-word while typing it
 -- an accepted trade-off for "changes just happen," not something
 specially worked around for Name alone.
 
+**Typing into a brand new field used to lose focus a few characters in
+-- a real bug, reported directly ("the fields keep losing focus, even
+as I type").** Root cause: each row's own `<tr>` was keyed by
+`field.id ?? 'draft'` -- stable for an already-saved field (its `id`
+never changes across an edit), but NOT for a brand new, still-unsaved
+draft (`handleStartAdd()` appends one with no `id` at all). The moment
+the very first autosave actually lands -- 800ms after typing stops,
+long enough to type several characters first, which is exactly why the
+symptom read as "a FEW characters, then focus is lost" rather than
+immediately -- the server assigns it a real id, this row's own key
+flips from the string `'draft'` to that real number, and React, seeing
+a changed key, tears the old `<tr>` down (Label input mid-focus
+included) and mounts a brand new one rather than reusing it. Fixed by
+keying the row on `isEditingThisRow` instead whenever it's the one
+currently open (`'editing-row'`/a fixed `'editing-panel'` for its own
+edit-panel row) -- there's only ever one editing row at a time, so a
+fixed sentinel is already a stable, collision-free key for it, and its
+identity never needs to change across the save that assigns it a real
+id. Every other (non-editing, already-saved) row still keys on its own
+real `field.id`, exactly as before -- that's what keeps drag-reorder's
+own DOM reuse working. Verified with a temporary Playwright harness
+(the established convention for an admin-app UI bug like this one --
+mounting `FieldEditor` directly against a mocked `fetch`): confirmed
+the reverted code actually reproduces the bug (typing into a new
+field's Label, waiting past the debounce, `document.activeElement` no
+longer being that same input) before confirming the fix keeps it
+focused through that same debounce window, for both a brand new field
+getting its first real id AND continuing to edit that same field
+afterward (a plain PUT autosave, which was never affected -- its `id`
+was already stable throughout).
+
 **A pending change survives navigating away, not just closing the row.**
 Closing a row is one way a change still mid-debounce gets flushed instead
 of dropped, but it's not the only way this component stops watching a
