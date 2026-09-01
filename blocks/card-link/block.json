@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/card-link",
+	"title": "Link",
+	"category": "widgets",
+	"icon": "admin-links",
+	"description": "Wraps its inner blocks (text, an image, several fields together) in a link to the current record's own front-end URL -- detected automatically from the model's own configured Permalink field, no field to pick.",
+	"keywords": [ "link", "url", "anchor", "permalink", "card" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"ancestor": [ "gateway/data-cards-body", "gateway/data-display", "gateway/single-record" ],
+	"usesContext": [
+		"gateway/data-cards/sourceType",
+		"gateway/data-cards/collection",
+		"record"
+	],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"render": "file:./render.php"
+}

@@ -121,6 +121,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-column-rest-controller.p
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-number-formatter.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-renderer.php';
 
@@ -151,6 +152,7 @@ function gateway_boot() {
 	\Gateway\Media_REST_Controller::init();
 	\Gateway\User_REST_Controller::init();
 	\Gateway\Permalink_Routes::init();
+	\Gateway\Permalink_REST_Controller::init();
 
 	// The built-in field types -- registered the same way as any other
 	// Registry subclass, then a plain action so a future type can hook in

@@ -6233,6 +6233,77 @@ state for Relate to Many) needs manual verification in a real wp-admin
 screen, the same caveat every other admin-app UI change in this plugin
 already carries.
 
+### `gateway/card-link` -- wraps other fields in a link to the record's own permalink
+
+A card is rarely useful unlinked -- the whole point of a Data Cards grid
+is usually clicking through to the full record. `gateway/card-link` is
+a plain InnerBlocks wrapper (structurally the same "synthetic wrapper
+block" `usesContext`/context-reading caveats every field-display block
+in this family already documents) that wraps whatever's placed inside
+it -- `gateway/card-field-text`, `gateway/card-field-image`, several
+fields together, anything -- in a real `<a href>` pointing at the
+CURRENT record's own front-end URL.
+
+**No field to pick, by design.** Every other field-display block in
+this family (`card-field-text`/`-number`/`-image`) has a Field picker,
+because there could be many eligible fields to choose from. A Permalink
+field is different: `Permalink_Field_Type::max_one_per_model()`
+guarantees a model has AT MOST ONE, so "the" Permalink field for a given
+record is never ambiguous -- there's nothing to pick, only something to
+find automatically. **`Permalink_Routes::url_for_record( $record )`**
+(new -- the PHP counterpart to `admin-app/src/utils/permalink.js`'s own
+`getRecordPermalink()`, same shape, same reasoning, just against a real
+Eloquent record instead of a REST-shaped one) is the one call that does
+the whole job: finds the record's own model's Permalink field
+(`Model_Fields::permalink_field_for()`), confirms it's actually routable
+(`Permalink_Routes::routable_models()`'s own Root-AND-Template-Page
+requirement -- factored out as a new `route_for_class( $class_name )`,
+the single-model counterpart both this and `routable_models()` itself
+now share), reads the record's own current slug, and builds the real,
+absolute URL -- or returns `null` the instant any of that isn't true.
+
+**No permalink available is never an error -- render.php just prints
+the inner blocks completely unwrapped**, exactly as if this block
+weren't there at all (same reasoning `gateway/card-field-text`'s own
+"record context absent" handling already has): a card that can't be
+made clickable should still show its own text/image, not disappear or
+break the page.
+
+**The editor warns instead.** Since front-end silence would otherwise
+be a confusing, easy-to-miss surprise while designing a template,
+`edit.js` fetches a new, dedicated `GET /gateway/v1/models/<class>/permalink`
+(`Permalink_REST_Controller` -- `{ available, field, root }`, gated the
+same `manage_options` way every other Collection-scoped block-editor
+route already is) and shows a plain Notice the moment a Collection has
+no Permalink configured yet, naming exactly what's missing (no
+Permalink field at all, or one with no Root/Template Page set). Kept as
+its own tiny, single-purpose controller rather than folded into
+`Columns_REST_Controller`/`Model_REST_Controller` -- neither's own
+response shape (a flat column array; a whole model's admin-management
+payload) fits a plain `{available, field, root}` triple.
+
+**The editor's own live preview link is best-effort**, same caveat
+every other field-display block's own docblock already states: built
+from `window.location.origin` (the editor and the site it's editing
+always share one, so there's no need for an admin-app-style localized
+`homeUrl` just for this) plus the fetched `root` plus the current
+preview record's own slug value (`record[field]`) -- the REAL link a
+visitor actually follows is always whatever `url_for_record()` builds
+from the real, resolved record on an actual front-end render.
+
+Verified with new checks added to the existing `permalink-routes-smoke
+-test.php` (`route_for_class()`'s own routable/unroutable/unregistered
+matrix; `url_for_record()` building the right URL for two different
+records' own independently-computed slugs, and returning `null` for a
+non-record, `null`, or a record with no slug yet; `Permalink_REST_
+Controller::get_permalink_config()`'s own available/unavailable/
+unregistered-model matrix) alongside the full existing regression
+suite, plus a successful production build of the new block. The block
+editor's own UI (the Notice, the live preview link, nesting other
+field-display blocks inside it) needs manual verification in a real WP
+install, the same caveat every other block-editor-only UI change in
+this plugin already carries.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

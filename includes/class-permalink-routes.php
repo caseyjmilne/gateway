@@ -159,6 +159,64 @@ class Permalink_Routes {
 	}
 
 	/**
+	 * This ONE model's own routing info, if it's currently routable at
+	 * all -- the single-model counterpart to routable_models() above,
+	 * for callers that only ever care about one class at a time
+	 * (url_for_record() below, and Permalink_REST_Controller's own
+	 * read-only route the block editor uses to detect whether
+	 * gateway/card-link actually has anything to link to before ever
+	 * rendering a single record).
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array{class:string,field:string,root:string,template_page_id:int}|null
+	 */
+	public static function route_for_class( $class_name ) {
+		foreach ( self::routable_models() as $route ) {
+			if ( $route['class'] === $class_name ) {
+				return $route;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * A real record's own front-end URL, if its model is currently
+	 * routable AND this particular record already has a slug of its
+	 * own -- the PHP counterpart to admin-app/src/utils/permalink.js's
+	 * own getRecordPermalink() (same shape, same reasoning, just against
+	 * a real Eloquent record here instead of a REST-shaped one), used by
+	 * gateway/card-link's own render.php to build the real `<a href>` it
+	 * wraps its inner blocks with. Null for anything short of that: not
+	 * a real Eloquent record at all, its model isn't routable (no
+	 * Permalink field, or one with no Root/Template Page set yet), or
+	 * this specific record has never had a slug computed (e.g. Auto mode
+	 * with nothing yet to slugify from).
+	 *
+	 * @param mixed $record Expected to be a real Eloquent model instance.
+	 * @return string|null
+	 */
+	public static function url_for_record( $record ) {
+		if ( ! ( $record instanceof \Illuminate\Database\Eloquent\Model ) ) {
+			return null;
+		}
+
+		$route = self::route_for_class( get_class( $record ) );
+
+		if ( ! $route ) {
+			return null;
+		}
+
+		$slug = $record->getAttribute( $route['field'] );
+
+		if ( empty( $slug ) ) {
+			return null;
+		}
+
+		return home_url( '/' . $route['root'] . '/' . rawurlencode( $slug ) );
+	}
+
+	/**
 	 * Adds one rewrite rule per routable model, then flushes -- but only
 	 * when OPTION_CONFIG_VERSION has actually moved since the last flush
 	 * this method itself recorded. Every request still re-adds every
