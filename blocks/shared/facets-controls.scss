@@ -89,6 +89,14 @@
 		width: 1.5em;
 	}
 
+	// Unlabeled, like &__remove-col -- the "Format" button's own text is
+	// self-explanatory, and only appears on numeric rows at all (see
+	// column-config-table.js), so a header label here would sit blank
+	// half the time regardless.
+	&__format-col {
+		white-space: nowrap;
+	}
+
 	&__remove {
 		color: #cc1818;
 
@@ -145,6 +153,30 @@
 	// on the Value field's own trailing margin left "Done" sitting flush
 	// against the input whenever that margin got collapsed against the
 	// modal's own body padding.
+	.components-button.is-primary {
+		margin-top: 0.5em;
+	}
+}
+
+// gateway-datatable's own per-column Format modal (column-config-table.js)
+// -- same spacing fix as .gateway-facet-default-modal above, just against
+// NumberFormatControls' own wider mix of control types (also shared with
+// gateway/card-field-number's own Inspector panel, where these controls
+// render inline rather than in a modal -- @wordpress/components' own
+// default spacing there is already reasonable, so this block-scoped rule
+// deliberately doesn't apply outside the modal).
+.gateway-number-format-modal {
+	.components-select-control,
+	.components-range-control,
+	.components-toggle-control,
+	.components-text-control {
+		margin-bottom: 1em;
+	}
+
+	.gateway-number-format-preview {
+		margin-bottom: 1em;
+	}
+
 	.components-button.is-primary {
 		margin-top: 0.5em;
 	}

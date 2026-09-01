@@ -191,4 +191,11 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	public static function max_one_per_model() {
 		return false;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_numeric() {
+		return false;
+	}
 }

@@ -228,6 +228,16 @@ class Column_Registry {
 	 * interface method's own docblock). `true` for the synthetic `id`
 	 * column and every other built-in field type.
 	 *
+	 * `isNumeric` is the same pattern again, via `Field_Type::is_numeric()`
+	 * -- what `gateway/card-field-number`'s own Field picker (and
+	 * `gateway/datatable`'s own per-column Number Format button) reads to
+	 * decide which fields are eligible at all, and what
+	 * `blocks/card-field-number/render.php`/`blocks/datatable-body/render.php`
+	 * both re-check before ever running `Number_Formatter::format()` on a
+	 * value -- `true` only for Number/Range, `false` for the synthetic
+	 * `id` column (an identifier, not a quantity a Currency/Percent
+	 * format would ever make sense on) and every other built-in type.
+	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
 	 *                  real, registered model.
@@ -247,6 +257,10 @@ class Column_Registry {
 				// would be unusable, same reasoning as core `ID`.
 				'facetType'        => array( 'input' ),
 				'isTextRenderable' => true,
+				// Technically a number, but never meant for
+				// gateway/card-field-number's own Currency/Percent
+				// formatting -- an id is an identifier, not a quantity.
+				'isNumeric'        => false,
 			),
 		);
 
@@ -254,6 +268,7 @@ class Column_Registry {
 			$type_class         = Field_Type_Registry::get( $field['type'] );
 			$is_filterable      = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
 			$is_text_renderable = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
+			$is_numeric         = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
 
 			$facet_type = array();
 
@@ -287,6 +302,7 @@ class Column_Registry {
 				'isFilterable'     => ! empty( $facet_type ),
 				'facetType'        => array_values( $facet_type ),
 				'isTextRenderable' => $is_text_renderable,
+				'isNumeric'        => $is_numeric,
 			);
 		}
 
@@ -379,6 +395,7 @@ class Column_Registry {
 					// correct by construction if either of those exclusions
 					// is ever loosened.
 					'isTextRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
+					'isNumeric'           => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
 					'relationship_method' => $relationship['method_name'],
 				);
 			}

@@ -183,7 +183,17 @@ class Field_Type_Registry extends Registry {
 	 * `Model_Fields::validate_permalink_settings()` enforces server-side
 	 * (see that method's own docblock).
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,max_one_per_model:bool}>
+	 * `is_numeric` (`Field_Type::is_numeric()`) is its own close cousin,
+	 * `true` only for `Number_Field_Type`/`Range_Field_Type` -- not
+	 * currently read by anything in this admin app (unlike
+	 * `is_text_renderable`), but the record-CRUD/block-editor side of
+	 * this same "which fields am I allowed to offer" question:
+	 * `gateway/card-field-number`'s own Field picker and `gateway/datatable`'s
+	 * own per-column Number Format button both read it via
+	 * `Column_Registry::get_columns_for_collection()`'s own `isNumeric`
+	 * (computed from this), not straight from here.
+	 *
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,max_one_per_model:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -202,6 +212,7 @@ class Field_Type_Registry extends Registry {
 				'input_type'                  => $class::input_type(),
 				'is_sensitive'                => $class::is_sensitive(),
 				'is_text_renderable'          => $class::is_text_renderable(),
+				'is_numeric'                  => $class::is_numeric(),
 				'relationship_type'           => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
 				'has_choices'                 => $has_choices,
 				'is_multiple'                 => $has_choices ? $class::is_multiple() : null,

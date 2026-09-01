@@ -583,4 +583,27 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function max_one_per_model();
+
+	/**
+	 * Whether this type's own stored value is a real number -- the same
+	 * "declare it about yourself" reasoning `is_filterable()`/
+	 * `is_text_renderable()` already use, this time deciding which
+	 * fields `gateway/card-field-number`'s own Field picker offers at
+	 * all (and rejects a stale/hand-crafted `fieldKey` for on the front
+	 * end, the same way `is_text_renderable()` already protects
+	 * `gateway/card-field-text`), and which of a Data Table's own
+	 * columns get a "Format" button in its column-config UI at all.
+	 *
+	 * `true` only for `Number_Field_Type`/`Range_Field_Type` -- both
+	 * store a genuine PHP int/float (`blueprint_method() => 'double'`
+	 * either way), the only two built-in types `Number_Formatter::format()`
+	 * (Currency/Percent/decimal-place formatting) produces a meaningful
+	 * result for. `false` for every other built-in type, `True_False_Field_Type`
+	 * included: its own stored value is a real column too, but
+	 * semantically a boolean, not a quantity anyone would want a
+	 * currency symbol or decimal places applied to.
+	 *
+	 * @return bool
+	 */
+	public static function is_numeric();
 }

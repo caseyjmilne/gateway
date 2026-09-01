@@ -2554,6 +2554,105 @@ before this existed, or one whose type changed into a non-renderable one
 since, is rejected the same way a genuinely removed field already was,
 rather than ever printing a secret or crashing on an uncastable value.
 
+### `gateway/card-field-number` -- a second field-display block, with Currency/Percent/decimal formatting
+
+The first of the "later field-display blocks (Number, Date, Image, ...)"
+`gateway/card-field-text`'s own section above already anticipated --
+structurally its identical twin (same `ancestor`, same `usesContext`,
+same "re-check the field against live availability, never trust the
+editor's own picker" `render.php` discipline), with two real
+differences: its own Field picker is filtered to **`Field_Type::
+is_numeric()`** instead of `is_text_renderable()` -- `true` only for
+`Number_Field_Type`/`Range_Field_Type` (both store a genuine PHP int/
+float; every other built-in type, `True_False_Field_Type` included, is
+`false` -- a boolean is a real stored value too, but not a *quantity*
+anyone would want a currency symbol or decimal places applied to) --
+and a second attribute, `numberFormat`, formats the resolved value
+before it's ever printed.
+
+**`Number_Formatter`** (a new, pure static class, the same "one class,
+not duplicated logic in every render.php" shape `Data_Cards_Renderer`
+already has) is the formatting itself -- a small, fixed "common
+options" vocabulary rather than an open-ended format string, so a site
+owner picking from three clearly-labeled `<select>` options can't
+produce a malformed result the way a free-text ICU/`sprintf()`-style
+pattern could:
+
+- **Style** -- Plain Number, Currency (adds a symbol), or Percent (adds
+  a trailing `%`; the stored value IS the percentage already -- 45
+  becomes "45%" -- not a 0-1 fraction needing its own ×100).
+- **Decimal Places** -- 0-6, clamped.
+- **Thousands Separator** -- on/off comma grouping.
+- **Currency Symbol** / **Position** -- free text (defaults to `$`) and
+  before/after the number -- `format( 4.55, ['style' => 'currency'] )`
+  is the exact `$4.55` example that shaped this feature.
+
+`sanitize_settings()` fills in/validates every key against sensible
+defaults (an unrecognized style/position, a non-numeric or
+out-of-range decimals, or a blank currency symbol all silently fall
+back rather than producing a malformed or empty result), and `format()`
+itself returns `''` for anything that isn't a real number (`null`, `''`,
+a non-numeric string) -- never a stray "0" for a Number field nobody
+ever filled in. Negative numbers are handled explicitly rather than
+leaning on `number_format()`'s own built-in sign placement, specifically
+so a negative Currency value reads as "-$4.55", not "$-4.55" (the sign
+belongs before the symbol, not inside the digits). `formatNumber()`
+(`blocks/shared/number-format.js`) is a JS mirror of the exact same
+rules, used ONLY for a live editor preview (this block's own `edit.js`,
+and a preview line inside the shared format controls below) -- every
+REAL render, front end or `<ServerSideRender>`-backed editor preview
+alike, goes through the real PHP class instead, so this only ever has
+to be "close enough" for a momentary preview, never byte-for-byte
+authoritative.
+
+**`NumberFormatControls`** (`blocks/shared/controls/`) is the actual
+Style/Decimals/Separator/Symbol/Position UI, shared between two very
+different homes: rendered directly in `gateway/card-field-number`'s own
+Inspector (a block's own sidebar has plenty of room), and inside a
+`<Modal>` on `gateway/datatable`'s own per-column "Format" button (see
+below) -- the same fix `facet-config-table.js`'s own "Default" modal
+already applied for Compare/Value, needed again here for the same
+reason: Style/Decimals/Separator/Symbol/Position is too much to add as
+more inline columns in the already-narrow Inspector-sidebar config
+table without forcing horizontal scroll.
+
+**Format settings live on the block/column instance, never on
+`Model_Fields`.** Whether a given Number field displays as "$4.55" or
+"4.55%" is a presentation choice about THIS particular block/column,
+not a fact about the field itself -- the same field could reasonably
+show as Currency in one card template and Plain elsewhere. This mirrors
+`gateway/card-field-text` never touching `Model_Fields` either (its own
+`fieldKey` is a plain block attribute); nothing about this feature
+added a new column to `gateway_fields` or a new REST route.
+
+### `gateway/datatable`'s own per-column Number Format
+
+The same Currency/Percent/decimal formatting reaches Data Table too --
+via a "Format" button that appears only on a numeric column's own row
+in the Columns config table (`column-config-table.js`), gated on
+`Column_Registry::get_columns_for_collection()`'s own `isNumeric` (see
+below), opening the exact same shared `NumberFormatControls` in a
+`<Modal>`. A column's own chosen format is stored as a `format` key
+alongside `key`/`sortable` in that block's `columns` attribute --
+`undefined`/absent by default, so merely opening the modal without
+changing anything never silently turns formatting on; it's only ever
+written the moment a real control inside it changes.
+
+Data Table's own `sourceType: 'collection'` branch (`gateway/datatable-body/render.php`)
+is where this actually applies: a requested column's own `format` is
+carried through from the block's stored `columns` attribute ONLY when
+`Column_Registry` itself still reports that column `isNumeric` --
+a stale format left over from a field since retyped away from Number/
+Range is silently dropped, the same "never trust the editor's own
+picker alone" discipline every other block's `render.php` in this
+plugin already applies to its own attributes -- then
+`Number_Formatter::format()` replaces the plain string cast every other
+column (and every numeric column with no Format ever configured) still
+gets. Deliberately Collection-only: the `sourceType: 'postType'`
+branch's own post meta has no comparably reliable "this is really a
+number" signal the way a Gateway model's own typed Number/Range field
+does, so Number Format is never offered there at all.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)
@@ -2582,6 +2681,7 @@ and turns each one into another column:
 	'isFilterable'        => false,
 	'facetType'           => [],
 	'isTextRenderable'    => true, // the related field's own is_text_renderable() -- always true today, see below.
+	'isNumeric'           => false, // the related field's own is_numeric() -- true for a related Number/Range field, making it just as choosable in gateway/card-field-number's own Field picker and gateway/datatable's own Format modal as one of the model's own fields.
 	'relationship_method' => 'eventDetails',
 ]
 ```

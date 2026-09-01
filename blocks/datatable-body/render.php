@@ -45,6 +45,14 @@
  * client-side DataTables column().search() call, unaffected by where the
  * table's rows actually came from.
  *
+ * A Collection column's own optional `format` (Gateway\Number_Formatter,
+ * configured via this block's own "Format" button -- see
+ * column-config-table.js -- shown only for a column Column_Registry
+ * itself reports isNumeric for) is Collection-only, same as isNumeric
+ * itself: the postType branch's own post meta has no comparably reliable
+ * "this is really a number" signal the way a Gateway model's own typed
+ * Number/Range field does, so it's never offered there at all.
+ *
  * @package Gateway
  *
  * @var array    $attributes Mirrored sourceType/postType/collection/limit/pageSize/columns/facets -- SSR-preview fallback only, see above.
@@ -114,9 +122,28 @@ if ( 'collection' === $source_type ) :
 			// branch below -- this block's own editor preview arrives via
 			// <ServerSideRender>'s query-string GET, where a real `false`
 			// becomes the literal text "false".
+			//
+			// `format` is never trusted straight off the request even
+			// when present -- only carried through (and only ever
+			// sanitized/applied below) for a column Column_Registry
+			// itself already reports isNumeric for; a stale format
+			// object left over from a field that's since been retyped
+			// away from Number/Range is silently dropped here, the same
+			// "never trust the editor's own picker alone" discipline
+			// every other block's render.php in this plugin already
+			// applies to its own attributes.
+			$format = null;
+
+			if ( ! empty( $available_columns[ $key ]['isNumeric'] ) && isset( $requested_column['format'] ) && is_array( $requested_column['format'] ) ) {
+				$format = \Gateway\Number_Formatter::sanitize_settings( $requested_column['format'] );
+			}
+
 			$columns[ $key ] = array_merge(
 				$available_columns[ $key ],
-				array( 'sortable' => rest_sanitize_boolean( $requested_column['sortable'] ?? false ) )
+				array(
+					'sortable' => rest_sanitize_boolean( $requested_column['sortable'] ?? false ),
+					'format'   => $format,
+				)
 			);
 		}
 	}
@@ -210,7 +237,20 @@ if ( 'collection' === $source_type ) :
 				<?php foreach ( $records as $record ) : ?>
 					<tr>
 						<?php foreach ( $columns as $column ) : ?>
-							<?php $value = (string) ( \Gateway\Column_Registry::resolve_collection_value( $record, $column['key'] ) ?? '' ); ?>
+							<?php
+							$raw_value = \Gateway\Column_Registry::resolve_collection_value( $record, $column['key'] );
+							// A Number/Range column with a configured Format
+							// (see the "Format" button in this block's own
+							// column-config-table.js) prints through
+							// Number_Formatter::format() -- e.g. "$1,234.55"
+							// -- instead of the raw value; every other
+							// column (non-numeric, or numeric with no
+							// Format ever configured) keeps the plain,
+							// unformatted display this block always had.
+							$value = ! empty( $column['isNumeric'] ) && ! empty( $column['format'] )
+								? \Gateway\Number_Formatter::format( $raw_value, $column['format'] )
+								: (string) ( $raw_value ?? '' );
+							?>
 							<td data-filter="<?php echo esc_attr( $value ); ?>">
 								<?php echo esc_html( $value ); ?>
 							</td>
