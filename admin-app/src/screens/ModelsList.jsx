@@ -172,41 +172,6 @@ export default function ModelsList() {
 							<tbody>
 								<tr>
 									<th scope="row">
-										<label htmlFor="gateway-model-title">
-											Title
-										</label>
-									</th>
-									<td>
-										<input
-											id="gateway-model-title"
-											type="text"
-											className="regular-text"
-											value={ title }
-											onChange={ ( event ) =>
-												setTitle(
-													sanitizeTitleInput(
-														event.target.value
-													)
-												)
-											}
-											placeholder="e.g. VehicleMakes or Vehicle_Makes"
-										/>
-										<p className="description">
-											Letters, digits, and underscores
-											only -- no spaces (they&rsquo;re
-											silently dropped as you type).
-											Becomes the model&rsquo;s class
-											name and database table -- e.g.{ ' ' }
-											<code>VehicleMakes</code> or{ ' ' }
-											<code>Vehicle_Makes</code> &rarr;
-											class{ ' ' }
-											<code>VehicleMakes</code>, table{ ' ' }
-											<code>vehicle_makes</code>.
-										</p>
-									</td>
-								</tr>
-								<tr>
-									<th scope="row">
 										<label htmlFor="gateway-model-type">
 											Type
 										</label>
@@ -239,6 +204,41 @@ export default function ModelsList() {
 										<p className="description">
 											This can&rsquo;t be changed once
 											the model is created.
+										</p>
+									</td>
+								</tr>
+								<tr>
+									<th scope="row">
+										<label htmlFor="gateway-model-title">
+											Title
+										</label>
+									</th>
+									<td>
+										<input
+											id="gateway-model-title"
+											type="text"
+											className="regular-text"
+											value={ title }
+											onChange={ ( event ) =>
+												setTitle(
+													sanitizeTitleInput(
+														event.target.value
+													)
+												)
+											}
+											placeholder="e.g. VehicleMakes or Vehicle_Makes"
+										/>
+										<p className="description">
+											Letters, digits, and underscores
+											only -- no spaces (they&rsquo;re
+											silently dropped as you type).
+											Becomes the model&rsquo;s class
+											name and database table -- e.g.{ ' ' }
+											<code>VehicleMakes</code> or{ ' ' }
+											<code>Vehicle_Makes</code> &rarr;
+											class{ ' ' }
+											<code>VehicleMakes</code>, table{ ' ' }
+											<code>vehicle_makes</code>.
 										</p>
 									</td>
 								</tr>

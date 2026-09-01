@@ -3208,9 +3208,12 @@ whenever Title *does* change too, via the same call.
 
 ### Type -- Content Type vs. Data Model, chosen once and fixed forever
 
-Create Model's third field, **Type**, is a `<select>` with exactly two
-options -- `Model_Builder::TYPE_CONTENT_TYPE`/`TYPE_DATA_MODEL` -- deciding
-what a brand new model starts with:
+Create Model's very first field, **Type**, is a `<select>` with exactly
+two options -- `Model_Builder::TYPE_CONTENT_TYPE`/`TYPE_DATA_MODEL` --
+deciding what a brand new model starts with. It comes before Title
+deliberately: it's the more consequential choice of the two (Title can
+be changed later via rename(); Type never can, see below), so it's
+asked first.
 
 - **Data Model** -- blank except for `id`/`timestamps`, the original,
   only-ever-available shape every model had before Type existed as a
@@ -5868,7 +5871,7 @@ entirely, while still making each model's own URL bookmarkable and the
 back button behave normally.
 
 `ModelsList` (`admin-app/src/screens/ModelsList.jsx`, route `/`) is a
-"Create Model" button opening the Title + Type + Plural Title form
+"Create Model" button opening the Type + Title + Plural Title form
 described above in a `Modal` (the same one Records' own "Add New"/"Edit"
 already use, rather than the form sitting permanently inline above the
 list),
