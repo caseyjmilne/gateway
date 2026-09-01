@@ -207,14 +207,17 @@ class Model_REST_Controller {
 	 * (Gateway\Model_Fields -- the detail screen's Field Editor uses
 	 * these as its initial list, avoiding a second request), its
 	 * relationships (Gateway\Model_Relationships, same reasoning -- the
-	 * detail screen's Relationship Editor's own initial list), its row
-	 * count (for the Records list screen), and its migration's version/
-	 * run status (looked up via the same naming convention Model_Builder
-	 * itself used to generate it, since that link isn't stored anywhere
-	 * separately).
+	 * detail screen's Relationship Editor's own initial list), its
+	 * Records-table column configuration (Gateway\Model_Columns, same
+	 * reasoning again -- the detail screen's new Columns tab's own
+	 * initial list, and also what RecordsCrud.jsx itself reads to decide
+	 * which columns to actually show), its row count (for the Records
+	 * list screen), and its migration's version/run status (looked up
+	 * via the same naming convention Model_Builder itself used to
+	 * generate it, since that link isn't stored anywhere separately).
 	 *
 	 * @param string $class Registered model class name.
-	 * @return array{class:string,table:string,plural_title:string,type:string,fields:array,relationships:array,count:?int,migration:?array}|null
+	 * @return array{class:string,table:string,plural_title:string,type:string,fields:array,relationships:array,columns:?array,count:?int,migration:?array}|null
 	 *              Null if $class is no longer a real, loaded class
 	 *              (shouldn't normally happen, but registration and the
 	 *              filesystem could in principle drift apart).
@@ -266,6 +269,11 @@ class Model_REST_Controller {
 				Model_Fields::all( $class )
 			),
 			'relationships' => Model_Relationships::all( $class ),
+			// Null means "never configured" -- see Model_Columns' own
+			// docblock for why RecordsCrud.jsx (and this method's own
+			// sibling GET routes) need to tell that apart from
+			// "configured to show every current field."
+			'columns'       => Model_Columns::get( $class ),
 			'count'         => $count,
 			'migration'     => $migration,
 		);

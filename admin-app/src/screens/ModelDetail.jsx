@@ -4,6 +4,7 @@ import { apiFetch } from '../api.js';
 import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
 import PermalinkEditor from '../components/PermalinkEditor.jsx';
+import ColumnsEditor from '../components/ColumnsEditor.jsx';
 
 // Gateway\Model_Builder::TYPE_CONTENT_TYPE/TYPE_DATA_MODEL's own values --
 // same fixed, hardcoded vocabulary ModelsList.jsx's own create-form
@@ -20,10 +21,13 @@ const MODEL_TYPE_LABELS = {
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
  * run), lets its Title and Plural Title be changed, and hosts its own
- * Fields/Relationships/Permalinks editors, all four behind one text-based
- * tab strip: **General** (Title/Plural Title/Table/Migration/Status),
- * **Fields** (`FieldEditor`), **Relationships** (`RelationshipEditor`),
- * **Permalinks** (`PermalinkEditor`). The same `.gateway-subtab`/
+ * Fields/Relationships/Permalinks/Columns editors, all five behind one
+ * text-based tab strip: **General** (Title/Plural Title/Table/Migration/
+ * Status), **Fields** (`FieldEditor`), **Relationships**
+ * (`RelationshipEditor`), **Permalinks** (`PermalinkEditor`), **Columns**
+ * (`ColumnsEditor` -- which of this model's own fields show as columns
+ * on its Records table, their order, and which are sortable). The same
+ * `.gateway-subtab`/
  * `.gateway-subtab-active` classes `FieldEditor`'s own inner General/
  * Validation/Presentation/Conditional Logic tabs already use, not a
  * second, visually-different tab style of this page's own -- before this,
@@ -285,6 +289,18 @@ export default function ModelDetail() {
 						>
 							Permalinks
 						</button>
+						<button
+							type="button"
+							className={
+								'gateway-subtab' +
+								( 'columns' === activeTab
+									? ' gateway-subtab-active'
+									: '' )
+							}
+							onClick={ () => setActiveTab( 'columns' ) }
+						>
+							Columns
+						</button>
 					</div>
 
 					<div hidden={ 'general' !== activeTab }>
@@ -456,6 +472,15 @@ export default function ModelDetail() {
 							modelClass={ model.class }
 							fields={ fields }
 							onFieldsChange={ setFields }
+						/>
+					</div>
+
+					<div hidden={ 'columns' !== activeTab }>
+						<ColumnsEditor
+							key={ model.class }
+							modelClass={ model.class }
+							fields={ fields }
+							initialColumns={ model.columns }
 						/>
 					</div>
 				</>

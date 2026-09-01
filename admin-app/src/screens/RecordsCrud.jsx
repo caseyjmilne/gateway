@@ -27,10 +27,17 @@ const PER_PAGE = 20;
  * deliberately symmetric (same Modal, same "Add New "/"Edit " + model
  * name title convention) rather than one action opening a floating
  * dialog and the other growing the page, purely for a consistent feel
- * between the two most common actions on this screen. Every column and
- * every form input is driven entirely by the model's own fields
- * (Gateway\Model_Fields, fetched as part of the model detail response) --
- * there's no separate "which columns to show" configuration here at all.
+ * between the two most common actions on this screen. Every FORM input
+ * is driven entirely by the model's own fields (Gateway\Model_Fields,
+ * fetched as part of the model detail response) -- Add/Edit always
+ * offer every field, regardless of the table's own column configuration
+ * below. Which of those fields actually show as TABLE columns, their
+ * order, and which are clickable to sort by, is a separate, optional
+ * per-model configuration (Gateway\Model_Columns -- the Columns tab on
+ * ModelDetail, alongside Permalinks): unconfigured, every field still
+ * shows exactly as it always has (see `displayedFields` below); this is
+ * what a site owner reaches for once a model's own field count makes
+ * this table cluttered.
  *
  * Delete opens its own small confirmation `Modal` too, rather than
  * deleting the instant the row's own Delete button is clicked -- a
@@ -65,6 +72,17 @@ export default function RecordsCrud() {
 	const [ page, setPage ] = useState( 1 );
 	const [ loadingRecords, setLoadingRecords ] = useState( true );
 	const [ recordsError, setRecordsError ] = useState( '' );
+
+	// Which column the table is currently sorted by -- 'id'/'desc' is
+	// this endpoint's own long-standing default (see Records_REST_
+	// Controller::list_records()'s own resolve_sort()), kept in sync
+	// with whatever the SERVER actually applied (loadRecords() below
+	// corrects these back from the response) rather than trusted
+	// blindly: a column that stops being sortable (its own Columns
+	// config changed elsewhere) must never leave this stuck showing an
+	// indicator for a sort that no longer took effect.
+	const [ orderBy, setOrderBy ] = useState( 'id' );
+	const [ order, setOrder ] = useState( 'desc' );
 
 	const [ showAddForm, setShowAddForm ] = useState( false );
 	const [ addSubmitting, setAddSubmitting ] = useState( false );
@@ -110,17 +128,28 @@ export default function RecordsCrud() {
 	}, [ className ] );
 
 	const loadRecords = useCallback(
-		async ( targetPage ) => {
+		async ( targetPage, targetOrderBy, targetOrder ) => {
 			setLoadingRecords( true );
 			setRecordsError( '' );
 
 			try {
-				const data = await apiFetch(
-					`${ basePath }?page=${ targetPage }&per_page=${ PER_PAGE }`
-				);
+				const params = new URLSearchParams( {
+					page: targetPage,
+					per_page: PER_PAGE,
+					orderby: targetOrderBy,
+					order: targetOrder,
+				} );
+				const data = await apiFetch( `${ basePath }?${ params.toString() }` );
 				setRecords( data.records );
 				setTotal( data.total );
 				setPage( data.page );
+				// Reads the sort the server ACTUALLY applied back into state
+				// -- resolve_sort() silently falls back to id/desc for
+				// anything invalid or no longer sortable, so this keeps the
+				// column-header indicator honest about what's really
+				// showing rather than whatever was merely requested.
+				setOrderBy( data.orderby );
+				setOrder( data.order );
 			} catch ( err ) {
 				setRecordsError( err.message );
 			} finally {
@@ -131,8 +160,20 @@ export default function RecordsCrud() {
 	);
 
 	useEffect( () => {
-		loadRecords( 1 );
+		loadRecords( 1, orderBy, order );
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- only
+		// re-fetches on a genuine model switch (basePath, inside
+		// loadRecords) or a deliberate handleSort() click (which passes
+		// its own explicit orderBy/order straight through, not via this
+		// effect) -- orderBy/order are deliberately left out here so
+		// loadRecords() correcting them back from the server's own
+		// response (just above) never triggers a second, redundant fetch.
 	}, [ loadRecords ] );
+
+	const handleSort = ( key ) => {
+		const nextOrder = key === orderBy && 'asc' === order ? 'desc' : 'asc';
+		loadRecords( 1, key, nextOrder );
+	};
 
 	const handleAdd = async ( values ) => {
 		setAddSubmitting( true );
@@ -144,7 +185,11 @@ export default function RecordsCrud() {
 				body: JSON.stringify( values ),
 			} );
 			setShowAddForm( false );
-			loadRecords( 1 ); // a new record sorts first (newest-first order)
+			// Preserves whatever sort is currently showing (id/desc puts a
+			// new record first, but a site owner already sorted by, say,
+			// Title has no reason to have that silently reset just because
+			// a record was added).
+			loadRecords( 1, orderBy, order );
 		} catch ( err ) {
 			setAddError( err.message );
 		} finally {
@@ -162,7 +207,7 @@ export default function RecordsCrud() {
 				body: JSON.stringify( values ),
 			} );
 			setEditingId( null );
-			loadRecords( page );
+			loadRecords( page, orderBy, order );
 		} catch ( err ) {
 			setEditError( err.message );
 		} finally {
@@ -182,7 +227,7 @@ export default function RecordsCrud() {
 			// own `editError` already has, rather than silently
 			// dismissing a failed delete as if it had gone through.
 			setDeleteConfirmId( null );
-			loadRecords( page );
+			loadRecords( page, orderBy, order );
 		} catch ( err ) {
 			setDeleteError( err.message );
 		} finally {
@@ -191,6 +236,37 @@ export default function RecordsCrud() {
 	};
 
 	const fields = model ? model.fields : [];
+
+	// Which of this model's own fields actually show as Records-table
+	// columns, and in what order -- Gateway\Model_Columns' own
+	// "unconfigured means show everything" default (see that class's own
+	// docblock) whenever `model.columns` is null, otherwise exactly the
+	// CONFIGURED list, in the Columns tab's own saved order. A stale key
+	// (the field was renamed/removed since Columns was last saved) is
+	// simply skipped here rather than shown as a broken column -- the
+	// same "never trust stored config blindly" discipline Model_Columns::
+	// set() already re-applies server-side on its own. `fields` itself
+	// (unfiltered) still feeds RecordForm below -- hiding a column from
+	// this table must never hide the underlying field from the Add/Edit
+	// form.
+	const columnsConfig = model ? model.columns : null;
+	const displayedFields = columnsConfig
+		? columnsConfig
+				.map( ( column ) => fields.find( ( field ) => field.name === column.key ) )
+				.filter( Boolean )
+		: fields;
+
+	// Which columns are actually clickable to sort by -- 'id' (this
+	// table's own fixed leading column) is always sortable, matching
+	// Records_REST_Controller::list_records()'s own resolve_sort(),
+	// which always allows it regardless of Columns configuration.
+	const sortableKeys = new Set( [
+		'id',
+		...( columnsConfig || [] )
+			.filter( ( column ) => column.sortable )
+			.map( ( column ) => column.key ),
+	] );
+
 	const totalPages = Math.max( 1, Math.ceil( total / PER_PAGE ) );
 	// `null` both while nothing is being edited and for the brief window
 	// right after a delete/reload where the previously-edited record's id
@@ -460,10 +536,28 @@ export default function RecordsCrud() {
 								<table className="widefat striped">
 									<thead>
 										<tr>
-											<th>ID</th>
-											{ fields.map( ( field ) => (
+											<th>
+												<SortableHeader
+													label="ID"
+													columnKey="id"
+													orderBy={ orderBy }
+													order={ order }
+													onSort={ handleSort }
+												/>
+											</th>
+											{ displayedFields.map( ( field ) => (
 												<th key={ field.name }>
-													{ field.label || field.name }
+													{ sortableKeys.has( field.name ) ? (
+														<SortableHeader
+															label={ field.label || field.name }
+															columnKey={ field.name }
+															orderBy={ orderBy }
+															order={ order }
+															onSort={ handleSort }
+														/>
+													) : (
+														field.label || field.name
+													) }
 												</th>
 											) ) }
 											<th></th>
@@ -479,7 +573,7 @@ export default function RecordsCrud() {
 											return (
 											<tr key={ record.id }>
 												<td>{ record.id }</td>
-												{ fields.map( ( field ) => (
+												{ displayedFields.map( ( field ) => (
 													<td key={ field.name }>
 														{ displayValue(
 															field,
@@ -542,7 +636,7 @@ export default function RecordsCrud() {
 										type="button"
 										className="button"
 										onClick={ () =>
-											loadRecords( page - 1 )
+											loadRecords( page - 1, orderBy, order )
 										}
 										disabled={ page <= 1 }
 									>
@@ -553,7 +647,7 @@ export default function RecordsCrud() {
 										type="button"
 										className="button"
 										onClick={ () =>
-											loadRecords( page + 1 )
+											loadRecords( page + 1, orderBy, order )
 										}
 										disabled={ page >= totalPages }
 									>
@@ -673,5 +767,29 @@ export default function RecordsCrud() {
 				</Modal>
 			) }
 		</div>
+	);
+}
+
+/**
+ * One clickable column-header button, for a column `sortableKeys` (in
+ * the component above) actually allows sorting by. A plain inline
+ * `▲`/`▼` next to the label -- not a separate icon library -- shows
+ * only on the currently-active column, matching whichever `order` the
+ * table is actually sorted by right now (per `orderBy`/`order` reflecting
+ * the SERVER's own applied sort, not just whatever was last clicked --
+ * see `loadRecords()`'s own docblock).
+ */
+function SortableHeader( { label, columnKey, orderBy, order, onSort } ) {
+	const isActive = columnKey === orderBy;
+
+	return (
+		<button
+			type="button"
+			className="gateway-records-crud-sort"
+			onClick={ () => onSort( columnKey ) }
+		>
+			{ label }
+			{ isActive && ( 'asc' === order ? ' ▲' : ' ▼' ) }
+		</button>
 	);
 }

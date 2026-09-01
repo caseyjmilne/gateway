@@ -226,6 +226,16 @@ class Field_Type_Registry extends Registry {
 				'supports_user_settings'      => $class::supports_user_settings(),
 				'supports_permalink_settings' => $class::supports_permalink_settings(),
 				'max_one_per_model'           => $class::max_one_per_model(),
+				// Whether this type has a real column of its own on the
+				// model's table at all (Field_Type::blueprint_method()
+				// returning '' is that method's own existing "no column,
+				// don't migrate one" signal -- currently only Relate to
+				// Many, backed by a pivot table instead) -- the Columns
+				// tab's own eligibility check for the "Sortable" toggle:
+				// there's no column to ORDER BY for a field this is false
+				// for. See Model_Columns::set()'s own docblock for the
+				// server-side enforcement of the same rule.
+				'has_column'                  => '' !== $class::blueprint_method(),
 			);
 		}
 

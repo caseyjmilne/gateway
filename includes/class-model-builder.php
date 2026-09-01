@@ -445,6 +445,9 @@ class Model_Builder {
 		// forget()'s own docblock for the one thing this doesn't cover
 		// (another model's relationship still pointing at $old_class).
 		Model_Relationships::forget( $old_class );
+		// Same reasoning again, for the Records-table Columns config --
+		// see Model_Columns::forget()'s own docblock.
+		Model_Columns::forget( $old_class );
 
 		$old_model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $old_class . '.php';
 

@@ -6083,6 +6083,125 @@ yet, both missing entirely and present-but-empty; `settings` arriving as
 `[]` rather than `{}`; a slug needing URL-encoding; a null record/fields
 array) alongside a successful `admin-app` production build.
 
+### Columns (`Model_Columns`) -- configurable, sortable Records-table columns
+
+The problem this solves: `RecordsCrud.jsx` used to render every one of a
+model's own fields as a table column unconditionally -- fine for a model
+with a handful of fields, cluttered fast on one with a lot of them.
+**Columns**, a new tab beside Permalinks on `ModelDetail`, lets a site
+owner choose which fields actually show as columns, their order, and
+which of them can be clicked to sort the table -- "show or not" is the
+main option, "sortable or not" a secondary, per-column one.
+
+**`Gateway\Model_Columns`** is the smallest member of the Model_Fields/
+Model_Relationships family: ONE row per model (`gateway_table_columns`,
+`model` unique, `created_at`/`updated_at`), not one row per column -- an
+ordered JSON list of `{key, sortable}` pairs is exactly what a single
+column already models well (the same shape `gateway/datatable`'s own
+`columns` block attribute already uses for its front-end column picker
+-- this feature's own admin-app UI deliberately mirrors that same
+picker-plus-config-table shape, see `ColumnsEditor.jsx` below), so
+there's no per-row structure here worth a normalized table the way
+`gateway_relationships` needs.
+
+**Unconfigured** (no row at all -- every model starts this way) means
+exactly today's PRE-EXISTING behavior: every field shows, in Fields-tab
+order, none sortable. `get()` returns `null` in that case rather than a
+default array, so every caller can tell "never configured" apart from
+"configured to show every current field" -- genuinely different states:
+the latter does NOT automatically start showing a field added to the
+model later, the same way `gateway/datatable`'s own column picker
+doesn't retroactively add a newly-created field to an already-published
+block either.
+
+**`set( $class_name, $columns )`** replaces a model's entire
+configuration wholesale (like `Model_Fields::update()`'s own `$settings`
+replace, not a merge). Every entry's own `key` must name one of the
+model's OWN CURRENT fields (`Model_Fields::all()`) -- a stale key (since
+renamed or removed) is silently dropped rather than rejecting the whole
+save; duplicate keys collapse to their FIRST occurrence; order is
+preserved exactly as given. `sortable` is forced `false`, regardless of
+what was submitted, for any field with no real column to sort BY at all
+-- reusing `Field_Type::blueprint_method()`'s own existing `''` "no
+column, don't migrate one" signal (currently only Relate to Many, backed
+by a pivot table) rather than inventing a new flag; `Field_Type_Registry::
+describe_all()` now exposes this as `has_column`, which both this
+server-side check and the admin app's own "Sortable" toggle eligibility
+read from the same source. `forget( $class_name )` deletes a model's
+config outright -- called by `Model_Builder::rename()` alongside its
+existing `Model_Fields::forget()`/`Model_Relationships::forget()` calls,
+for the identical reason: a rename is really "create a fresh model, drop
+the old one," so config keyed to specific field names has nothing left
+to apply to.
+
+**Reaching the admin app.** `Model_REST_Controller::describe_model()`
+now includes `'columns' => Model_Columns::get( $class )` alongside
+`fields`/`relationships` -- the same one request `ModelDetail.jsx`
+already makes seeds this tab too, no second round trip. Writing goes
+through a new, dedicated `PUT /gateway/v1/models/<class>/columns`
+(`Model_Column_REST_Controller`, structurally the smallest of the
+Fields/Relationships/Columns REST controller trio -- no GET route of its
+own, for the reason above).
+
+**`ColumnsEditor.jsx`** deliberately mirrors `gateway/datatable`'s own
+column-picker UI (`available-columns-list.js` + `column-config-table.js`)
+-- a click-to-toggle "available fields" list above a drag-to-reorder
+"selected columns" config table below, same class names even -- but is
+its own, separately-written component: the admin app shares no build (or
+`@wordpress/components`) with the Gutenberg blocks, so there's nothing to
+import directly. Unlike the block's own Format button (a whole settings
+MODAL, for a genuinely multi-field Number-format group), Sortable is
+this feature's only per-column setting -- a single boolean fits as a
+plain inline toggle button in the config table itself, no modal earns
+its keep here. Opening this tab for the first time (an unconfigured
+model) seeds its own local editing state with every CURRENT field, none
+marked sortable -- exactly what's already effectively showing today, so
+the panel starts as a working set to deselect from rather than an empty,
+misleading one. A plain Save button, not autosave -- same reasoning
+`PermalinkEditor.jsx`'s own docblock already gives: one coherent, ordered
+arrangement, not small independent per-row units.
+
+**Sorting, enforced server-side.** `Records_REST_Controller::list_records()`
+now accepts `orderby`/`order` query params, validated by a new private
+`resolve_sort()` rather than passed straight to `orderBy()` unchecked --
+the same "never trust the client's own request blindly" discipline every
+other write path in this plugin already follows. `id` is always allowed
+(this endpoint's own long-standing default); any other `orderby` must be
+BOTH one of the model's own CURRENT fields AND explicitly marked
+`sortable` in its Columns configuration -- an unconfigured model allows
+nothing beyond `id`, preserving pre-existing behavior exactly for every
+model that hasn't opted into this feature. An invalid, missing, or
+no-longer-eligible `orderby`/`order` falls back to `id`/`desc` rather
+than erroring, so a bookmarked or stale sorted URL degrades gracefully.
+The response echoes back the sort ACTUALLY applied (`orderby`/`order`),
+which `RecordsCrud.jsx` reads to keep its own clickable column-header
+indicator (`SortableHeader`, a plain inline `▲`/`▼`) honest about what
+the table really reflects rather than merely what was last clicked --
+add/edit/delete and pagination all now thread the current sort through
+too, so none of them silently resets it back to the default.
+
+Verified with a new standalone PHP smoke test (`Field_Type_Registry::
+describe_all()`'s new `has_column` flag; the full `set()` sanitization
+matrix -- a stale key dropped, a duplicate key's first occurrence wins,
+a Relate to Many field's own `sortable` forced false even when
+requested, a round trip through real storage reading back exactly what
+was saved, a second `set()` call replacing rather than accumulating,
+`forget()` clearing back to unconfigured; and `list_records()`'s own
+full sort-resolution matrix -- unconfigured allows nothing but `id`,
+a configured+sortable column applies exactly as requested, a configured
+-but-not-sortable column still falls back, `id` always works regardless
+of configuration, no `orderby` at all falls back to the same default,
+and a field REMOVED after being marked sortable in a stale Columns
+config never reaches a raw `ORDER BY`) alongside the full existing
+regression suite (five pre-existing smoke tests needed one added
+`require` each, `class-model-columns.php`, since they already exercise
+`list_records()`/`Model_Builder::rename()` directly), plus a successful
+`admin-app` production build. The block-editor-mirrored UI itself
+(drag-reorder, the click-to-toggle list, the Sortable button's disabled
+state for Relate to Many) needs manual verification in a real wp-admin
+screen, the same caveat every other admin-app UI change in this plugin
+already carries.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

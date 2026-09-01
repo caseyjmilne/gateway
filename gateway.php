@@ -64,6 +64,7 @@ function gateway_activate() {
 	\Gateway\Database_Connection::boot_capsule();
 	\Gateway\Model_Fields::ensure_table();
 	\Gateway\Model_Relationships::ensure_table();
+	\Gateway\Model_Columns::ensure_table();
 }
 register_activation_hook( __FILE__, 'gateway_activate' );
 
@@ -115,6 +116,8 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-fields.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-field-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationships.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-relationship-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-columns.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-column-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
@@ -143,6 +146,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_REST_Controller::init();
 	\Gateway\Model_Field_REST_Controller::init();
 	\Gateway\Model_Relationship_REST_Controller::init();
+	\Gateway\Model_Column_REST_Controller::init();
 	\Gateway\Records_REST_Controller::init();
 	\Gateway\Media_REST_Controller::init();
 	\Gateway\User_REST_Controller::init();

@@ -181,9 +181,11 @@ class Records_REST_Controller {
 		$per_page = (int) $request->get_param( 'per_page' );
 		$per_page = $per_page > 0 ? min( self::MAX_PER_PAGE, $per_page ) : self::DEFAULT_PER_PAGE;
 
+		list( $orderby, $order ) = self::resolve_sort( $class, $request );
+
 		try {
 			$total   = $class::count();
-			$records = $class::orderBy( 'id', 'desc' )->forPage( $page, $per_page )->get();
+			$records = $class::orderBy( $orderby, $order )->forPage( $page, $per_page )->get();
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_records_query_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -194,8 +196,81 @@ class Records_REST_Controller {
 				'total'    => $total,
 				'page'     => $page,
 				'per_page' => $per_page,
+				// The sort ACTUALLY applied, not necessarily whatever was
+				// requested -- an invalid/no-longer-sortable `orderby`
+				// silently falls back rather than erroring (see
+				// resolve_sort()'s own docblock), so RecordsCrud.jsx reads
+				// this back to keep its own column-header sort indicator
+				// honest about what the response actually reflects.
+				'orderby'  => $orderby,
+				'order'    => $order,
 			)
 		);
+	}
+
+	/**
+	 * Validates the request's own `orderby`/`order` against what's
+	 * actually safe and meaningful to sort `$class` by right now, rather
+	 * than passing a client-supplied column name straight to `orderBy()`
+	 * unchecked -- the same "never trust the client's own picker/request
+	 * blindly" discipline every other write path in this plugin already
+	 * follows (e.g. gateway/card-field-text's render.php re-validating
+	 * `fieldKey` against the model's live columns).
+	 *
+	 * `id` is always allowed, matching this endpoint's own long-standing
+	 * default. Any other `orderby` must be BOTH one of `$class`'s own
+	 * CURRENT fields (a stale key -- renamed or removed since -- must
+	 * never reach a raw SQL `ORDER BY`) AND explicitly marked `sortable`
+	 * in this model's own Columns configuration (`Model_Columns::get()`)
+	 * -- an unconfigured model (`get()` returns null) allows nothing
+	 * beyond `id`, preserving today's exact pre-existing behavior for
+	 * every model that hasn't opted into this feature at all yet.
+	 *
+	 * Falls back to `[ 'id', 'desc' ]` -- this endpoint's own original,
+	 * unconditional default -- for a missing, invalid, or no-longer
+	 * -eligible `orderby`, and for any `order` other than literally
+	 * `'asc'`, rather than erroring: a bookmarked/stale sorted URL should
+	 * degrade gracefully, not break the whole listing.
+	 *
+	 * @param string            $class   Model class name.
+	 * @param \WP_REST_Request $request Request.
+	 * @return array{0:string,1:string} [ orderby, order ].
+	 */
+	private static function resolve_sort( $class, \WP_REST_Request $request ) {
+		$orderby = (string) $request->get_param( 'orderby' );
+		$order   = 'asc' === strtolower( (string) $request->get_param( 'order' ) ) ? 'asc' : 'desc';
+
+		if ( 'id' === $orderby ) {
+			return array( 'id', $order );
+		}
+
+		$columns_config = Model_Columns::get( $class );
+		$sortable_keys  = array();
+
+		if ( $columns_config ) {
+			foreach ( $columns_config as $column ) {
+				if ( ! empty( $column['sortable'] ) ) {
+					$sortable_keys[] = $column['key'];
+				}
+			}
+		}
+
+		if ( '' === $orderby || ! in_array( $orderby, $sortable_keys, true ) ) {
+			return array( 'id', 'desc' );
+		}
+
+		// Belt-and-suspenders: $sortable_keys only ever came from a
+		// Columns config that Model_Columns::set() already validated
+		// against Model_Fields::all() at SAVE time -- but a field could
+		// have been renamed or removed since without Columns being
+		// re-saved, and a stale key must never reach a raw SQL ORDER BY.
+		$current_field_names = wp_list_pluck( Model_Fields::all( $class ), 'name' );
+
+		if ( ! in_array( $orderby, $current_field_names, true ) ) {
+			return array( 'id', 'desc' );
+		}
+
+		return array( $orderby, $order );
 	}
 
 	/**
