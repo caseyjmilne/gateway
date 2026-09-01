@@ -6004,6 +6004,29 @@ only the keys given (here, just `title`), filling in everything else --
 href, parent, group, meta -- from the node's own current values, so this
 never has to know or reproduce the href core's own code already built.
 
+**`suppress_template_page_title()` blanks out the template Page's own
+title -- reported directly.** A template Page is typically named
+something like "Portfolio Item Template" -- a perfectly clear label for
+the site owner configuring Permalinks, but never meant for an actual
+visitor looking at one real record, and exactly what a theme's own page
+template would otherwise print verbatim (classic `the_title()` inside
+the Loop, or a block theme's own `core/post-title` -- both read through
+the same `the_title` filter, `get_the_title()`'s own filter under the
+hood). Hooked there rather than anything document-title-specific:
+`wp_get_document_title()` itself builds a singular page's title part via
+`single_post_title()`, which calls `get_the_title()` -- the exact same
+filter -- so this one hook already blanks the browser tab/SEO title too,
+with nothing extra needed. A no-op unless a record actually resolved for
+this request, same as `rename_edit_node()` above, and scoped to exactly
+the template Page's OWN title (`$post_id` compared against
+`get_queried_object_id()`, the one post/page this specific request is
+actually FOR) -- a query loop or a list of other pages placed somewhere
+in the same template keeps showing its own items' real titles untouched.
+This only ever removes the template's own irrelevant placeholder; it
+never invents a replacement heading of its own -- the right way to show
+one is a `gateway/card-field-text` bound to whichever of the record's
+own fields reads as its title, placed directly in the template.
+
 **Rendering (`gateway/single-record`).** A new block, placed on the
 model's own designated template Page, that does only one thing render.php
 -side: validates its own `collection` attribute against the CURRENTLY
@@ -6069,14 +6092,19 @@ computation, the full flush-timing matrix -- first-ever flush, no flush
 on an unrelated request, a flush exactly on each actual config change,
 never on a routability-neutral rename -- query var registration, the
 complete `resolve_record()`/`inject_record_context()` 404/found matrix
-(Auto and Manual slugs alike), and `rename_edit_node()`'s own three
-cases against a small stub `WP_Admin_Bar` -- no record resolved leaves a
+(Auto and Manual slugs alike), `rename_edit_node()`'s own three cases
+against a small stub `WP_Admin_Bar` -- no record resolved leaves a
 pre-existing node untouched, a resolved record with no "edit" node
 fabricates nothing, a resolved record with one retitles it to "Edit
-Template" while leaving its href untouched) alongside the full existing
-regression suite, plus a successful production build of the new block.
-Rewrite-flush timing, the real `/{root}/{slug}` HTTP round trip, the
-actual admin-bar label in a real wp-admin toolbar, and the block
+Template" while leaving its href untouched -- and `suppress_template_page_title()`'s
+own three cases -- no record resolved passes a title through unchanged,
+a resolved record blanks the template Page's OWN title, a resolved
+record still leaves some OTHER post's own title untouched) alongside the
+full existing regression suite, plus a successful production build of
+the new block. Rewrite-flush timing, the real `/{root}/{slug}` HTTP
+round trip, the actual admin-bar label in a real wp-admin toolbar, the
+title actually disappearing from a real theme's own template, and the
+block
 editor's own insertion/preview behavior are genuine WordPress runtime
 behavior a standalone stubbed script can't exercise -- those need
 verification against a real WP install.

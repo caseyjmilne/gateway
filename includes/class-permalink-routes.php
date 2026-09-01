@@ -101,6 +101,10 @@ class Permalink_Routes {
 		// adds already exists by the time rename_edit_node() runs; see
 		// that method's own docblock for why it exists at all.
 		add_action( 'admin_bar_menu', array( __CLASS__, 'rename_edit_node' ), 81 );
+		// Registered unconditionally, same reasoning as inject_record_context()
+		// above -- suppress_template_page_title() itself is a no-op the
+		// instant $current_record is still null.
+		add_filter( 'the_title', array( __CLASS__, 'suppress_template_page_title' ), 10, 2 );
 	}
 
 	/**
@@ -328,6 +332,51 @@ class Permalink_Routes {
 		}
 
 		return $context;
+	}
+
+	/**
+	 * Blanks out the template Page's own title while viewing a single
+	 * -record page -- reported directly: a template Page is typically
+	 * named something like "Portfolio Item Template," which is exactly
+	 * the kind of internal, site-owner-facing label that was never meant
+	 * to be shown to an actual visitor looking at one real record, yet a
+	 * theme's own page template (classic `the_title()` inside the Loop,
+	 * or a block theme's own `core/post-title` -- both read through this
+	 * same `the_title` filter, `get_the_title()`'s own filter under the
+	 * hood) would otherwise print it verbatim. The right way to show a
+	 * MEANINGFUL heading here is a `gateway/card-field-text` bound to
+	 * whichever of the record's own fields reads as its title -- this
+	 * only ever removes the template's own irrelevant placeholder, it
+	 * never invents a replacement of its own.
+	 *
+	 * Filters `the_title` rather than something document-title-specific:
+	 * `wp_get_document_title()` itself builds a singular page's own title
+	 * part via `single_post_title()`, which calls `get_the_title()` --
+	 * the exact same filter -- so this one hook already blanks the
+	 * browser tab/SEO title too, not just the on-page heading, with
+	 * nothing extra needed.
+	 *
+	 * Scoped to exactly the template Page's OWN title -- `$post_id` is
+	 * compared against `get_queried_object_id()` (the one post/page this
+	 * specific request is actually FOR) rather than blanking every title
+	 * unconditionally, so a query loop or a list of other pages placed
+	 * somewhere in the same template keeps showing ITS OWN items' real
+	 * titles untouched.
+	 *
+	 * @param string $title   The title WordPress core resolved.
+	 * @param int    $post_id Post/page id the title belongs to.
+	 * @return string
+	 */
+	public static function suppress_template_page_title( $title, $post_id = 0 ) {
+		if ( ! self::$current_record ) {
+			return $title;
+		}
+
+		if ( (int) $post_id !== (int) get_queried_object_id() ) {
+			return $title;
+		}
+
+		return '';
 	}
 
 	/**
