@@ -3,7 +3,7 @@
 	"apiVersion": 3,
 	"name": "gateway/data-display",
 	"title": "Data Display",
-	"category": "widgets",
+	"category": "gateway",
 	"icon": "list-view",
 	"description": "A docs-style browser: every record of a Collection listed down the left as group headings, its own hasMany children listed under each -- click a child to load its own detail template into the main pane on the right.",
 	"keywords": [ "docs", "documentation", "sidebar", "browser", "relationship", "collection" ],

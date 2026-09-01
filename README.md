@@ -177,6 +177,42 @@ does the equivalent for the build: it globs `blocks/*/block.json` and wires
 up `index.js`/`view.js` entries per block automatically, compiling each into
 that block's own `build/` directory.
 
+### A dedicated "Gateway" block category, for the four top-level blocks
+
+`Block_Loader::register_category()` (on `block_categories_all`, alongside
+`register_blocks()`'s own `init` hook) registers one new inserter
+category, `gateway`/"Gateway" -- prepended ahead of core's own categories
+(Text/Media/Design/etc.), rather than appended after them, so a plugin
+whose main purpose IS these blocks gets surfaced first, not buried below
+groupings most of this plugin's own users have no reason to browse.
+
+Only the four block.json files a site owner actually starts a layout
+with set their own `category` to `"gateway"`: `gateway/data-cards`,
+`gateway/data-display`, `gateway/datatable`, `gateway/single-record` --
+recognizable as exactly the four with neither a `parent` nor an
+`ancestor` restriction, the only ones ever offered from the top-level
+inserter to begin with. Every other block this plugin ships (every
+`datatable-*`/`data-cards-*` child, `gateway/card-field-text`/`-number`/
+`-image`, `gateway/related-items`, `gateway/facet`/`gateway/card-facet`,
+`gateway/pagination`) deliberately keeps its existing `"widgets"`
+category untouched -- none of them are ever reachable from that
+top-level list regardless of which category they claim (a `parent`
+-restricted block only ever appears nested inside its one named parent;
+an `ancestor`-restricted one only once already inside a matching
+ancestor), so grouping them under "Gateway" too would just be dead
+weight in a category no one browses looking for them.
+
+Verified with a new standalone PHP smoke test (`register_category()`
+returns core's own categories untouched plus exactly one new,
+well-formed entry, prepended ahead of them) plus a second pass reading
+every real `blocks/*/block.json` on disk and confirming, block by block,
+that a top-level block (no `parent`/`ancestor`) is in `"gateway"` and a
+child block (either restriction) is not -- alongside the full existing
+regression suite. No build step needed: `category` is plain block.json
+metadata `register_block_type()` reads directly, never something
+webpack/`@wordpress/scripts` compiles into a block's own `build/`
+output.
+
 ### Dynamic blocks, server-rendered
 
 Every block in this plugin has no meaningful client-side `save()` markup

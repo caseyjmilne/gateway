@@ -3,7 +3,7 @@
 	"apiVersion": 3,
 	"name": "gateway/datatable",
 	"title": "Data Table",
-	"category": "widgets",
+	"category": "gateway",
 	"icon": "editor-table",
 	"description": "A sortable, searchable grid of posts for any registered post type, powered by DataTables.",
 	"keywords": [ "table", "grid", "datatable", "posts", "list" ],

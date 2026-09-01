@@ -22,6 +22,52 @@ class Block_Loader {
 	 */
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'register_blocks' ) );
+		add_filter( 'block_categories_all', array( __CLASS__, 'register_category' ) );
+	}
+
+	/**
+	 * Registers a dedicated "Gateway" block category -- every TOP-LEVEL
+	 * block this plugin ships (the one a site owner actually starts a
+	 * layout with: gateway/data-cards, gateway/data-display,
+	 * gateway/datatable, gateway/single-record) sets its own block.json
+	 * `category` to this slug, rather than the generic core "widgets"
+	 * category they used to share with every other plugin's own
+	 * non-top-level blocks -- so the inserter has one obvious place to
+	 * find them, instead of hunting through Widgets for four blocks among
+	 * many unrelated ones.
+	 *
+	 * Deliberately NOT applied to any of this plugin's own CHILD blocks
+	 * (gateway/datatable-header, gateway/card-field-text, etc. -- every
+	 * block.json with its own `parent`/`ancestor` restriction) -- those
+	 * are never something a site owner picks off the top-level inserter
+	 * list to begin with, only ever reachable already nested inside one
+	 * of the four blocks above, so grouping them under "Gateway" too
+	 * would just be dead weight in a category no one browses looking for
+	 * them.
+	 *
+	 * Prepended, not appended -- `register_block_type()` reads `category`
+	 * from each block's own block.json regardless of where "gateway"
+	 * itself sits in this list, but the inserter's own "Blocks" panel
+	 * lists categories (each with a "Browse all" link) in the order this
+	 * array returns them, and a plugin whose main working blocks live in
+	 * their own category is worth surfacing before core's own Text/
+	 * Media/Design groupings, not buried below them.
+	 *
+	 * @param array $categories Every already-registered category, core's
+	 *                           own included.
+	 * @return array
+	 */
+	public static function register_category( $categories ) {
+		return array_merge(
+			array(
+				array(
+					'slug'  => 'gateway',
+					'title' => __( 'Gateway', 'gateway' ),
+					'icon'  => null,
+				),
+			),
+			$categories
+		);
 	}
 
 	/**

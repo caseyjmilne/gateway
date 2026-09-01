@@ -3,7 +3,7 @@
 	"apiVersion": 3,
 	"name": "gateway/single-record",
 	"title": "Single Record",
-	"category": "widgets",
+	"category": "gateway",
 	"icon": "admin-page",
 	"description": "Wraps the one record a single-page Permalink URL resolves to -- place this on a model's own configured Template Page (Gateway > Models > Permalinks), then design its contents with gateway/card-field-text, gateway/related-items, etc., the same way you would inside a Data Cards grid.",
 	"keywords": [ "permalink", "single", "record", "template" ],
