@@ -2653,6 +2653,79 @@ branch's own post meta has no comparably reliable "this is really a
 number" signal the way a Gateway model's own typed Number/Range field
 does, so Number Format is never offered there at all.
 
+### `gateway/card-field-image` -- a third field-display block, Return-Format-aware
+
+The first real way to actually SHOW an Image field's own picture at all
+-- `is_text_renderable()`/`is_numeric()` are both `false` for
+`Image_Field_Type` (a bare attachment id, or a URL, or an enriched
+object are all meaningless as plain text or a formatted number), so
+neither `gateway/card-field-text` nor `gateway/card-field-number` ever
+offers one in their own Field pickers. Structurally the same third twin
+of that same family (same `ancestor`, same `usesContext`, same
+"re-check against live availability, never trust the editor's own
+picker" `render.php` discipline) -- its own Field picker is filtered to
+**`isImage`**, which deliberately reuses the EXISTING
+`Field_Type::supports_media_settings()` flag rather than introducing a
+new one: that's already `true` for exactly one built-in type
+(`Image_Field_Type`; `File_Field_Type` has its own, separate
+`supports_file_settings()`), the same thing "is this an image field"
+needs to mean.
+
+**Detecting the Return Format is the whole point of this block.** An
+Image field's raw stored value is always a bare WP attachment id in the
+database (`Image_Field_Type::blueprint_method() => 'unsignedBigInteger()'`)
+-- its own configured **Return Format** (`array`/`url`/`id`, the same
+General-tab `<select>` `FieldEditor.jsx` already has, "like ACF") only
+ever shapes what a REST *consumer* (the admin app's own record editing
+UI, primarily) sees, never what's actually stored. `Column_Registry::
+get_columns_for_collection()` now exposes that field-level setting
+directly as `returnFormat` (alongside the new `isImage`, computed from
+`$field['settings']['return_format'] ?? 'array'` -- the same default
+`Model_Fields::sanitize_settings()` uses), and this block's own
+`render.php` reads it to decide how to resolve the record's own raw
+attachment id: **`Gateway\Image_Renderer`** (a new, pure static class,
+the same "one shared class, not duplicated per-render.php logic" shape
+`Number_Formatter` already has) is where that actually happens --
+
+- **'array' and 'id'** are both backed by the exact same real attachment
+  id under the hood regardless of which shape a REST consumer would see,
+  so both resolve through a real `wp_get_attachment_image( $id, $size,
+  false, $extra_attrs )` call -- real `srcset`/`sizes`/width/height/
+  lazy-loading attributes, courtesy of WordPress core itself, for free.
+- **'url'** is a flat string with no id to look a different size up from
+  at all -- deliberately restricted to a plain, hand-built `<img
+  src="..." alt="..." />` even though the real attachment id is
+  technically still available at this point in `render.php` (the raw
+  stored column, same as always) -- honoring the field's own configured
+  contract uniformly, the "like ACF" convention the user's own request
+  named directly: a field configured this way is meant to behave as
+  "just a URL" everywhere it's used, this block included, not have one
+  particular consumer quietly ignore that because it happens to have
+  more to work with.
+
+Either branch returns `''` for anything that isn't a real, still
+-existing attachment (`null`/blank/non-numeric, or an id naming a since
+-deleted attachment) -- `render.php` renders nothing at all in that
+case, never a broken-image icon.
+
+**Settings applicable to images, including sizes, presuming the Return
+Format supports it.** This block's own `size` attribute (a `<select>`
+of this site's own registered image sizes, `blocks/shared/
+use-image-sizes.js` -- the block-editor-side counterpart to the admin
+app's own `useImageSizes.js`, both hitting the same `GET /gateway/v1/
+image-sizes` route) is only ever shown in the Inspector when the
+selected field's own `returnFormat` is `'array'` or `'id'` -- exactly
+the two formats `Image_Renderer` can resolve a size for at all. For a
+`'url'`-format field, a plain `Notice` explains why there's no Size
+control at all instead: that field always renders full-size, and
+picking "Image Array" or "Image ID" on the field's own General tab is
+what would make a Size choice meaningful here.
+
+Format settings live on the block instance, never on `Model_Fields` --
+same reasoning `gateway/card-field-number`'s own `numberFormat` already
+has: which size to show is a presentation choice about THIS particular
+block, not a fact about the field itself.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)
@@ -2682,6 +2755,8 @@ and turns each one into another column:
 	'facetType'           => [],
 	'isTextRenderable'    => true, // the related field's own is_text_renderable() -- always true today, see below.
 	'isNumeric'           => false, // the related field's own is_numeric() -- true for a related Number/Range field, making it just as choosable in gateway/card-field-number's own Field picker and gateway/datatable's own Format modal as one of the model's own fields.
+	'isImage'             => false, // the related field's own supports_media_settings() -- true for a related Image field, making it just as choosable in gateway/card-field-image's own Field picker.
+	'returnFormat'        => 'array', // the related field's OWN configured Return Format, read independently of whatever the model's own Image field (if it has one) is configured as.
 	'relationship_method' => 'eventDetails',
 ]
 ```

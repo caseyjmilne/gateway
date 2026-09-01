@@ -238,6 +238,26 @@ class Column_Registry {
 	 * `id` column (an identifier, not a quantity a Currency/Percent
 	 * format would ever make sense on) and every other built-in type.
 	 *
+	 * `isImage` reuses the EXISTING `Field_Type::supports_media_settings()`
+	 * flag rather than introducing a new one -- already `true` for exactly
+	 * one built-in type (`Image_Field_Type`; `File_Field_Type` has its own,
+	 * separate `supports_file_settings()`), the same thing "is this an
+	 * image field" needs to mean. `gateway/card-field-image`'s own Field
+	 * picker reads it the same way `gateway/card-field-number` reads
+	 * `isNumeric`. `returnFormat` rides alongside it -- the field's own
+	 * configured `settings.return_format` ('array'/'url'/'id', same
+	 * default `Model_Fields::sanitize_settings()` uses) -- meaningless for
+	 * any other type, but harmless to compute unconditionally the same way
+	 * `facetType` already is for a non-filterable field. `render.php`
+	 * detects this to decide how to resolve the field's own raw stored
+	 * attachment id (always a bare id in the database regardless of this
+	 * setting -- `return_format` only ever shapes what a REST *consumer*
+	 * sees) and whether a Size setting makes sense at all: 'array'/'id'
+	 * both ultimately resolve from the same real attachment id, so either
+	 * can look up any registered size; 'url' is a flat string with no id
+	 * to look a different size up from at all, so that's the one case with
+	 * no Size control to offer.
+	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
 	 *                  real, registered model.
@@ -261,14 +281,36 @@ class Column_Registry {
 				// gateway/card-field-number's own Currency/Percent
 				// formatting -- an id is an identifier, not a quantity.
 				'isNumeric'        => false,
+				'isImage'          => false,
 			),
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
-			$type_class         = Field_Type_Registry::get( $field['type'] );
-			$is_filterable      = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
-			$is_text_renderable = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
-			$is_numeric         = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
+			$type_class          = Field_Type_Registry::get( $field['type'] );
+			$is_filterable       = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
+			$is_text_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
+			$is_numeric          = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
+			// Reuses the EXISTING supports_media_settings() flag rather
+			// than a new one -- it's already true for exactly one
+			// built-in type (Image_Field_Type; File_Field_Type has its
+			// own, separate supports_file_settings()), the same thing
+			// "is this an image field" needs to mean. See
+			// gateway/card-field-image's own render.php/edit.js, both of
+			// which read this (as `isImage`) the same way
+			// gateway/card-field-number reads `isNumeric`.
+			$is_image            = $type_class && class_exists( $type_class ) && $type_class::supports_media_settings();
+			// The field's own configured Return Format
+			// (Image_Field_Type::supports_media_settings()'s own
+			// `settings.return_format`, 'array'/'url'/'id' -- same
+			// default Model_Fields::sanitize_settings() and
+			// FieldEditor.jsx's own <select> both already use) --
+			// meaningless for any other type, but harmless to compute
+			// unconditionally the same way facetType already is.
+			// gateway/card-field-image detects this to decide how to
+			// resolve the field's own raw stored attachment id (and
+			// whether a Size setting makes sense at all -- see that
+			// block's own render.php/edit.js for the full "why").
+			$return_format       = $field['settings']['return_format'] ?? 'array';
 
 			$facet_type = array();
 
@@ -303,6 +345,8 @@ class Column_Registry {
 				'facetType'        => array_values( $facet_type ),
 				'isTextRenderable' => $is_text_renderable,
 				'isNumeric'        => $is_numeric,
+				'isImage'          => $is_image,
+				'returnFormat'     => $return_format,
 			);
 		}
 
@@ -396,6 +440,8 @@ class Column_Registry {
 					// is ever loosened.
 					'isTextRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
 					'isNumeric'           => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
+					'isImage'             => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
+					'returnFormat'        => $related_field['settings']['return_format'] ?? 'array',
 					'relationship_method' => $relationship['method_name'],
 				);
 			}

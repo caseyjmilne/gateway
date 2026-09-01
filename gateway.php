@@ -119,6 +119,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-number-formatter.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-renderer.php';
 
 /**
  * Boot the plugin.
