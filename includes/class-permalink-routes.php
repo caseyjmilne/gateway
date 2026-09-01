@@ -96,6 +96,11 @@ class Permalink_Routes {
 		// and doing it here means it can never be forgotten on some path
 		// through resolve_record() that returns early.
 		add_filter( 'render_block_context', array( __CLASS__, 'inject_record_context' ), 1 );
+		// Priority 81 -- one after core's own wp_admin_bar_edit_menu()
+		// (always registered at 80), specifically so the "edit" node it
+		// adds already exists by the time rename_edit_node() runs; see
+		// that method's own docblock for why it exists at all.
+		add_action( 'admin_bar_menu', array( __CLASS__, 'rename_edit_node' ), 81 );
 	}
 
 	/**
@@ -265,6 +270,48 @@ class Permalink_Routes {
 		}
 
 		return $context;
+	}
+
+	/**
+	 * Retitles core's own admin-bar "Edit Page" node to "Edit Template"
+	 * while viewing a single-record page -- the destination is already
+	 * correct (it's the model's own designated template Page,
+	 * `resolve_record()`'s `page_id`), but "Edit Page" is a misleading
+	 * label for what's actually on screen: a site owner looking at, say,
+	 * one Ticket record has no reason to think of it as "a Page" at all.
+	 * Renaming rather than removing and re-adding: `WP_Admin_Bar::add_node()`
+	 * called again with the same `id` merges in only the keys given,
+	 * filling in everything else (href, parent, group, meta) from the
+	 * node's own current values -- passing just `id`/`title` here changes
+	 * the label without having to know or reproduce the href core's own
+	 * `wp_admin_bar_edit_menu()` already built.
+	 *
+	 * Hooked at `admin_bar_menu` priority 81 (core's own node is added at
+	 * 80, unconditionally on every request), and only ever does anything
+	 * when `resolve_record()` actually resolved a record for THIS
+	 * request (`$current_record`) -- an ordinary Page with nothing to do
+	 * with this feature keeps its own accurate "Edit Page" label
+	 * untouched, and there's nothing to rename at all for a visitor who
+	 * can't see the admin bar (no "edit" node exists for them in the
+	 * first place, so `get_node()` below is simply null).
+	 *
+	 * @param \WP_Admin_Bar $wp_admin_bar
+	 */
+	public static function rename_edit_node( $wp_admin_bar ) {
+		if ( ! self::$current_record ) {
+			return;
+		}
+
+		if ( ! $wp_admin_bar->get_node( 'edit' ) ) {
+			return;
+		}
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'    => 'edit',
+				'title' => __( 'Edit Template', 'gateway' ),
+			)
+		);
 	}
 
 	/**

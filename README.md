@@ -5918,6 +5918,25 @@ priority 1, mirroring `Data_Cards_Renderer`'s own identically-shaped
 filter) then sets `$context['record']` to whatever was resolved, for
 every block rendered the rest of the request.
 
+**`rename_edit_node()` fixes the admin bar's own misleading label.**
+WordPress core's own `wp_admin_bar_edit_menu()` (`admin_bar_menu`,
+priority 80) already adds an "Edit Page" node linking to the CURRENT
+template Page's own edit screen -- the right destination (there's
+nothing else to edit; the record itself lives in a plain DB table, not a
+post), but a misleading label: a site owner looking at, say, one Ticket
+record has no reason to think of what's on screen as "a Page" at all.
+Hooked one priority later (81, so core's own node already exists to
+retitle) and a no-op unless `resolve_record()` actually resolved a
+record for THIS exact request (`$current_record`) -- an ordinary Page
+elsewhere on the site keeps its own accurate "Edit Page" label
+untouched, and there's nothing to do at all for a visitor who can't see
+the admin bar in the first place (`$wp_admin_bar->get_node( 'edit' )` is
+simply `null` for them). Retitles rather than removing and re-adding:
+`WP_Admin_Bar::add_node()` called again with the same `id` merges in
+only the keys given (here, just `title`), filling in everything else --
+href, parent, group, meta -- from the node's own current values, so this
+never has to know or reproduce the href core's own code already built.
+
 **Rendering (`gateway/single-record`).** A new block, placed on the
 model's own designated template Page, that does only one thing render.php
 -side: validates its own `collection` attribute against the CURRENTLY
@@ -5952,11 +5971,16 @@ at all.
 Verified with a new standalone PHP smoke test (routable-model
 computation, the full flush-timing matrix -- first-ever flush, no flush
 on an unrelated request, a flush exactly on each actual config change,
-never on a routability-neutral rename -- query var registration, and the
-complete `resolve_record()`/`inject_record_context()` 404/found matrix,
-Auto and Manual slugs alike) alongside the full existing regression
-suite, plus a successful production build of the new block. Rewrite
--flush timing, the real `/{root}/{slug}` HTTP round trip, and the block
+never on a routability-neutral rename -- query var registration, the
+complete `resolve_record()`/`inject_record_context()` 404/found matrix
+(Auto and Manual slugs alike), and `rename_edit_node()`'s own three
+cases against a small stub `WP_Admin_Bar` -- no record resolved leaves a
+pre-existing node untouched, a resolved record with no "edit" node
+fabricates nothing, a resolved record with one retitles it to "Edit
+Template" while leaving its href untouched) alongside the full existing
+regression suite, plus a successful production build of the new block.
+Rewrite-flush timing, the real `/{root}/{slug}` HTTP round trip, the
+actual admin-bar label in a real wp-admin toolbar, and the block
 editor's own insertion/preview behavior are genuine WordPress runtime
 behavior a standalone stubbed script can't exercise -- those need
 verification against a real WP install.
