@@ -450,6 +450,12 @@
 	max-width: 480px;
 }
 
+.gateway-admin-app .gateway-record-permalink {
+	margin: 0 0 1em;
+	color: #646970;
+	word-break: break-all;
+}
+
 .gateway-admin-app .gateway-modal-overlay {
 	position: fixed;
 	inset: 0;

@@ -5961,6 +5961,39 @@ editor's own insertion/preview behavior are genuine WordPress runtime
 behavior a standalone stubbed script can't exercise -- those need
 verification against a real WP install.
 
+**A View link back to that URL, wherever a record is already shown in
+the admin app.** Once a model's Permalink field is fully routed (Root
+AND Template Page both set -- the exact same requirement
+`Permalink_Routes::register_rules()` itself gates a rewrite rule on;
+`PermalinkEditor.jsx`'s own copy already tells a site owner this),
+**`admin-app/src/utils/permalink.js`**'s `getRecordPermalink( fields,
+record )` is the one canonical answer to "does this record have a real
+front-end URL, and what is it" -- `null` for an unrouted model, a model
+whose Permalink field has no Root/Template Page configured yet, or a
+record with no slug of its own yet (e.g. never saved), otherwise a real,
+absolute URL built from a new `window.GatewayAdmin.homeUrl` (`home_url(
+'/' )`, localized by `Admin_Page::enqueue_assets()` the same way
+`apiUrl`/`wpApiUrl` already are) plus the field's own `root` setting plus
+the record's own (already-unique, already-URL-safe) stored slug --
+`encodeURIComponent()`'d defensively, though `resolve_permalink_value()`
+already guarantees a plain, URL-safe value. `RecordsCrud.jsx` calls this
+in exactly two places: a **View** button alongside each row's own
+Edit/Delete in the records table (rendered only when that particular
+record actually has a URL), and a **Permalink:** line at the top of the
+Edit modal, the classic WordPress "Permalink: ... View" chrome under a
+post's own title -- both open the record's real front end in a new tab.
+Neither reads or duplicates any server-side routing logic itself; both
+are pure presentation over the same plain string fields (`root`,
+`template_page_id`, the slug) every other Permalink-aware screen in this
+app already reads.
+
+Verified with a new standalone Node smoke test run directly against
+`getRecordPermalink()` (a fully-routed record resolving a real URL; no
+Permalink field; Root unset; Template Page unset; a record with no slug
+yet, both missing entirely and present-but-empty; `settings` arriving as
+`[]` rather than `{}`; a slug needing URL-encoding; a null record/fields
+array) alongside a successful `admin-app` production build.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

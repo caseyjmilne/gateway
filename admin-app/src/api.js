@@ -17,7 +17,15 @@
 const config =
 	typeof window !== 'undefined' && window.GatewayAdmin
 		? window.GatewayAdmin
-		: { apiUrl: '', nonce: '', oembedProxyUrl: '', wpApiUrl: '' };
+		: { apiUrl: '', nonce: '', oembedProxyUrl: '', wpApiUrl: '', homeUrl: '' };
+
+// The site's own front-end root (e.g. "https://example.com/"), set by
+// Admin_Page::enqueue_assets(). The only current reader is
+// admin-app/src/utils/permalink.js, which builds a record's real
+// front-end URL from this plus its model's own configured Permalink
+// Root -- exported plainly rather than through a function, the same
+// "just a config value" treatment `config` itself already gets internally.
+export const HOME_URL = config.homeUrl;
 
 export async function apiFetch( path, options = {} ) {
 	const response = await fetch( `${ config.apiUrl }${ path }`, {

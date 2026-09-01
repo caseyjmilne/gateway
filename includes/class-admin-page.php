@@ -127,6 +127,15 @@ class Admin_Page {
 				// thing that reads this, to build its own Template Page
 				// picker from the site's real Pages.
 				'wpApiUrl'       => esc_url_raw( rest_url() ),
+				// The site's own front-end root, e.g. "https://example.com/" --
+				// used to build a real, clickable front-end link for a
+				// record whose model has a fully-configured Permalink field
+				// (Root + Template Page both set -- see Permalink_Routes::
+				// register_rules()'s own matching requirement). Nothing
+				// server-side resolves this per record; it's plain string
+				// concatenation (homeUrl + root + slug) on the admin app's
+				// own side -- see admin-app/src/utils/permalink.js.
+				'homeUrl'        => esc_url_raw( home_url( '/' ) ),
 			)
 		);
 	}

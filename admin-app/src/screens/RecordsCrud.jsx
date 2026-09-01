@@ -4,6 +4,7 @@ import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import RecordForm from '../components/RecordForm.jsx';
 import Modal from '../components/Modal.jsx';
+import { getRecordPermalink } from '../utils/permalink.js';
 
 const PER_PAGE = 20;
 
@@ -198,6 +199,15 @@ export default function RecordsCrud() {
 	// just means no modal shows.
 	const editingRecord =
 		records.find( ( record ) => record.id === editingId ) || null;
+
+	// The classic WordPress "Permalink: ... View" chrome, shown at the
+	// top of the Edit modal -- computed here rather than inline in the
+	// JSX below purely so it's only ever called once per render for this
+	// one record, unlike the table's own per-row `getRecordPermalink()`
+	// calls (there's no single "current row" to hoist it out to).
+	const editingPermalink = editingRecord
+		? getRecordPermalink( fields, editingRecord )
+		: null;
 
 	// Same "null means no modal" shape as `editingRecord` above, and the
 	// same reasoning: looking the record back up by id (rather than just
@@ -460,7 +470,13 @@ export default function RecordsCrud() {
 										</tr>
 									</thead>
 									<tbody>
-										{ records.map( ( record ) => (
+										{ records.map( ( record ) => {
+											const recordPermalink = getRecordPermalink(
+												fields,
+												record
+											);
+
+											return (
 											<tr key={ record.id }>
 												<td>{ record.id }</td>
 												{ fields.map( ( field ) => (
@@ -472,6 +488,16 @@ export default function RecordsCrud() {
 													</td>
 												) ) }
 												<td>
+													{ recordPermalink && (
+														<a
+															href={ recordPermalink }
+															target="_blank"
+															rel="noreferrer"
+															className="button"
+														>
+															View
+														</a>
+													) }
 													<button
 														type="button"
 														className="button"
@@ -504,7 +530,8 @@ export default function RecordsCrud() {
 													</button>
 												</td>
 											</tr>
-										) ) }
+											);
+										} ) }
 									</tbody>
 								</table>
 							) }
@@ -567,6 +594,18 @@ export default function RecordsCrud() {
 					title={ `Edit ${ model.class } #${ editingRecord.id }` }
 					onClose={ () => setEditingId( null ) }
 				>
+					{ editingPermalink && (
+						<p className="gateway-record-permalink">
+							Permalink:{ ' ' }
+							<a
+								href={ editingPermalink }
+								target="_blank"
+								rel="noreferrer"
+							>
+								{ editingPermalink }
+							</a>
+						</p>
+					) }
 					<div className="gateway-record-form-wrap">
 						<RecordForm
 							fields={ fields }
