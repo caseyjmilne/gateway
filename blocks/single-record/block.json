@@ -17,6 +17,10 @@
 		"sourceType": {
 			"type": "string",
 			"default": "collection"
+		},
+		"previewRecordId": {
+			"type": "number",
+			"default": 0
 		}
 	},
 	"providesContext": {

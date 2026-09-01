@@ -6004,6 +6004,35 @@ Collection on the Data Cards block first" notice, which would be
 actively wrong advice on a page that never has a Data Cards block on it
 at all.
 
+**A real, changeable live preview while designing the template.**
+`gateway/single-record`'s own `edit.js` provides a real `record` block
+context, exactly like `gateway/data-cards-body`'s own per-item preview
+does, so `gateway/card-field-text`/`-number`/`-image` and
+`gateway/related-items` all show real data while the template is being
+designed here too, not just on the front end. By default this is
+whichever record `GET .../records/search` (no `q` -- the same route
+`RelateAutocomplete.jsx` already uses for a Relate field's own search
+-as-you-type, reused here purely for its "no query -> the model's own
+most-recent records" behavior) returns first -- "the first record it
+can find." A new **Preview Record** Inspector panel, a `ComboboxControl`
+backed by that same route (search-as-you-type, `q` included this time),
+lets a site owner preview a DIFFERENT record instead -- stored as a new
+`previewRecordId` attribute, purely an editor convenience that
+`render.php` never reads at all (a real visitor's page always resolves
+its own record from the URL they actually requested, completely
+independent of whatever was last previewed here). An empty Collection
+shows a plain Notice instead of a preview -- InnerBlocks stays fully
+editable regardless, the same "record context absent" state
+`gateway/card-field-text`'s own docblock already treats as normal, not
+an error -- and a `previewRecordId` that 404s (the record was deleted
+since it was picked) clears itself back to "first record found"
+automatically rather than getting stuck. Verified with a clean
+production build; this feature's own actual behavior (the live preview,
+the Combobox search, the empty-Collection Notice, the self-healing
+fallback) needs manual verification in a real block editor, the same
+caveat every other block-editor-only UI change in this plugin already
+carries (no Gutenberg-block-editor test harness exists in this project).
+
 Verified with a new standalone PHP smoke test (routable-model
 computation, the full flush-timing matrix -- first-ever flush, no flush
 on an unrelated request, a flush exactly on each actual config change,

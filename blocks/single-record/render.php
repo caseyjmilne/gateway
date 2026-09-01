@@ -28,7 +28,8 @@
  *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: collection, sourceType (fixed 'collection', block-context-only).
+ * @var array    $attributes Block attributes: collection, sourceType (fixed 'collection', block-context-only),
+ *                            previewRecordId (editor-preview-only -- see edit.js's own docblock; never read here).
  * @var string   $content    Already-rendered InnerBlocks output -- see above.
  * @var WP_Block $block      Block instance (unused -- no context read here).
  */
