@@ -4394,7 +4394,16 @@ equivalent gestures -- the × button, clicking the dimmed overlay outside
 the panel, or Escape -- all wired to the same handler Cancel already
 used, and carries no focus trap (an admin-only screen behind a login,
 not a public-facing surface with the same accessibility stakes a
-plugin's own front-end widgets would have).
+plugin's own front-end widgets would have). "Clicking the overlay" is
+judged by where the gesture actually STARTS (`onMouseDown`, tracked in a
+ref), not just where the browser's own `click` event ends up firing --
+a plain `event.target === event.currentTarget` check on `onClick` alone
+was a real bug, reported directly: dragging to select text inside a
+field (or just dragging the mouse across an input while clicking) often
+ends the drag out over the dimmed overlay, and a `click` fires wherever
+the mouse button is released, making that drag indistinguishable from a
+deliberate click on the overlay itself. Only a gesture that both
+started AND ended on the overlay now closes the modal.
 
 **Every column and every form input comes from the model's own fields**
 -- there's no separate "which columns to show" configuration anywhere.

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * A small, generic overlay dialog -- RecordsCrud's own Edit form used to
@@ -25,8 +25,26 @@ import { useEffect } from 'react';
  * button, clicking the dimmed overlay outside the panel, and Escape --
  * the caller decides what that actually means (RecordsCrud wires it to
  * the same handler its own Cancel button already used).
+ *
+ * "Clicking the overlay" is deliberately judged by where the gesture
+ * STARTS (`onMouseDown`), not just where the resulting `click` event's
+ * own `target` ends up -- a plain `event.target === event.currentTarget`
+ * check on `onClick` alone was a real bug, reported directly: dragging
+ * to select text inside a field near the panel's own edge (or just
+ * dragging the mouse across an input while clicking) often ends the
+ * drag out over the dimmed overlay, and a browser's `click` event fires
+ * wherever the mouse button was RELEASED -- so that drag's own `click`
+ * looked, to that check alone, identical to a deliberate click on the
+ * overlay itself, closing the modal out from under someone who never
+ * intended to leave it. `mouseDownOnOverlayRef` records whether the
+ * gesture's own start (`mousedown`) already landed on the overlay
+ * itself; `onClick` now only closes when BOTH ends of the same gesture
+ * -- press and release -- were on the overlay, not just wherever it
+ * happened to end.
  */
 export default function Modal( { title, onClose, children } ) {
+	const mouseDownOnOverlayRef = useRef( false );
+
 	useEffect( () => {
 		const handleKeyDown = ( event ) => {
 			if ( 'Escape' === event.key ) {
@@ -41,8 +59,11 @@ export default function Modal( { title, onClose, children } ) {
 	return (
 		<div
 			className="gateway-modal-overlay"
+			onMouseDown={ ( event ) => {
+				mouseDownOnOverlayRef.current = event.target === event.currentTarget;
+			} }
 			onClick={ ( event ) => {
-				if ( event.target === event.currentTarget ) {
+				if ( event.target === event.currentTarget && mouseDownOnOverlayRef.current ) {
 					onClose();
 				}
 			} }
