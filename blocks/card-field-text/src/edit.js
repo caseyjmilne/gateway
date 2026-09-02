@@ -41,7 +41,18 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
  */
 export default function Edit( { attributes, setAttributes, context } ) {
 	const { fieldKey } = attributes;
-	const blockProps = useBlockProps( { className: 'gateway-card-field-text' } );
+	// `display: inline-block` here for the exact same reason render.php's
+	// own docblock gives for the identical style it adds server-side --
+	// see that file's own comment for the full "why `<span>`'s own plain
+	// `inline` default silently breaks the new Padding/Margin support"
+	// reasoning. `useBlockProps()` merges a passed `style` object with
+	// whatever Color/Spacing/Border/Typography supports already
+	// contribute, the client-side counterpart to `get_block_wrapper_attributes()`'s
+	// own identical merge behavior.
+	const blockProps = useBlockProps( {
+		className: 'gateway-card-field-text',
+		style: { display: 'inline-block' },
+	} );
 
 	const sourceType = context[ 'gateway/data-cards/sourceType' ] || 'postType';
 	const collection = context[ 'gateway/data-cards/collection' ] || '';

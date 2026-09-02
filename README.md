@@ -2633,6 +2633,49 @@ block. The live editor preview's own `dangerouslySetInnerHTML` rendering
 needs manual verification in a real block editor, the same caveat every
 other block-editor-only UI change in this plugin already carries.
 
+**Styling supports now mirror `core/paragraph`'s -- make this block as
+easy as possible to style for a design, per a direct request.**
+`block.json`'s own `supports` used to offer only `typography.fontSize`;
+it now carries the same set `core/paragraph` itself does (confirmed
+directly against Gutenberg's own `packages/block-library/src/paragraph/block.json`):
+Color (text/background/gradient/link), Spacing (Margin AND Padding --
+named explicitly in the request), Border (color/width/style/radius),
+and the full Typography set -- font family and weight named explicitly
+in the request, alongside line-height, style, letter-spacing, text
+-transform/-decoration/-align/-indent/-columns, writing mode, and
+"fit text." Two things deliberately DON'T mirror `core/paragraph`
+exactly: `className` support is left at its normal default (`true`)
+rather than copied as `core/paragraph`'s own unusual `false` -- an
+"Additional CSS Class" field is exactly the kind of hook a design would
+want, working directly against the whole point of this change to
+disable it; and `splitting`/`__unstablePasteTextInline`/`interactivity`/
+the `textIndent`-specific sibling `selectors` rule are all genuinely
+rich-text-editing concerns with nothing to apply to here (this block has
+no directly-typed/pasted content at all -- its value always comes from
+the record via `fieldKey`).
+
+The one real PHP piece this needed: `<span>`'s own plain, browser
+-default `inline` display would otherwise silently swallow the new
+Margin support entirely (vertical margin has no effect at all on a
+strictly `inline` element, and vertical padding can visually overlap
+the line above/below it) -- exactly the "I set a margin and nothing
+happened" surprise this whole change exists to avoid. Both `render.php`
+(via `get_block_wrapper_attributes()`) and `edit.js` (via
+`useBlockProps()`) now also pass their own `display: inline-block` --
+both functions merge a passed `class`/`style` with whatever the Color/
+Spacing/Border/Typography supports already generated, never overwriting
+either, so this needed no new stylesheet of its own. `inline-block`
+specifically (not `block`, and not changing the underlying `<span>` tag
+itself to `<p>`/`<div>`) keeps this from forcing a line break: the block
+is routinely used sitting inline next to other content within a card,
+not only on its own line the way `core/paragraph` itself normally is.
+
+Verified with a clean production build; block.json's own `supports`
+shape and the real, visible effect of every new control (in both the
+Inspector and on an actual front-end page) need manual verification in
+a real block editor, the same caveat every other block-editor-only UI
+change in this plugin already carries.
+
 ### `gateway/card-field-number` -- a second field-display block, with Currency/Percent/decimal formatting
 
 The first of the "later field-display blocks (Number, Date, Image, ...)"

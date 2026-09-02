@@ -34,6 +34,21 @@
  * -- see that interface method's own docblock for why this needed a
  * second flag rather than reusing `isTextRenderable` itself.
  *
+ * `block.json`'s own `supports` now mirrors `core/paragraph`'s (Color,
+ * Spacing/Padding+Margin, Border, and the full Typography set --
+ * font family/weight/style/decoration/transform/letter-spacing included,
+ * not just `fontSize`) -- per a direct request to make this block as
+ * easy as possible to style for a design, purely declarative block.json
+ * config with no PHP of its own to add. The one real PHP piece this
+ * needed: `get_block_wrapper_attributes()` below adds its own
+ * `display: inline-block`, since `<span>`'s own plain browser-default
+ * `inline` would otherwise silently swallow the new Margin support
+ * (vertical margin has no effect at all on a strictly `inline` element)
+ * -- `inline-block` respects the full box model while still not forcing
+ * a line break the way switching the tag itself to `<p>`/`<div>` would
+ * (this block is routinely used sitting inline next to other content
+ * within a card).
+ *
  * @package Gateway
  *
  * @var array    $attributes Block attributes: fieldKey.
@@ -102,7 +117,24 @@ if ( ! $is_renderable ) {
 // on its own.
 $value = \Gateway\Column_Registry::resolve_collection_value( $record, $field_key );
 
-$wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-card-field-text' ) );
+// `display: inline-block` -- not `<span>`'s own browser default of
+// plain `inline` -- is what actually makes the new Padding/Margin
+// (spacing) support below do anything visible: a strictly `inline`
+// element ignores vertical margin entirely and can render vertical
+// padding overlapping the line above/below it, exactly the kind of
+// "I set a margin and nothing happened" surprise this block's own new
+// styling supports (see block.json's own docblock-equivalent comment)
+// exist to avoid. `inline-block` keeps this from forcing a line break
+// the way switching the tag itself to `<p>`/`<div>` would (this block
+// is still routinely used sitting inline next to other text/blocks
+// within a card), while still respecting the full box model. Appended
+// as an extra `style` declaration -- get_block_wrapper_attributes()
+// merges a passed `style`/`class` with whatever Color/Spacing/Border/
+// Typography supports already generated, it never overwrites either.
+$wrapper_attributes = get_block_wrapper_attributes( array(
+	'class' => 'gateway-card-field-text',
+	'style' => 'display:inline-block;',
+) );
 ?>
 <span <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php
 if ( ! empty( $column['isHtmlRenderable'] ) ) {
