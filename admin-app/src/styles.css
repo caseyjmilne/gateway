@@ -582,6 +582,33 @@
 	margin-top: 2px;
 }
 
+.gateway-admin-app .gateway-record-form-choice {
+	/* Reported directly: "fix layout problem for the radio buttons they
+	 * are cramped without sufficient spacing." Radio/Checkbox render
+	 * each choice as its own <label> with no wrapping element of its
+	 * own (see RecordForm.jsx) -- with no CSS of their own at all,
+	 * consecutive <label>s just sit inline, shoulder-to-shoulder, with
+	 * only the `{ ' ' }` between an input and its own choice text
+	 * providing any space at all. This gives each choice room to
+	 * breathe from its neighbors and wraps onto its own line once a row
+	 * runs out of horizontal space, rather than overflowing off the
+	 * field the way a plain inline label would. Also resets the bold,
+	 * colored styling `.gateway-record-form label` above applies to
+	 * every <label> in this form -- meant for each field's own top-level
+	 * label, not a single choice's caption sitting next to its radio/
+	 * checkbox input. */
+	display: inline-flex;
+	align-items: center;
+	font-weight: normal;
+	font-size: 14px;
+	color: inherit;
+	margin: 0 20px 8px 0;
+}
+
+.gateway-admin-app .gateway-record-form-choice:last-child {
+	margin-right: 0;
+}
+
 .gateway-admin-app .gateway-record-form-input-group {
 	display: inline-flex;
 	align-items: stretch;

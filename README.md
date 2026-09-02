@@ -5332,6 +5332,27 @@ of the field's *current* choices (one since renamed or removed from the
 list, but never retroactively scrubbed from already-saved records --
 see `Checkbox_Field_Type::cast()`'s own docblock for why).
 
+**A real bug, reported directly: "fix layout problem for the radio
+buttons they are cramped without sufficient spacing."** Each Radio/
+Checkbox choice renders as its own `<label className="gateway-record
+-form-choice">` (see above), but that class had no CSS rule of its own
+anywhere in `styles.css` -- with no wrapping element and no spacing,
+consecutive `<label>`s (inline by default) sat directly against one
+another, so a Radio field's own "Test 1"/"Test 2"/"Test 3" choices ran
+together shoulder-to-shoulder with only the `{ ' ' }` between an input
+and its own choice text providing any breathing room at all. Fixed by
+giving `.gateway-record-form-choice` a real rule: `display: inline-flex`
+(so the input and its own label text stay vertically centered together),
+a `20px` right margin and `8px` bottom margin (so choices wrap onto their
+own line, evenly spaced, once a row runs out of horizontal width, rather
+than overflowing), and `font-weight: normal` (resetting the bold, colored
+styling `.gateway-record-form label` above applies to every `<label>` in
+this form -- meant for each field's own top-level label, not a single
+choice's caption). Applies identically to Checkbox's own group of
+choices, which renders through the exact same class. Needs manual
+verification in a real browser to confirm the actual visual spacing;
+`npm run build` (vite) compiled cleanly.
+
 **A real bug, reported directly: "only the drag icon should be
 draggable. Having entire row draggable is interfering with editing
 inside the inputs."** `ChoicesEditor`'s own docblock always CLAIMED to
