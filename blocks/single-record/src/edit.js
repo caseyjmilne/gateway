@@ -53,11 +53,18 @@ import CollectionControl from '../../shared/controls/collection-control';
  * won't see it filled in with real data until at least one record
  * exists.
  *
- * None of this reaches the front end at all: `previewRecordId` is never
- * read by render.php (see that file's own docblock) -- a real visitor's
- * page always resolves its one record from the URL slug they actually
- * requested, via Permalink_Routes::inject_record_context(), completely
- * independent of whichever record happened to be selected here last.
+ * A real visitor arriving via a genuine `/{root}/{slug}` URL always
+ * resolves their own record from THAT slug, via
+ * Permalink_Routes::inject_record_context(), completely independent of
+ * whichever record happened to be selected here last -- `previewRecordId`
+ * plays no part in that path at all. A direct visit to the Template
+ * Page's OWN url (no slug in it at all) is different: there's no real
+ * record for that request to resolve on its own, so
+ * Permalink_Routes::resolve_preview_record() reads this SAME
+ * `previewRecordId` straight back off the page's own saved content and
+ * reuses it as the front-end fallback too -- see that method's own
+ * docblock. Not read by render.php itself either way (see that file's
+ * own docblock for exactly where it's actually read from instead).
  *
  * Before a Collection is chosen, this shows a plain explanatory
  * placeholder and no editable InnerBlocks area at all -- same "nothing

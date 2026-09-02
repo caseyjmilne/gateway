@@ -21,15 +21,33 @@
  * own fieldKey re-validation): a stale `collection` (the model was
  * retyped/removed, or this same template Page innocently reused for a
  * DIFFERENT model's own Permalinks tab) must never render as if it still
- * matched. get_query_var('gateway_model') is what Permalink_Routes'
- * own rewrite rule actually resolved this specific request to -- the
- * one source of truth for "which model is this page really serving right
- * now," independent of whatever this block was last configured for.
+ * matched. `Permalink_Routes::matches_current_request()` (see below) is
+ * the one source of truth for "which model is this page really serving
+ * right now," independent of whatever this block was last configured
+ * for.
+ *
+ * A direct front-end visit to the Template Page itself (no real
+ * `/{root}/{slug}` in the URL at all -- reported directly: "the page is
+ * empty [...] populated only in the editor") is handled the same way,
+ * one level up: `Permalink_Routes::resolve_preview_record()` reads THIS
+ * block's own saved `previewRecordId` straight off the page's own
+ * post_content (never from `$attributes` here -- by the time this
+ * callback runs, `$content` was already rendered from whatever `record`
+ * context that method injected) and falls back to a real record,
+ * mirroring edit.js's own preview exactly -- see that method's own
+ * docblock. That case never sets `gateway_model` (there's still no real
+ * `gateway_slug` in the URL for it to have come from), so the
+ * `collection` re-validation below asks `Permalink_Routes::
+ * matches_current_request()` rather than comparing against
+ * `get_query_var('gateway_model')` directly -- true for either a real
+ * resolved request OR this page being $collection's own Template Page.
  *
  * @package Gateway
  *
  * @var array    $attributes Block attributes: collection, sourceType (fixed 'collection', block-context-only),
- *                            previewRecordId (editor-preview-only -- see edit.js's own docblock; never read here).
+ *                            previewRecordId (edit.js's own editor preview; also read directly off this
+ *                            page's own saved content by Permalink_Routes::find_preview_record_id() for
+ *                            the front-end preview fallback -- see that method's own docblock).
  * @var string   $content    Already-rendered InnerBlocks output -- see above.
  * @var WP_Block $block      Block instance (unused -- no context read here).
  */
@@ -40,7 +58,7 @@ $collection = isset( $attributes['collection'] ) && is_string( $attributes['coll
 	? trim( $attributes['collection'] )
 	: '';
 
-if ( '' === $collection || $collection !== (string) get_query_var( 'gateway_model' ) ) {
+if ( '' === $collection || ! \Gateway\Permalink_Routes::matches_current_request( $collection ) ) {
 	return;
 }
 

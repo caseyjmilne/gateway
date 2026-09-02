@@ -6239,10 +6239,12 @@ most-recent records" behavior) returns first -- "the first record it
 can find." A new **Preview Record** Inspector panel, a `ComboboxControl`
 backed by that same route (search-as-you-type, `q` included this time),
 lets a site owner preview a DIFFERENT record instead -- stored as a new
-`previewRecordId` attribute, purely an editor convenience that
-`render.php` never reads at all (a real visitor's page always resolves
-its own record from the URL they actually requested, completely
-independent of whatever was last previewed here). An empty Collection
+`previewRecordId` attribute. A real visitor arriving via a genuine
+`/{root}/{slug}` URL always resolves their own record from THAT URL,
+completely independent of whatever was last previewed here -- but a
+direct visit to the Template Page's own URL instead reuses this exact
+value as its own front-end fallback; see "A direct visit to the
+Template Page itself" below. An empty Collection
 shows a plain Notice instead of a preview -- InnerBlocks stays fully
 editable regardless, the same "record context absent" state
 `gateway/card-field-text`'s own docblock already treats as normal, not
@@ -6254,6 +6256,80 @@ the Combobox search, the empty-Collection Notice, the self-healing
 fallback) needs manual verification in a real block editor, the same
 caveat every other block-editor-only UI change in this plugin already
 carries (no Gutenberg-block-editor test harness exists in this project).
+
+**A direct visit to the Template Page itself was empty on the front end
+-- reported directly:** "when I preview it the page is empty. It's
+populated only in the editor but not on the front-end." Root cause: a
+genuine `/{root}/{slug}` URL is the ONLY thing the rewrite rule above
+ever matches -- visiting the Template Page's own ordinary URL (e.g.
+`/portfolio-item-template/`) is ordinary WordPress page routing, ends
+nowhere near that rule, and so never sets `gateway_model`/`gateway_slug`
+at all. `resolve_record()` used to simply return in that case, leaving
+`$current_record` null for the rest of the request -- no `record` in
+block context anywhere on the page, so every `gateway/card-field-text`/
+`-image`/`related-items` inside `gateway/single-record` rendered
+nothing, exactly the empty page reported.
+
+Fixed by mirroring the request: "use the same preview page chosen
+already in the editor... by default the first record found, but the
+user can change it." A new **`resolve_preview_record()`** runs whenever
+`resolve_record()` finds no slug at all (never forcing a 404 -- this IS
+a real, valid page to look at, never itself the thing being 404'd):
+
+- Finds whether the CURRENTLY viewed page (`get_queried_object_id()`) is
+  itself some model's own `template_page_id` at all (via the same
+  `routable_models()` `register_rules()` already uses) -- every other
+  ordinary page on the site is completely untouched, `$current_record`
+  simply stays null, same as always.
+- If so, reads that model's own `gateway/single-record` block straight
+  off the page's real, saved `post_content` (`parse_blocks()`, searched
+  recursively through `innerBlocks` in case it sits inside a Group/
+  Columns wrapper, matching on the block's own `collection` attribute so
+  a Template Page innocently shared by a different model is never
+  mistaken for a match) and reads that SAME `previewRecordId` the editor
+  already stores there -- `0` (never chosen, or a since-deleted record)
+  falling back to "first record found" (`orderBy('id', 'desc')->first()`,
+  the exact same default `Records_REST_Controller::search_records()` --
+  and therefore `usePreviewRecord()` -- already uses), a genuinely empty
+  Collection resolving to nothing, exactly as the editor's own Notice
+  already treats that state.
+- `inject_record_context()` needed no changes at all -- it already
+  injects whatever `$current_record` holds, regardless of which of the
+  two methods actually set it.
+
+One more piece: `blocks/single-record/render.php`'s own `collection`
+re-validation used to compare directly against
+`get_query_var('gateway_model')`, which this fallback path never sets
+(there's still no real slug in the URL) -- so a naive fix would have
+resolved the record correctly and then discarded it anyway, this file's
+own guard mistaking a genuine preview for a stale attribute. Replaced
+with a new **`Permalink_Routes::matches_current_request( $class_name )`**
+that returns true for either case: `gateway_model` already matching, OR
+this page's own `template_page_id` matching `$class_name`'s route --
+the one source of truth both call sites (resolving, and re-validating)
+now share.
+
+`suppress_template_page_title()`/`rename_edit_node()` both key off the
+same `$current_record`, so a direct Template Page preview also gets the
+Portfolio-Item-Template-style placeholder title suppressed and the
+admin bar's "Edit Page" renamed to "Edit Template" -- the same,
+consistent "this page IS meaningfully showing a real record right now"
+treatment as a genuinely resolved `/{root}/{slug}` visit, not a
+half-applied version of it.
+
+Verified with an extended PHP smoke test: `matches_current_request()`'s
+full matrix (a real resolved request regardless of which page; a direct
+Template Page visit; a different model on the same page; an unrelated
+page; an empty class name) and `resolve_preview_record()`'s own (no
+`gateway/single-record` block yet; `previewRecordId` 0; a deliberately
+-chosen id; a deleted id falling back; a block configured for a
+different model; the block nested inside another block; an unrelated
+page left untouched and never 404'd) -- alongside a clean run of the
+full existing regression suite. The actual front-end page render (a
+real WP install actually matching the Template Page's URL, resolving the
+right preview record, and rendering the designed InnerBlocks with it)
+needs manual verification in a real WordPress site, the same caveat
+every other routing-dependent change in this plugin already carries.
 
 Verified with a new standalone PHP smoke test (routable-model
 computation, the full flush-timing matrix -- first-ever flush, no flush

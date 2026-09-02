@@ -32,6 +32,19 @@
  *   real 404 even though `page_id` already matched a real page: that
  *   page is only ever a template, never itself the thing being
  *   requested.
+ * - A visit straight to the Template Page's OWN url (e.g.
+ *   `/portfolio-item-template/`, as opposed to `/{root}/{slug}`) never
+ *   matches the rewrite rule above at all -- there's no slug in the URL
+ *   for `gateway_model`/`gateway_slug` to resolve -- so `resolve_record()`
+ *   falls through to `resolve_preview_record()` instead of forcing a 404
+ *   (this IS a real, valid page to look at). It mirrors
+ *   `gateway/single-record/edit.js`'s own editor preview exactly: find
+ *   that model's own `gateway/single-record` block on the page (by its
+ *   already-saved `collection` attribute) and honor whichever
+ *   `previewRecordId` was chosen there (0 meaning "first record found,"
+ *   the same default), so a direct look at the template shows the SAME
+ *   record a site owner already chose to preview it with -- not a
+ *   second, independent notion of "which record."
  * - `inject_record_context()` (on `render_block_context`, priority 1,
  *   mirroring Data_Cards_Renderer's own identical-shaped filter) sets
  *   `$context['record']` to whatever `resolve_record()` found, for
@@ -185,6 +198,40 @@ class Permalink_Routes {
 	}
 
 	/**
+	 * Whether the CURRENT front-end request is genuinely serving
+	 * `$class_name`'s own single-record content right now -- either a
+	 * real `/{root}/{slug}` request that actually resolved to this model
+	 * (`gateway_model` query var), or a direct visit to this model's own
+	 * Template Page itself (the "preview" case `resolve_preview_record()`
+	 * handles -- see that method's own docblock). `gateway_model` alone
+	 * isn't enough for the second case: it's never set at all for a
+	 * direct Template Page visit (there's no slug in the URL for it to
+	 * have come from), even though that request is every bit as
+	 * genuinely "serving this model" as a real resolved one.
+	 *
+	 * `blocks/single-record/render.php` is this method's one caller --
+	 * its own "is my `collection` attribute still the model this page is
+	 * actually serving" re-validation, replacing a bare
+	 * `get_query_var('gateway_model')` comparison.
+	 *
+	 * @param string $class_name
+	 * @return bool
+	 */
+	public static function matches_current_request( $class_name ) {
+		if ( '' === $class_name ) {
+			return false;
+		}
+
+		if ( $class_name === (string) get_query_var( 'gateway_model' ) ) {
+			return true;
+		}
+
+		$route = self::route_for_class( $class_name );
+
+		return $route && $route['template_page_id'] === get_queried_object_id();
+	}
+
+	/**
 	 * A real record's own front-end URL, if its model is currently
 	 * routable AND this particular record already has a slug of its
 	 * own -- the PHP counterpart to admin-app/src/utils/permalink.js's
@@ -289,6 +336,12 @@ class Permalink_Routes {
 		$slug       = (string) get_query_var( 'gateway_slug' );
 
 		if ( '' === $class_name || '' === $slug ) {
+			// No slug at all -- a direct visit to the Template Page's own
+			// URL, not a real `/{root}/{slug}` request. Never a 404 on its
+			// own (see this class's own docblock); see
+			// resolve_preview_record()'s own docblock for what happens
+			// instead.
+			self::resolve_preview_record();
 			return;
 		}
 
@@ -320,6 +373,137 @@ class Permalink_Routes {
 		}
 
 		self::$current_record = $record;
+	}
+
+	/**
+	 * A direct visit to a model's own Template Page -- reported directly:
+	 * "when I preview it the page is empty. It's populated only in the
+	 * editor but not on the front-end." Without this, `$current_record`
+	 * would simply stay null for the rest of the request (there's no
+	 * `gateway_model`/`gateway_slug` to resolve it from at all), so
+	 * `inject_record_context()` below would never set `record` in block
+	 * context, and every `gateway/card-field-text`/`-image`/
+	 * `related-items` inside the page's own `gateway/single-record` block
+	 * would render nothing -- exactly the empty page reported.
+	 *
+	 * Only ever does anything when the page actually being viewed is
+	 * itself a currently-routable model's own `template_page_id` --
+	 * every other ordinary page on the site (there being nothing to
+	 * preview) is completely untouched, `$current_record` simply stays
+	 * null.
+	 */
+	private static function resolve_preview_record() {
+		$page_id = get_queried_object_id();
+
+		if ( ! $page_id ) {
+			return;
+		}
+
+		$route = null;
+
+		foreach ( self::routable_models() as $candidate ) {
+			if ( $candidate['template_page_id'] === $page_id ) {
+				$route = $candidate;
+				break;
+			}
+		}
+
+		if ( ! $route || ! Database_Connection::is_healthy() ) {
+			return;
+		}
+
+		$preview_record_id = self::find_preview_record_id( $page_id, $route['class'] );
+		$record             = null;
+
+		if ( $preview_record_id > 0 ) {
+			// A deliberately-chosen record, looked up directly rather than
+			// re-deriving it from the "first record found" list below --
+			// same "a deliberately-searched-for OLDER record would
+			// otherwise never resolve" reasoning gateway/single-record/edit.js's
+			// own docblock already gives for the identical lookup. A
+			// record since deleted (this id no longer exists) falls
+			// through to the same "first record found" default below,
+			// exactly like the editor does when its own chosen preview
+			// record 404s.
+			$record = $route['class']::find( $preview_record_id );
+		}
+
+		if ( ! $record ) {
+			// "First record found" -- id desc, the exact same default
+			// Records_REST_Controller::search_records() (and therefore
+			// gateway/single-record/edit.js's own `usePreviewRecord()`)
+			// already uses whenever no previewRecordId has been
+			// deliberately chosen.
+			$record = $route['class']::orderBy( 'id', 'desc' )->first();
+		}
+
+		// Still null for a genuinely empty Collection -- left as-is, the
+		// same "nothing to preview yet" state the editor's own Notice
+		// already treats as normal, not an error. A visitor sees the
+		// template with its record-bound blocks simply rendering nothing,
+		// same as gateway/card-field-text's own docblock already
+		// documents for "record context absent" generally.
+		self::$current_record = $record;
+	}
+
+	/**
+	 * Reads the configured `previewRecordId` straight off the Template
+	 * Page's own real, saved content -- the one place that choice lives
+	 * (gateway/single-record's own block attribute, serialized into the
+	 * page's post_content the normal way; never a separate option or
+	 * postmeta of its own). Searched recursively through `parse_blocks()`'s
+	 * own `innerBlocks` tree (the block could sit inside a Group/Columns
+	 * wrapper, not necessarily at the top level), matching on `collection`
+	 * too -- the same guard blocks/single-record/render.php itself already
+	 * applies -- so a Template Page innocently shared by (or not yet
+	 * configured for) a DIFFERENT model is never mistaken for a real
+	 * match.
+	 *
+	 * @param int    $page_id    Template page id.
+	 * @param string $class_name The model this page is routable for --
+	 *                            only a gateway/single-record block
+	 *                            genuinely configured for THIS model counts.
+	 * @return int 0 whenever nothing configured (no such block on the
+	 *              page yet, or its own previewRecordId is unset) --
+	 *              callers already treat that identically to a
+	 *              deliberately-chosen `0`: "first record found."
+	 */
+	private static function find_preview_record_id( $page_id, $class_name ) {
+		$post = get_post( $page_id );
+
+		if ( ! $post || '' === (string) $post->post_content ) {
+			return 0;
+		}
+
+		$found = self::find_single_record_block( parse_blocks( $post->post_content ), $class_name );
+
+		return $found ? (int) ( $found['attrs']['previewRecordId'] ?? 0 ) : 0;
+	}
+
+	/**
+	 * @param array  $blocks     A parse_blocks() result (or one block's own innerBlocks).
+	 * @param string $class_name Only a block whose own `collection` attribute matches this counts.
+	 * @return array|null The matching block, or null if none found at any depth.
+	 */
+	private static function find_single_record_block( array $blocks, $class_name ) {
+		foreach ( $blocks as $block ) {
+			if ( isset( $block['blockName'], $block['attrs']['collection'] )
+				&& 'gateway/single-record' === $block['blockName']
+				&& $class_name === $block['attrs']['collection']
+			) {
+				return $block;
+			}
+
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				$found = self::find_single_record_block( $block['innerBlocks'], $class_name );
+
+				if ( $found ) {
+					return $found;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	/**
