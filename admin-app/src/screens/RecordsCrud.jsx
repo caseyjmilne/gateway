@@ -446,6 +446,42 @@ export default function RecordsCrud() {
 			) : '';
 		}
 
+		// A Link field's own value is enriched the same two ways
+		// LinkPicker/RecordForm already handle (see Link_Field_Type's own
+		// docblock): the full `{url, title, target}` object, or a bare URL
+		// string (return_format 'url'). Either way this must never fall
+		// through to the generic `?? ''` branch below -- returning the raw
+		// object there is exactly what crashed this screen ("Minified
+		// React error #31: Objects are not valid as a React child"),
+		// reported directly, the same class of bug the Image/File
+		// branches above already guard against for their own structured
+		// values.
+		if ( 'link' === inputType ) {
+			const value = record[ field.name ];
+
+			if ( ! value ) {
+				return '';
+			}
+
+			if ( 'object' === typeof value ) {
+				return value.url ? (
+					<a
+						href={ value.url }
+						target={ '_blank' === value.target ? '_blank' : undefined }
+						rel="noreferrer"
+					>
+						{ value.title || value.url }
+					</a>
+				) : '';
+			}
+
+			return (
+				<a href={ value } target="_blank" rel="noreferrer">
+					{ value }
+				</a>
+			);
+		}
+
 		// select/radio/buttons/checkboxes -- the record's own stored value
 		// (or, for checkboxes, values) is always a raw `choice.value`
 		// (Choice_Field_Type::cast() never sees `label` at all -- see

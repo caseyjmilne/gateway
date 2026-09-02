@@ -7469,6 +7469,41 @@ payload, and the Return Value radio pair actually persisting
 `return_format` via autosave. `admin-app` rebuilt via `npm run build`
 (vite), which compiled cleanly.
 
+**A real bug, reported directly: "link seems to have led to react
+error: ... Minified React error #31 ... object with keys {url, title,
+target}."** `RecordsCrud.jsx`'s own Records-table `displayValue()`
+already has dedicated branches for every OTHER structured-value type
+(Relate to One/Many, Image, File, User, WYSIWYG, the Choice types) --
+each rendering something real from that shape, none of them ever
+falling through to the generic `record[field.name] ?? ''` branch at the
+bottom, which returns whatever it's handed completely as-is. Link never
+got its own branch when the type first shipped, so its own real value
+(`{url, title, target}`, or a bare URL string for `return_format:
+'url'`) fell straight through to that generic branch and got handed to
+React as a child -- exactly what React error #31 ("Objects are not
+valid as a React child") describes, and exactly the same class of crash
+`enrich_image_fields()`'s/`enrich_file_fields()`'s own dedicated
+branches already exist to prevent for their own types (see this
+function's own comment on the Image branch: "this must never fall
+through to the plain `?? ''` branch below -- returning the raw enriched
+OBJECT there is exactly what used to crash this screen"). Fixed by
+adding the missing branch, mirroring File's own shape most closely (a
+real, clickable `<a>`): the full object renders `title || url` as its
+own link text (honoring `target: '_blank'`), a bare string (the
+`'url'` return-format case) renders the URL itself, `null`/no value
+renders blank. This crash reached both the Records LIST (any model
+with a Link field showing as a column) and the Edit modal (the same
+list is what supplies `editingRecord` -- see `RecordForm`'s own
+"return_format 'url' loses Title/target" paragraph above for why editing
+reuses the list's own already-fetched data rather than a fresh GET),
+matching the two contexts actually reported. Verified with an
+interactive Playwright pass (against a temporary, uncommitted harness)
+rendering the real `RecordsCrud` screen with a full-object link, a
+bare-string link, and a blank one all in the same table, plus opening
+the Edit modal on the full-object record -- no console/page errors, all
+three list rows and the edit summary render correctly. `admin-app`
+rebuilt via `npm run build` (vite), which compiled cleanly.
+
 ### Columns (`Model_Columns`) -- configurable, sortable Records-table columns
 
 The problem this solves: `RecordsCrud.jsx` used to render every one of a
