@@ -1775,7 +1775,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 			</div>
 
 			<div hidden={ 'presentation' !== editTab }>
-				{ editPresentationFields.length > 0 ? (
+				{ editPresentationFields.length > 0 || editSupportsBooleanSettings ? (
 					<div className="gateway-field-editor-form-grid">
 						{ editPresentationFields.map( ( key ) => {
 							const meta =
@@ -1831,27 +1831,51 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								</label>
 							);
 						} ) }
+						{ /* True_False_Field_Type's own Presentation-tab
+						 * setting (supports_boolean_settings()) -- wrapped
+						 * in a `.gateway-field-editor-form-field` div, the
+						 * same established "plain div stand-in for
+						 * `<label>`" wrapper the Type field's own row
+						 * uses (see its own comment there), rather than
+						 * placed here as a bare `.gateway-toggle` `<label>`
+						 * directly: a direct grid child, this div gets the
+						 * grid's own 32px inter-item gap for free, the
+						 * fix for a real bug reported directly ("there is
+						 * no space before 'Show Toggle' after
+						 * instructions") from an earlier version that
+						 * rendered this switch as a sibling AFTER the grid
+						 * closed instead of inside it, where nothing
+						 * supplied any spacing of its own at all. Kept
+						 * OUT of the grid directly as a `<label>` itself,
+						 * unlike every other item here, because the
+						 * grid's own `.gateway-field-editor-form-grid >
+						 * label` rule would otherwise override
+						 * `.gateway-toggle`'s own `display: inline-flex`
+						 * with its own `display: flex; flex-direction:
+						 * column`, stacking the switch and its own text
+						 * vertically instead of side by side. */ }
+						{ editSupportsBooleanSettings && (
+							<div className="gateway-field-editor-form-field">
+								<label className="gateway-toggle">
+									<input
+										type="checkbox"
+										{ ...register( 'settings.show_toggle' ) }
+									/>
+									<span className="gateway-toggle-slider" aria-hidden="true" />
+									<span>Show Toggle</span>
+								</label>
+								<span className="description">
+									If enabled, this field renders as a toggle
+									switch in the record editor instead of a
+									plain checkbox.
+								</span>
+							</div>
+						) }
 					</div>
 				) : (
 					<p className="description">
 						This field type has no presentation settings yet.
 					</p>
-				) }
-				{ editSupportsBooleanSettings && (
-					<>
-						<label className="gateway-toggle">
-							<input
-								type="checkbox"
-								{ ...register( 'settings.show_toggle' ) }
-							/>
-							<span className="gateway-toggle-slider" aria-hidden="true" />
-							<span>Show Toggle</span>
-						</label>
-						<p className="description">
-							If enabled, this field renders as a toggle switch
-							in the record editor instead of a plain checkbox.
-						</p>
-					</>
 				) }
 			</div>
 

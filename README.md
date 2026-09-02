@@ -5432,6 +5432,26 @@ applies `field.settings.default` on "Add New" the same way every other
 type's default is applied, coerced with the same `Boolean()` its real
 saved value already gets.
 
+**A real bug, reported directly: "there is no space before 'Show
+Toggle' after instructions here on the true false field."** The
+Presentation tab's own `editPresentationFields` grid (Instructions, for
+True/False) and the Show Toggle switch were two SEPARATE elements --
+the grid closed, then Show Toggle rendered as a sibling `<label>`
+straight after it, outside `.gateway-field-editor-form-grid`'s own
+`gap: 32px` between DIRECT children, so nothing supplied any space
+between the two at all (a `<label>` has no default browser margin the
+way a `<p>` does). Fixed by moving Show Toggle INSIDE that same grid --
+wrapped in a `.gateway-field-editor-form-field` div, the same
+established "plain div stand-in for `<label>`" pattern the Type field's
+own row already uses, rather than as a bare `.gateway-toggle` `<label>`
+directly: a real `<label>` as a DIRECT grid child would have its own
+`display: inline-flex` overridden by the grid's own
+`.gateway-field-editor-form-grid > label` rule (`display: flex;
+flex-direction: column`), stacking the switch and its own text
+vertically instead of side by side -- the wrapping div sidesteps that
+entirely, since the grid's child selector only reaches its own direct
+children, never the toggle `<label>` nested one level deeper inside it.
+
 ### Required fields
 
 A new plain boolean column on `gateway_fields`, `required` -- applies
