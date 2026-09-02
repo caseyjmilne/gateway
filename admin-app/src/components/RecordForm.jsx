@@ -180,11 +180,18 @@ import PermalinkControl from './PermalinkControl.jsx';
  * exception: it has its own EARLIER branch (a real, saved value is
  * always an array, `existing` never reaches the generic fallback below
  * at all), so applying a Default Value for it needed its own explicit
- * check instead -- wrapped as a single-element array
- * (`[ field.settings.default ]`), since FieldEditor's own new `<select>`
- * for this only ever configures "none, or ONE of the choices," never
- * several, even for a field whose own real saved value is otherwise a
- * whole array.
+ * check instead. Originally always wrapped as a single-element array
+ * (`[ field.settings.default ]`), since FieldEditor's own `<select>` for
+ * this configured "none, or ONE of the choices" same as Select/Radio.
+ * Reported directly, though: "the default for checkboxes needs to allow
+ * select multiple and multiple checkboxes could be checked by default"
+ * -- so `field.settings.default` is now itself a real array for
+ * Checkbox specifically (`Choice_Field_Type::is_multiple()`,
+ * `FieldEditor`'s own `<select multiple>` for it,
+ * `Model_Fields::sanitize_settings()`'s own array handling server-side),
+ * used as-is here; the `Array.isArray(...) ? ... : [ ... ]` guard only
+ * remains to tolerate an already-saved single-string default from
+ * before this field type supported more than one.
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -366,14 +373,24 @@ export default function RecordForm( {
 					initial[ field.name ] = existing;
 				} else if ( ! initialValues && field.settings?.default ) {
 					// Same "Add New only" Default Value convention every
-					// other type has (see this component's own docblock) --
-					// but as a single pre-checked value, not several: a
-					// Default Value is always "none, or ONE of the
-					// choices," the same singular vocabulary FieldEditor's
-					// own new `<select>` for it already enforces, even
-					// though this field type's own real, saved value is
-					// otherwise a whole array.
-					initial[ field.name ] = [ field.settings.default ];
+					// other type has (see this component's own docblock).
+					// Unlike Select/Radio/Buttons (always "none, or ONE of
+					// the choices"), Checkbox's own default can check
+					// SEVERAL at once -- reported directly, "the default
+					// for checkboxes needs to allow select multiple and
+					// multiple checkboxes could be checked by default" --
+					// so `field.settings.default` is itself already an
+					// array here (`FieldEditor`'s own `<select multiple>`
+					// for it, `Model_Fields::sanitize_settings()`'s own
+					// array handling on the server). Still wrapped in
+					// `Array.isArray(...) ? ... : [ ... ]` to tolerate an
+					// already-saved single-string default from before this
+					// field type supported more than one.
+					initial[ field.name ] = Array.isArray(
+						field.settings.default
+					)
+						? field.settings.default
+						: [ field.settings.default ];
 				} else {
 					initial[ field.name ] = [];
 				}

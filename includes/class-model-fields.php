@@ -984,13 +984,24 @@ class Model_Fields {
 	 * `validate_character_limits()`/`validate_range_values()`'s own job,
 	 * below.
 	 *
+	 * `default` has one further exception of its own, reported directly:
+	 * "the default for checkboxes needs to allow select multiple and
+	 * multiple checkboxes could be checked by default." Every type here
+	 * stores a single string default, EXCEPT `Checkbox_Field_Type` (the
+	 * one `Choice_Field_Type::is_multiple()` type) -- its own raw
+	 * submitted default is an array, sanitized element-by-element (same
+	 * trim + `sanitize_text_field()`, blanks dropped) into a plain
+	 * string array rather than being coerced through the generic
+	 * `(string)` cast every other key goes through, which would
+	 * otherwise collapse it into the literal string "Array".
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
 	 *                              tolerated as anything (a non-array
 	 *                              value just yields `[]`, the same as an
 	 *                              empty object would).
-	 * @return array<string,string>
+	 * @return array<string,string|string[]>
 	 */
 	public static function sanitize_settings( $type, $raw_settings ) {
 		$type_class = Field_Type_Registry::get( $type );
@@ -1100,6 +1111,41 @@ class Model_Fields {
 
 		foreach ( $recognized_keys as $key ) {
 			if ( ! array_key_exists( $key, $raw_settings ) ) {
+				continue;
+			}
+
+			// Checkbox_Field_Type's own Default Value -- reported directly:
+			// "the default for checkboxes needs to allow select multiple
+			// and multiple checkboxes could be checked by default." Every
+			// other type's default (including Buttons/Select/Radio, the
+			// other three Choice_Field_Type implementers) is a single
+			// string, sanitized generically below -- Checkbox is the one
+			// case (`Choice_Field_Type::is_multiple()`) where several
+			// choices can be checked by default at once, so its own raw
+			// submitted value is an array, not a string. Sanitized
+			// element-by-element the same way a single default string is
+			// (trim + sanitize_text_field(), dropping anything blank),
+			// rather than falling into the generic `(string)` cast below,
+			// which would otherwise collapse a real array into the
+			// literal string "Array".
+			if ( 'default' === $key
+				&& is_subclass_of( $type_class, Choice_Field_Type::class )
+				&& $type_class::is_multiple() ) {
+				$raw_defaults       = is_array( $raw_settings[ $key ] ) ? $raw_settings[ $key ] : array( $raw_settings[ $key ] );
+				$sanitized_defaults = array();
+
+				foreach ( $raw_defaults as $raw_default ) {
+					$default_value = sanitize_text_field( trim( (string) $raw_default ) );
+
+					if ( '' !== $default_value ) {
+						$sanitized_defaults[] = $default_value;
+					}
+				}
+
+				if ( ! empty( $sanitized_defaults ) ) {
+					$sanitized[ $key ] = array_values( array_unique( $sanitized_defaults ) );
+				}
+
 				continue;
 			}
 

@@ -5867,9 +5867,28 @@ with the SAME generic `sanitize_text_field(trim(...))` applied
 regardless of type -- no type-specific validation of a default's actual
 value (a Choice type's default isn't checked server-side against its
 current choices list any more than Number's is checked to be truly
-numeric). `Field_Type_Registry::describe_all()` exposes
-`supports_default_value` per type, the same way it exposes
+numeric) -- **except Checkbox**, whose own default is an ARRAY, not a
+single string (see below), sanitized element-by-element instead of
+through that one generic cast, which would otherwise collapse a real
+array into the literal string "Array". `Field_Type_Registry::describe_all()`
+exposes `supports_default_value` per type, the same way it exposes
 `presentation_fields`.
+
+**Checkbox's own default can check SEVERAL choices at once, not just
+one**, per a direct follow-up request: "the default for checkboxes needs
+to allow select multiple and multiple checkboxes could be checked by
+default." Every other Choice type (Buttons/Select/Radio) only ever
+selects a single value at a time in the real record editor too, so "none,
+or ONE of the choices" was always the right ceiling for their own
+default -- but Checkbox is `Choice_Field_Type`'s one `is_multiple()` type
+(a record's own saved value there is always an array), and its Default
+Value control was, at first, still only letting a site owner pick one.
+`Model_Fields::sanitize_settings()` special-cases `'default'` specifically
+for `is_subclass_of( $type_class, Choice_Field_Type::class ) && $type_class::is_multiple()`
+(Checkbox alone, today): the raw submitted value is treated as an array,
+each element trimmed/`sanitize_text_field()`'d/de-duplicated the same way
+a single default string is, blanks dropped, stored as a plain string
+array rather than a string.
 
 **The admin app.** `FieldEditor`'s General tab shows the Default Value
 input only when the currently-picked type's own `supports_default_value`
@@ -5891,7 +5910,19 @@ so the option list updates the moment a choice is added, renamed, or
 removed, with no separate fetch of its own. This is what keeps a Choice
 default constrained to "none, or one of the choices" entirely at entry
 time, without needing any new server-side validation: the `<select>`
-simply never offers a value that isn't real. A default that goes stale
+simply never offers a value that isn't real. **Checkbox is the one
+exception** (`is_multiple`, also exposed by `describe_all()`): its own
+`<select>` gets a real `multiple` attribute instead, drops the "— None —"
+option (leaving nothing selected already means none, the same as an
+empty Checkbox group in the real record editor), and its own description
+text swaps to "Ctrl/Cmd-click (or Shift-click for a range) to check more
+than one by default. Leave nothing selected for none." React Hook Form's
+`register()` already handles a native `<select multiple>` on its own
+(reading/writing a real string array, no extra wiring needed here), so
+the ONLY code difference for Checkbox is passing that one `multiple`
+prop through -- and, on load, tolerating an already-saved single-string
+default from before this existed by wrapping it into a one-element array
+first. A default that goes stale
 later (its choice renamed or deleted after being set) is left as-is
 rather than silently cleared -- the same "tolerate staleness gracefully"
 precedent `RecordsCrud`'s own already-saved-value display already
@@ -5914,11 +5945,16 @@ none of them needed any code changes of their own to gain this.
 own earlier, dedicated branch in `initialValues`'s own initializer (a
 real, saved value there is always an array, so `existing` never reaches
 the generic fallback at all), so applying a Default Value for it needed
-its own explicit check, applied as a single-element array
-(`[ field.settings.default ]`) -- since the General tab's own `<select>`
-for this only ever configures "none, or ONE of the choices," never
-several, even for a field whose own real saved value is otherwise a
-whole array.
+its own explicit check. Originally this always wrapped the default in a
+single-element array (`[ field.settings.default ]`), matching the
+General tab's own `<select>` for it configuring "none, or ONE of the
+choices" the same as Select/Radio at the time. Per the later "select
+multiple" request above, `field.settings.default` for Checkbox is now
+itself already a real array (`FieldEditor`'s own `<select multiple>`,
+`Model_Fields::sanitize_settings()`'s own array handling server-side),
+used as-is; the `Array.isArray(...) ? ... : [ ... ]` wrapping only
+remains to tolerate an already-saved single-string default from before
+Checkbox supported more than one.
 
 ### Character limit
 

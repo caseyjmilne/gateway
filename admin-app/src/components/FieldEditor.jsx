@@ -533,6 +533,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const isTextRenderableFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
 
+	const isMultipleFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_multiple );
+
 	const maxOnePerModelFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.max_one_per_model );
 
@@ -547,6 +550,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const editSupportsEmbedSettings = supportsEmbedSettingsFor( editType );
 	const editSupportsUserSettings = supportsUserSettingsFor( editType );
 	const editSupportsPermalinkSettings = supportsPermalinkSettingsFor( editType );
+	const editIsMultiple = isMultipleFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
 				( relationship ) => relationship.type === editRelationshipType
@@ -620,9 +624,14 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	// below for why that broader check would wrongly light up a tab this
 	// value doesn't actually belong to).
 	const choicesTabHasContent = editChoices.some( ( choice ) => choice.value.trim() );
-	const defaultValueTabHasContent = Boolean(
-		editSettings.default && String( editSettings.default ).trim()
-	);
+	// Checkbox's own default is an array (several can be checked at
+	// once, see this component's own docblock) -- `[]` is truthy in
+	// JS, so the plain `Boolean( x && ... )` every other settings
+	// check here uses would wrongly light up this dot for an empty
+	// selection; checked by length instead, only for the array case.
+	const defaultValueTabHasContent = Array.isArray( editSettings.default )
+		? editSettings.default.length > 0
+		: Boolean( editSettings.default && String( editSettings.default ).trim() );
 	const permalinkSourceFieldTabHasContent = Boolean(
 		editSettings.source_field && String( editSettings.source_field ).trim()
 	);
@@ -959,6 +968,27 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const startEdit = ( field, index ) => {
 		setError( '' );
 
+		// A shallow copy, not `normalizeSettings( field.settings )` used
+		// as-is -- the multi-select-default normalization right below
+		// needs somewhere of its own to write `default` into without
+		// mutating `field.settings` itself (still live in `fields` state).
+		const settings = { ...normalizeSettings( field.settings ) };
+
+		if (
+			isMultipleFor( field.type ) &&
+			'default' in settings &&
+			! Array.isArray( settings.default )
+		) {
+			// A checkbox field's own default was a single string before
+			// "multiple checkboxes could be checked by default" -- see
+			// this component's own docblock -- so an already-saved field
+			// from before that still has one needs wrapping into a
+			// single-element array here, the same tolerant one-time
+			// upgrade `RecordForm.jsx`'s own initialValues logic applies
+			// when it reads this same settings.default back.
+			settings.default = settings.default ? [ settings.default ] : [];
+		}
+
 		const defaults = {
 			name: field.name,
 			label: field.label,
@@ -966,7 +996,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 			relationshipMethod: field.relationship_method || '',
 			choices: field.choices && field.choices.length > 0 ? field.choices : [],
 			required: Boolean( field.required ),
-			settings: normalizeSettings( field.settings ),
+			settings,
 			conditional_logic: field.conditional_logic || {
 				enabled: false,
 				groups: [],
@@ -1515,9 +1545,12 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								<span>Default Value</span>
 								<select
 									className="regular-text"
+									multiple={ editIsMultiple }
 									{ ...register( 'settings.default' ) }
 								>
-									<option value="">— None —</option>
+									{ ! editIsMultiple && (
+										<option value="">— None —</option>
+									) }
 									{ ( editChoices || [] )
 										.filter( ( choice ) => choice.value.trim() )
 										.map( ( choice ) => (
@@ -1530,7 +1563,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 										) ) }
 								</select>
 								<span className="description">
-									Appears when creating a new record.
+									{ editIsMultiple
+										? 'Ctrl/Cmd-click (or Shift-click for a range) to check more than one by default. Leave nothing selected for none.'
+										: 'Appears when creating a new record.' }
 								</span>
 							</label>
 						) }
