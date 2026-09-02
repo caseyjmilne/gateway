@@ -163,6 +163,13 @@ class Text_Area_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function supports_boolean_settings() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function max_one_per_model() {
 		return false;
 	}

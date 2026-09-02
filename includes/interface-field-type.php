@@ -305,6 +305,15 @@ interface Field_Type {
 	 * "— None —" plus each of the field's own current choices, so a
 	 * default here is always exactly one real, currently-offered choice
 	 * or none, never a stray value the choices list doesn't recognize.
+	 *
+	 * Also `true` for `True_False_Field_Type`, per a further direct
+	 * request ("add default to the general tab and this is a switch to
+	 * determine if the value is true by default") -- its own `settings.default`
+	 * is a THIRD shape again, a boolean switch (`.gateway-toggle`) rather
+	 * than either a text/number input or a choices `<select>`; see that
+	 * class's own docblock for why `Model_Fields::sanitize_settings()`
+	 * needs no special-casing at all to store it correctly.
+	 *
 	 * `false` still for a Relate field (a default related record raises
 	 * its own set of questions -- does it still exist, is it still valid
 	 * -- this doesn't attempt to answer) and every other built-in type.
@@ -604,6 +613,46 @@ interface Field_Type {
 	 * @return bool
 	 */
 	public static function supports_permalink_settings();
+
+	/**
+	 * Whether this type recognizes True/False's own small settings
+	 * bundle, per a direct request: "true false under general tab needs
+	 * a 'Message' which will be displayed next to the checkbox or
+	 * toggle. Under presentation show option 'Show Toggle' and that is a
+	 * switch, if set we present a toggle instead of a checkbox." Two
+	 * keys, in two different tabs -- unlike every other
+	 * `supports_*_settings()` bundle above, which lives entirely in one
+	 * tab:
+	 *
+	 * - `message` -- **General** tab, not Presentation: the caption
+	 *   shown directly beside the checkbox/toggle control itself (e.g.
+	 *   "Subscribe to our newsletter"), distinct from `instructions`
+	 *   (already recognized by every type, this one included, via
+	 *   `presentation_fields()`) which renders elsewhere around the
+	 *   field, not next to the control. A plain string, sanitized the
+	 *   same generic way as everything else `Model_Fields::sanitize_settings()`
+	 *   recognizes -- no dedicated validation of its own.
+	 * - `show_toggle` -- **Presentation** tab: a boolean switch (`Model_Fields::sanitize_settings()`'s
+	 *   own generic string sanitizing already handles this the same way
+	 *   it handles True/False's own `default` below -- a submitted `true`
+	 *   sanitizes to `"1"` and is kept, a submitted `false` sanitizes to
+	 *   `""` and is dropped entirely, so an absent key and an explicit
+	 *   "off" both simply mean "not set," no different from every other
+	 *   optional setting here). When set, `RecordForm` renders this
+	 *   field as a real toggle switch (the same `.gateway-toggle`
+	 *   component `FieldEditor`'s own Required switch already uses)
+	 *   instead of a plain `<input type="checkbox">`.
+	 *
+	 * `true` only for `True_False_Field_Type` today; `false` for every
+	 * other built-in type -- gated separately from `presentation_fields()`
+	 * because `message` belongs on a different tab entirely, and
+	 * `show_toggle` is a boolean switch, not one more generic text input
+	 * `presentation_fields()`'s own array already assumes every key
+	 * within it renders as.
+	 *
+	 * @return bool
+	 */
+	public static function supports_boolean_settings();
 
 	/**
 	 * Whether a model can ever have more than one field of this type at

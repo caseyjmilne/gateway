@@ -5397,9 +5397,40 @@ scoped to the handle span, never the row.
 **Buttons/Select/Radio/Checkbox each support a Default Value too**, per
 a direct request -- "none, or one of the choices," picked from a
 `<select>` on the General tab that's always built from the field's own
-current choices. See "Default value" below for the full detail (why
-True/False stays excluded, how `RecordForm` applies it, and the one
-`checkboxes`-specific wrinkle of wrapping a single value in an array).
+current choices. See "Default value" below for the full detail (how
+`RecordForm` applies it, and the one `checkboxes`-specific wrinkle of
+allowing several values in an array).
+
+**True/False gets its own small settings bundle, reported directly:
+"true false under general tab needs a 'Message' which will be displayed
+next to the checkbox or toggle. Under presentation show option 'Show
+Toggle' and that is a switch, if set we present a toggle instead of a
+checkbox. Finally add default to the general tab and this is a switch to
+determine if the value is true by default."** `Field_Type::supports_boolean_settings()`
+(new interface method, `true` only for `True_False_Field_Type`) gates two
+keys in two different tabs -- **Message** on General (the caption shown
+directly beside the checkbox/toggle control itself, e.g. "Subscribe to
+our newsletter," distinct from `instructions`, which every type already
+gets and renders elsewhere around the field, not next to the control
+itself), and **Show Toggle** on Presentation (a real switch -- the same
+`.gateway-toggle` component `FieldEditor`'s own Required switch already
+uses -- that, when on, makes `RecordForm` render this field as an actual
+toggle instead of a plain `<input type="checkbox">`). True/False also now
+supports a Default Value (`supports_default_value()` flipped to `true`),
+rendered as a third shape again: not a text/number input, not a choices
+`<select>`, but that same `.gateway-toggle` switch, this time on General.
+None of the three needs any special-casing in `Model_Fields::sanitize_settings()`
+-- `message` is sanitized the same generic way as everything else here,
+and both `show_toggle` and `default` are boolean switches that the
+existing generic `sanitize_text_field((string)...)` already handles
+correctly for free (a submitted `true` becomes `"1"`, kept; a submitted
+`false` becomes `""`, dropped by the existing blank check, same as
+leaving it unset -- exactly the "unset/off" outcome a boolean's own falsy
+default already wants). `RecordForm` wraps the checkbox/toggle input in
+its own `<label>` alongside `field.settings.message`, when set, and
+applies `field.settings.default` on "Add New" the same way every other
+type's default is applied, coerced with the same `Boolean()` its real
+saved value already gets.
 
 ### Required fields
 
@@ -5801,8 +5832,8 @@ for the PHP fix.
 
 ### Default value
 
-A Text, Number, Range, Email, URL, or Choice (Buttons/Select/Radio/
-Checkbox) field can be given a default value -- what a brand new record
+A Text, Number, Range, Email, URL, Choice (Buttons/Select/Radio/
+Checkbox), or True/False field can be given a default value -- what a brand new record
 starts out with, not how the field is displayed, which is why it lives
 in **General** rather than alongside instructions/placeholder/step/
 prepend/append in Presentation: directly under Label for Text/Number/
@@ -5837,23 +5868,30 @@ set. The default can be either none or one of the choices chosen from a
 select." An earlier version of this section reasoned a default made
 little sense for a Choice type "since its own choices list already
 offers a natural 'pick one' default the UI doesn't have yet" -- true only
-until that UI actually got built (see below). `True_False_Field_Type` is
-deliberately excluded from this even though it superficially looks
-choice-like: its own docblock is explicit that it is NOT a
-`Choice_Field_Type` (a fixed boolean, no configurable choices list to
-default into), so it keeps `supports_default_value() => false`,
-unchanged.
+until that UI actually got built (see below).
+
+**True/False supports a default value too**, per a further direct
+request: "add default to the general tab and this is a switch to
+determine if the value is true by default." An earlier version of this
+section excluded `True_False_Field_Type` even though it superficially
+looks choice-like, reasoning it was a fixed boolean with no configurable
+choices list to default into -- true of the CHOICES half of that
+reasoning (it's still correctly not a `Choice_Field_Type`, see "Choice
+field types" above), but a boolean has an obvious "pick one" of its own
+regardless: true, or false. See "Choice field types" above for the rest
+of True/False's own new settings bundle (`message`/`show_toggle`) that
+shipped alongside this.
 
 **`Field_Type::supports_default_value()`** (interface method) is a
 second, separate whitelist alongside `presentation_fields()` -- `true`
 for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
-`Email_Field_Type`/`URL_Field_Type` and, now, every real
-`Choice_Field_Type` implementer (`Buttons_Field_Type`/
-`Select_Field_Type`/`Radio_Field_Type`/`Checkbox_Field_Type`), `false`
-for every other built-in type, including `Password_Field_Type` (per
-above), `True_False_Field_Type` (per above), and a Relate field, where a
-default related record raises its own questions -- does it still exist,
-is it still valid -- this doesn't attempt to answer. The two methods are
+`Email_Field_Type`/`URL_Field_Type`, every real `Choice_Field_Type`
+implementer (`Buttons_Field_Type`/`Select_Field_Type`/`Radio_Field_Type`/
+`Checkbox_Field_Type`), and now `True_False_Field_Type` too, `false` for
+every other built-in type, including `Password_Field_Type` (per above)
+and a Relate field, where a default related record raises its own
+questions -- does it still exist, is it still valid -- this doesn't
+attempt to answer. The two methods are
 kept separate because they answer different questions (which
 Presentation-tab inputs to show vs. whether a default value makes sense
 for this type at all) and render in different tabs, but a default value
@@ -5889,6 +5927,16 @@ for `is_subclass_of( $type_class, Choice_Field_Type::class ) && $type_class::is_
 each element trimmed/`sanitize_text_field()`'d/de-duplicated the same way
 a single default string is, blanks dropped, stored as a plain string
 array rather than a string.
+
+**True/False's own default is a THIRD shape again -- a boolean switch,
+not a text/number input or a choices `<select>`.** Unlike Checkbox's own
+array exception above, `Model_Fields::sanitize_settings()` needs no
+special-casing at all for this one: its existing generic
+`sanitize_text_field((string)...)` already turns a submitted `true` into
+`"1"` (kept) and a submitted `false` into `""` (dropped by the existing
+blank check, same as leaving it unset) -- exactly the "unset/off" outcome
+a boolean's own falsy default already wants, with no code of its own
+needed to produce it.
 
 **The admin app.** `FieldEditor`'s General tab shows the Default Value
 input only when the currently-picked type's own `supports_default_value`
@@ -5932,7 +5980,14 @@ non-blank Choices list (previously just Choices) -- and, in the other
 direction, Presentation's own dot is computed only from the keys
 `presentation_fields()` actually returns for the current type, not every
 key `settings` happens to hold, so a Default Value configured on a Text
-field never falsely lights up its Presentation tab too.
+field never falsely lights up its Presentation tab too. **True/False is a
+fourth rendering shape**: its Default Value is the same `.gateway-toggle`
+switch component `FieldEditor`'s own Required switch already uses,
+registered as `settings.default` on a real `<input type="checkbox">`
+exactly the way `required` itself already is -- React Hook Form already
+knows to read/write a checkbox's own `checked` property for a field
+registered this way, so no extra wiring was needed beyond swapping which
+markup renders for this one type.
 
 `RecordForm` applies `field.settings.default` as a field's initial value
 only when `initialValues` itself is entirely absent -- true "Add New,"
@@ -5954,7 +6009,13 @@ itself already a real array (`FieldEditor`'s own `<select multiple>`,
 `Model_Fields::sanitize_settings()`'s own array handling server-side),
 used as-is; the `Array.isArray(...) ? ... : [ ... ]` wrapping only
 remains to tolerate an already-saved single-string default from before
-Checkbox supported more than one.
+Checkbox supported more than one. `boolean` (True/False) needed a small
+dedicated check of its own too, alongside its own already-earlier branch
+in `initialValues`'s initializer: `existing` is always `null` there on a
+genuine "Add New" already, so this only ever falls back to
+`Boolean(field.settings?.default)` in that exact case, never overriding
+a real (even if unset) existing value on an edit -- its own default is a
+real JS boolean either way, needing no array/string handling of its own.
 
 ### Character limit
 

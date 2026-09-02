@@ -995,6 +995,12 @@ class Model_Fields {
 	 * `(string)` cast every other key goes through, which would
 	 * otherwise collapse it into the literal string "Array".
 	 *
+	 * `True_False_Field_Type`'s own settings bundle (`message`/
+	 * `show_toggle`, `supports_boolean_settings()`) needs no such
+	 * exception -- see that interface method's own docblock for why the
+	 * generic string sanitizing below already does the right thing for
+	 * both keys, `show_toggle` included despite being a boolean switch.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1105,6 +1111,20 @@ class Model_Fields {
 					'template_page_id',
 				)
 			);
+		}
+
+		if ( $type_class::supports_boolean_settings() ) {
+			// True_False_Field_Type's own -- see that interface method's
+			// own docblock for what each of these two keys means. Neither
+			// needs any special handling below: 'message' is a plain
+			// string, sanitized the same generic way as everything else
+			// here; 'show_toggle' is a boolean switch, but the SAME
+			// generic sanitizing already gives it the right behavior for
+			// free -- a submitted `true` becomes `"1"` (kept), a
+			// submitted `false` becomes `""` (dropped by the blank check
+			// below, same as leaving it unset).
+			$recognized_keys[] = 'message';
+			$recognized_keys[] = 'show_toggle';
 		}
 
 		$sanitized = array();

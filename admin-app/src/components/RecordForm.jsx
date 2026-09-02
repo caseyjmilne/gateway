@@ -64,10 +64,24 @@ import PermalinkControl from './PermalinkControl.jsx';
  * if none checked), matching Checkbox_Field_Type::cast()'s own shape --
  * unrelated to relate_many's `[{id,label}, ...]` above despite the
  * shared "array" shape; nothing here is an id. "boolean" (True_False_Field_Type) is a
- * single native checkbox; its form state and submitted value are both a
- * real JS boolean, not a string -- initialValues coming back as `0`/`1`/
- * `"0"`/`"1"` (a driver that doesn't apply Eloquent's own boolean cast
- * strictly) is coerced with `Boolean()` either way.
+ * single native checkbox -- or, when `field.settings?.show_toggle` is
+ * set, a real toggle switch instead (`.gateway-toggle`, the same
+ * component `FieldEditor`'s own Required/Show Toggle switches use;
+ * reported directly, "under presentation show option 'Show Toggle' and
+ * that is a switch, if set we present a toggle instead of a checkbox")
+ * -- wrapped in a `<label>` alongside `field.settings?.message`, when
+ * set (a caption shown directly beside the control itself, distinct
+ * from this field's own top `<label htmlFor>` above it, which always
+ * shows the field's Label -- see `supports_boolean_settings()`'s own
+ * docblock). Its form state and submitted value are both a real JS
+ * boolean, not a string -- initialValues coming back as `0`/`1`/`"0"`/
+ * `"1"` (a driver that doesn't apply Eloquent's own boolean cast
+ * strictly) is coerced with `Boolean()` either way. Its own
+ * `field.settings.default` (per a direct request, "add default to the
+ * general tab and this is a switch to determine if the value is true by
+ * default") is applied the same "Add New only" way every other type's
+ * default is -- see this component's own `settings.default` paragraph
+ * further below.
  *
  * "image" (Image_Field_Type) and "file" (File_Field_Type) are the other
  * special case whose form state isn't a plain scalar: like relate_one's
@@ -191,7 +205,13 @@ import PermalinkControl from './PermalinkControl.jsx';
  * `Model_Fields::sanitize_settings()`'s own array handling server-side),
  * used as-is here; the `Array.isArray(...) ? ... : [ ... ]` guard only
  * remains to tolerate an already-saved single-string default from
- * before this field type supported more than one.
+ * before this field type supported more than one. `boolean`
+ * (True_False_Field_Type) is a THIRD shape again, per a further direct
+ * request ("add default to the general tab and this is a switch to
+ * determine if the value is true by default") -- its own default is a
+ * real JS boolean, coerced with the same `Boolean()` its own real saved
+ * value already gets, so no array/string handling of its own is needed
+ * at all; see its own dedicated `initialValues` branch above.
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -395,7 +415,19 @@ export default function RecordForm( {
 					initial[ field.name ] = [];
 				}
 			} else if ( 'boolean' === inputType ) {
-				initial[ field.name ] = Boolean( existing );
+				// Same "Add New only" Default Value convention every other
+				// type has (see this component's own docblock) -- reported
+				// directly, "add default to the general tab and this is a
+				// switch to determine if the value is true by default."
+				// `existing` is always `null` here already whenever
+				// `initialValues` itself is absent, so this only ever
+				// falls back to the configured default on a genuine
+				// "Add New," never overriding a real (even if unset)
+				// existing value on an edit.
+				initial[ field.name ] =
+					! initialValues && null === existing
+						? Boolean( field.settings?.default )
+						: Boolean( existing );
 			} else if ( 'permalink' === inputType ) {
 				initial[ field.name ] = null === existing ? '' : String( existing );
 				// `initialValues` (not `existing`, which only ever reads
@@ -705,14 +737,43 @@ export default function RecordForm( {
 									<span>{ choice.label }</span>
 								</label>
 							) ) }
-						{ 'boolean' === inputType && (
-							<input
-								id={ inputId }
-								type="checkbox"
-								checked={ Boolean( values[ field.name ] ) }
-								onChange={ handleBooleanChange( field.name ) }
-							/>
-						) }
+						{ 'boolean' === inputType &&
+							( field.settings?.show_toggle ? (
+								// Reported directly: "under presentation
+								// show option 'Show Toggle' and that is a
+								// switch, if set we present a toggle
+								// instead of a checkbox." Same
+								// `.gateway-toggle` component
+								// FieldEditor's own Required/Show Toggle
+								// switches already use.
+								<label className="gateway-toggle">
+									<input
+										id={ inputId }
+										type="checkbox"
+										checked={ Boolean( values[ field.name ] ) }
+										onChange={ handleBooleanChange( field.name ) }
+									/>
+									<span
+										className="gateway-toggle-slider"
+										aria-hidden="true"
+									/>
+									{ field.settings?.message && (
+										<span>{ field.settings.message }</span>
+									) }
+								</label>
+							) : (
+								<label className="gateway-record-form-choice">
+									<input
+										id={ inputId }
+										type="checkbox"
+										checked={ Boolean( values[ field.name ] ) }
+										onChange={ handleBooleanChange( field.name ) }
+									/>
+									{ field.settings?.message && (
+										<span>{ field.settings.message }</span>
+									) }
+								</label>
+							) ) }
 						{ 'image' === inputType && (
 							<ImagePicker
 								field={ field }

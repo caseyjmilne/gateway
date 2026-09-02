@@ -218,6 +218,13 @@ class Permalink_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function supports_boolean_settings() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * The only type this applies to -- see this interface method's own
 	 * docblock for why a model only ever has at most one of these.

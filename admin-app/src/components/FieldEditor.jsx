@@ -530,6 +530,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const supportsPermalinkSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_permalink_settings );
 
+	const supportsBooleanSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_boolean_settings );
+
 	const isTextRenderableFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
 
@@ -550,6 +553,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const editSupportsEmbedSettings = supportsEmbedSettingsFor( editType );
 	const editSupportsUserSettings = supportsUserSettingsFor( editType );
 	const editSupportsPermalinkSettings = supportsPermalinkSettingsFor( editType );
+	const editSupportsBooleanSettings = supportsBooleanSettingsFor( editType );
 	const editIsMultiple = isMultipleFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
@@ -635,10 +639,21 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const permalinkSourceFieldTabHasContent = Boolean(
 		editSettings.source_field && String( editSettings.source_field ).trim()
 	);
+	// True_False_Field_Type's own General-tab setting (see
+	// supports_boolean_settings()'s own docblock) -- 'show_toggle' is
+	// deliberately NOT checked here, even though it also lives in
+	// `editSettings`: it's a Presentation-tab setting for this type, not
+	// General's, the same "checked by key name, only for the tab it
+	// actually belongs to" reasoning presentationTabHasContent below
+	// already applies.
+	const messageTabHasContent = Boolean(
+		editSettings.message && String( editSettings.message ).trim()
+	);
 	const generalTabHasContent =
 		choicesTabHasContent ||
 		defaultValueTabHasContent ||
-		permalinkSourceFieldTabHasContent;
+		permalinkSourceFieldTabHasContent ||
+		messageTabHasContent;
 	// Validation's own dot covers everything that can live there:
 	// Required, a configured Character Limit, and a configured Minimum/
 	// Maximum Value (each checked directly for the same reason Default
@@ -673,9 +688,16 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	// blanket `Object.values( editSettings )` scan would wrongly light up
 	// this tab's dot for a Default Value someone set with nothing actually
 	// filled in on the Presentation tab itself.
-	const presentationTabHasContent = editPresentationFields.some(
-		( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
-	);
+	const presentationTabHasContent =
+		editPresentationFields.some(
+			( key ) => editSettings[ key ] && String( editSettings[ key ] ).trim()
+		) ||
+		// 'show_toggle' isn't one of `editPresentationFields` (it's not
+		// a generic `presentation_fields()` key -- see
+		// `supports_boolean_settings()`'s own docblock), but it still
+		// renders on this tab, so it still needs to count toward this
+		// tab's own dot.
+		Boolean( editSettings.show_toggle && String( editSettings.show_toggle ).trim() );
 
 	// "Has real content" here means at least one rule with a field
 	// actually picked -- an enabled toggle with nothing configured yet
@@ -1383,27 +1405,53 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 							{ ...register( 'label' ) }
 						/>
 					</label>
-					{ editSupportsDefault && ! editHasChoices && (
+					{ editSupportsBooleanSettings && (
 						<label>
-							<span>Default Value</span>
-							{ 'number' === editType ? (
-								<input
-									type="number"
-									step="any"
-									className="regular-text"
-									{ ...register( 'settings.default' ) }
-								/>
-							) : (
-								<input
-									type="text"
-									className="regular-text"
-									{ ...register( 'settings.default' ) }
-								/>
-							) }
+							<span>Message</span>
+							<input
+								type="text"
+								className="regular-text"
+								placeholder="e.g. Subscribe to our newsletter"
+								{ ...register( 'settings.message' ) }
+							/>
 							<span className="description">
-								Appears when creating a new record.
+								Displayed next to the checkbox/toggle itself,
+								not this field&rsquo;s own Label above.
 							</span>
 						</label>
+					) }
+					{ editSupportsDefault && ! editHasChoices && (
+						'true_false' === editType ? (
+							<label className="gateway-toggle">
+								<input
+									type="checkbox"
+									{ ...register( 'settings.default' ) }
+								/>
+								<span className="gateway-toggle-slider" aria-hidden="true" />
+								<span>Default Value</span>
+							</label>
+						) : (
+							<label>
+								<span>Default Value</span>
+								{ 'number' === editType ? (
+									<input
+										type="number"
+										step="any"
+										className="regular-text"
+										{ ...register( 'settings.default' ) }
+									/>
+								) : (
+									<input
+										type="text"
+										className="regular-text"
+										{ ...register( 'settings.default' ) }
+									/>
+								) }
+								<span className="description">
+									Appears when creating a new record.
+								</span>
+							</label>
+						)
 					) }
 					{ ( editSupportsMediaSettings || editSupportsFileSettings || editSupportsUserSettings ) && (
 						<label>
@@ -1788,6 +1836,22 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 					<p className="description">
 						This field type has no presentation settings yet.
 					</p>
+				) }
+				{ editSupportsBooleanSettings && (
+					<>
+						<label className="gateway-toggle">
+							<input
+								type="checkbox"
+								{ ...register( 'settings.show_toggle' ) }
+							/>
+							<span className="gateway-toggle-slider" aria-hidden="true" />
+							<span>Show Toggle</span>
+						</label>
+						<p className="description">
+							If enabled, this field renders as a toggle switch
+							in the record editor instead of a plain checkbox.
+						</p>
+					</>
 				) }
 			</div>
 

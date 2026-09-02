@@ -1,10 +1,24 @@
 <?php
 /**
  * The "True/False" field type -- a plain boolean, rendered as a single
- * `<input type="checkbox">` (checked = true). Unlike Buttons/Select/
- * Radio/Checkbox, this is NOT a Choice_Field_Type -- there's no
- * site-owner-configured list of options at all, just a fixed on/off
- * value, so it implements the plain Field_Type contract directly.
+ * `<input type="checkbox">` (checked = true) or, when `settings.show_toggle`
+ * is set, a real toggle switch instead -- see `supports_boolean_settings()`.
+ * Unlike Buttons/Select/Radio/Checkbox, this is NOT a Choice_Field_Type --
+ * there's no site-owner-configured list of options at all, just a fixed
+ * on/off value, so it implements the plain Field_Type contract directly.
+ *
+ * `supports_default_value()` is `true` here too, per a direct request --
+ * "add default to the general tab and this is a switch to determine if
+ * the value is true by default." Unlike every other type that supports
+ * one, this one's own `settings.default` is a boolean switch, not a
+ * text/number input or a choices `<select>`: `FieldEditor.jsx`'s own
+ * General tab renders it as the same `.gateway-toggle` component
+ * `supports_boolean_settings()`'s own `show_toggle` reuses for the
+ * *record* editor. `Model_Fields::sanitize_settings()` needs no special
+ * -casing for it at all -- its generic `sanitize_text_field((string)...)`
+ * already turns a submitted `true` into `"1"` (kept) and `false` into
+ * `""` (dropped, same as leaving it blank), which is exactly the
+ * "unset/off" outcome a boolean's own falsy default already wants.
  *
  * @package Gateway
  */
@@ -129,7 +143,7 @@ class True_False_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 */
 	public static function supports_default_value() {
-		return false;
+		return true;
 	}
 
 	/**
@@ -179,6 +193,13 @@ class True_False_Field_Type implements Field_Type {
 	 */
 	public static function supports_permalink_settings() {
 		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function supports_boolean_settings() {
+		return true;
 	}
 
 	/**
