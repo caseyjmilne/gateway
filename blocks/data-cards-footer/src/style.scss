@@ -6,6 +6,13 @@
  * copy of gateway/datatable-footer's own style.scss, renamed -- see that
  * file's docblock for the `space-between`/`nowrap`/min-height reasoning,
  * which applies identically here.
+ *
+ * Same "CSS alone isn't enough for the editor" fix gateway/data-cards
+ * -header's own style.scss docblock explains -- `supports.layout` in
+ * block.json is what actually stops Pagination/Results from stacking in
+ * the editor canvas; this file's own `nowrap` still needs to be
+ * mirrored there explicitly (block.json's own layout default is `wrap`
+ * unless overridden).
  */
 
 .gateway-data-cards-footer {

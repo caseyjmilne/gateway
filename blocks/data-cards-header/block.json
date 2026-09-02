@@ -11,7 +11,15 @@
 	"textdomain": "gateway",
 	"parent": [ "gateway/data-cards" ],
 	"supports": {
-		"html": false
+		"html": false,
+		"layout": {
+			"allowSwitching": false,
+			"allowVerticalAlignment": false,
+			"default": {
+				"type": "flex",
+				"justifyContent": "space-between"
+			}
+		}
 	},
 	"editorScript": "file:./build/index.js",
 	"style": "file:./build/style-view.css",

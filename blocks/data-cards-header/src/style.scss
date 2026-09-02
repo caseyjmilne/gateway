@@ -6,6 +6,20 @@
  * copy of gateway/datatable-header's own style.scss, renamed -- see that
  * file's docblock for the `space-between`/min-height reasoning, which
  * applies identically here.
+ *
+ * `display: flex` etc. here is what actually renders the front end
+ * correctly -- but the EDITOR canvas needs its OWN, separate signal
+ * (block.json's `supports.layout`) to stop wrapping each child in a
+ * stacking block-list element instead of a real flex child; without it,
+ * Page Size and Search stack vertically in the editor even with plenty
+ * of room, despite this CSS being loaded there too -- reported directly
+ * ("even when there is space to set the items on a row as expected, they
+ * stack anyway"). `justifyContent`/`gap` are deliberately NOT duplicated
+ * into block.json's own layout config beyond what's needed for the
+ * editor's Inspector controls to show accurate state -- `gap` in
+ * particular is left out entirely (no `spacing.blockGap` support
+ * declared), so WordPress's own generated layout CSS never emits a `gap`
+ * rule that could otherwise fight this file's own `gap: 1em`.
  */
 
 .gateway-data-cards-header {

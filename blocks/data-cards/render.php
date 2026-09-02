@@ -39,9 +39,10 @@
  * @package Gateway
  *
  * @var array    $attributes Block attributes: sourceType, postType, collection, limit, pageSize, facets.
- * @var string   $content    Unused -- see gateway/datatable/render.php's
- *                            own docblock for why (four named zones can't
- *                            be represented by one flat concatenated string).
+ * @var string   $content    Unused -- rendered explicitly instead, in
+ *                            natural document order, AFTER Data_Cards_Renderer::
+ *                            set_current() below -- see the dispatch loop's
+ *                            own comment near the bottom of this file for why.
  * @var WP_Block $block      Block instance.
  */
 
@@ -196,34 +197,32 @@ if ( 'collection' === $source_type ) {
 	);
 }
 
-$markup_by_name = array(
-	'gateway/data-cards-header' => '',
-	'gateway/data-cards-body'   => '',
-	'gateway/data-cards-empty'  => '',
-	'gateway/data-cards-footer' => '',
-);
-
-// gateway/card-facet is allowed THREE places (its own block.json's
-// "parent"): the dedicated gateway/data-cards-facets zone (falls under
-// the $markup_by_name lookup above like any other named zone), OR loose,
-// directly here as a sibling of the five zones (Header/Body/Empty/Footer/
-// Facets) -- which $markup_by_name's fixed-key lookup alone can't render,
-// since it isn't one of those five names. Collected separately and
-// rendered right after the Facets zone, regardless of where among the
-// other zones it actually sits in the editor's own InnerBlocks list --
-// simpler and more predictable than trying to preserve its exact
-// interleaved position.
-$facets_zone_markup  = '';
-$loose_facets_markup = '';
+// Every child -- the four named zones (Header/Body/Empty/Footer), the
+// Facets zone, a loose gateway/card-facet, and now (per a direct
+// request -- "Data Cards should allow more items to be added in case
+// user wants to add rows or other core blocks") literally anything else
+// a site owner drags in (a Row, a Heading, whatever) -- is rendered here
+// explicitly, in its own real, natural document order: whatever's
+// actually first in the editor's own InnerBlocks list renders first on
+// the front end too, WYSIWYG. An earlier version of this rendered the
+// four named zones in a fixed canonical order regardless of their actual
+// position (simpler, before arbitrary blocks were ever allowed here) --
+// abandoned once that stopped being true: forcing a rigid order for just
+// the named zones while a site owner's own extra blocks render wherever
+// they actually placed them would be inconsistent and confusing.
+//
+// $content (WordPress's own automatic concatenation of every child's
+// rendered markup into one flat string) still can't be used here, for
+// the same reason as ever: it's computed BEFORE this render_callback
+// ever runs, which is BEFORE Data_Cards_Renderer::set_current() above
+// ever had a chance to run -- gateway/data-cards-body's/-empty's own
+// render.php (and Pagination/Results nested under Footer) all read that
+// state, so rendering explicitly, right here, after set_current(), is
+// required, not just a style choice.
+$children_markup = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {
-	if ( 'gateway/data-cards-facets' === $inner_block->name ) {
-		$facets_zone_markup .= $inner_block->render();
-	} elseif ( 'gateway/card-facet' === $inner_block->name ) {
-		$loose_facets_markup .= $inner_block->render();
-	} elseif ( isset( $markup_by_name[ $inner_block->name ] ) ) {
-		$markup_by_name[ $inner_block->name ] .= $inner_block->render();
-	}
+	$children_markup .= $inner_block->render();
 }
 
 // Never left set for a later, unrelated gateway/data-cards instance (or a
@@ -233,11 +232,5 @@ foreach ( $block->inner_blocks as $inner_block ) {
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-data-cards-block' ) );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-	<?php echo $facets_zone_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- gateway/data-cards-facets' own escaped output ('' if absent/empty). ?>
-	<?php echo $loose_facets_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each loose gateway/card-facet child's own escaped output. ?>
-	<?php foreach ( $markup_by_name as $markup ) : ?>
-		<?php if ( '' !== $markup ) : ?>
-			<?php echo $markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each named child's own escaped output. ?>
-		<?php endif; ?>
-	<?php endforeach; ?>
+	<?php echo $children_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- each child's own escaped output. ?>
 </div>

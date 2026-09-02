@@ -14,37 +14,50 @@ import { useReconcileFieldList } from '../../shared/hooks/use-reconcile-field-li
 import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-blocks';
 
 // The entire front-end contract, in order: Facets above everything,
-// Header (Page Size + Search) next, the grid itself, then Footer
-// (Results + Pagination) -- mirrors gateway/datatable's own four zones
-// exactly (see README.md for the "why" behind reusing the table's own
-// top-level Facets panel/Default-value UI here, just without its
+// Header (Page Size + Search) next, the grid itself, Empty (shown only
+// when the grid currently has nothing to display -- see gateway/
+// data-cards-empty's own render.php), then Footer (Results +
+// Pagination) -- mirrors gateway/datatable's own four zones, plus this
+// one addition (see README.md for the "why" behind reusing the table's
+// own top-level Facets panel/Default-value UI here, just without its
 // "displayed column" gate). useRequiredInnerBlocks() keeps exactly these
-// four present (inserting whichever are missing, without touching any
+// five present (inserting whichever are missing, without touching any
 // that already exist) -- see that hook's own docblock for why, over a
-// locked `template`/`templateLock: 'all'`.
+// locked `template`/`templateLock: 'all'`. gateway/data-cards-empty was
+// originally left OUT of this list (opt-in only, never seeded into the
+// `template` below) -- reversed per direct, explicit follow-up
+// feedback: "Data Cards Empty should be in the template and auto added
+// when we drop in Data Cards." A site owner who genuinely doesn't want
+// the feature can still empty out its OWN InnerBlocks content (render.php
+// renders nothing at all once `$content` is blank -- see that file's own
+// docblock); only the wrapper zone itself, like Header/Footer/Facets/Body
+// before it, is never removable outright.
 const REQUIRED_BLOCKS = [
 	'gateway/data-cards-facets',
 	'gateway/data-cards-header',
 	'gateway/data-cards-body',
+	'gateway/data-cards-empty',
 	'gateway/data-cards-footer',
 ];
 
-// The four fixed zones above, plus two more that are ALLOWED here but
-// deliberately NOT in REQUIRED_BLOCKS (useRequiredInnerBlocks() would
-// otherwise self-heal them right back the moment a site owner removed
-// one, which is wrong for something genuinely optional):
-// - gateway/card-facet itself: one of its three allowed homes is
-//   directly here, as a sibling of the four zones (the other two are
-//   inside gateway/data-cards-header/-footer -- see each one's own
-//   edit.js) -- see that block's own "parent" restriction in its
-//   block.json. Optional AND repeatable.
-// - gateway/data-cards-empty: shown instead of an empty grid, per a
-//   direct request ("give the user the ability to setup a block for
-//   it") -- deliberately opt-in, not auto-inserted for every existing
-//   (or brand new) Data Cards block: a site owner adds it from the
-//   inserter only if they want this feature, so it's absent from the
-//   `template` array below too.
-const ALLOWED_BLOCKS = [ ...REQUIRED_BLOCKS, 'gateway/card-facet', 'gateway/data-cards-empty' ];
+// gateway/card-facet stays optional and repeatable, unlike the five
+// zones above (one of its three allowed homes -- its own block.json's
+// own "parent" -- is directly here, as a sibling of the five zones; the
+// other two are inside gateway/data-cards-header/-footer, see each
+// one's own edit.js), so it's never added to REQUIRED_BLOCKS --
+// useRequiredInnerBlocks() would otherwise self-heal a removed one right
+// back.
+//
+// No `allowedBlocks` is passed to useInnerBlocksProps() below at all --
+// an earlier version restricted this block's own InnerBlocks to exactly
+// REQUIRED_BLOCKS + gateway/card-facet, which also meant a site owner
+// could never add a plain layout block (a Row/Group, a Heading, ...)
+// directly here. Reported directly: "Data Cards should allow more items
+// to be added in case user wants to add rows or other core blocks."
+// Every one of the five zones (plus gateway/card-facet) still only
+// belongs here at all via ITS OWN block.json's own "parent" restriction
+// -- removing this list doesn't weaken that, it only stops blocking
+// everything else.
 
 /**
  * @param {string} name One of REQUIRED_BLOCKS.
@@ -65,6 +78,19 @@ function buildRequiredBlock( name ) {
 		] );
 	}
 
+	if ( 'gateway/data-cards-empty' === name ) {
+		// A real, immediately-useful default rather than a blank box a
+		// site owner has to know to fill in themselves -- freely
+		// editable/replaceable afterward, the same "starting point, not a
+		// restriction" spirit gateway/data-cards-body's own default card
+		// template (Featured Image + Title + Excerpt) already follows.
+		return createBlock( name, {}, [
+			createBlock( 'core/paragraph', {
+				content: __( 'No results found.', 'gateway' ),
+			} ),
+		] );
+	}
+
 	return createBlock( name );
 }
 
@@ -82,7 +108,8 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	useRequiredInnerBlocks( clientId, REQUIRED_BLOCKS, buildRequiredBlock );
 
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
-		allowedBlocks: ALLOWED_BLOCKS,
+		// No `allowedBlocks` here at all, deliberately -- see the
+		// gateway/card-facet comment above for why.
 		template: [
 			[ 'gateway/data-cards-facets', {} ],
 			[
@@ -94,6 +121,11 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				],
 			],
 			[ 'gateway/data-cards-body', {} ],
+			[
+				'gateway/data-cards-empty',
+				{},
+				[ [ 'core/paragraph', { content: __( 'No results found.', 'gateway' ) } ] ],
+			],
 			[
 				'gateway/data-cards-footer',
 				{},

@@ -2524,21 +2524,35 @@ set (no records at all, or a search/facet combination matching nothing)
 just rendered a bare, empty `<ul>` -- nothing told a visitor the grid
 wasn't broken, just empty.
 
-**A new named zone, but deliberately NOT one of the four self-healing
-required ones (`REQUIRED_BLOCKS`).** Header/Body/Footer are structural --
-the grid doesn't function without them, so `useRequiredInnerBlocks()`
-re-inserts any that go missing. This is opt-in: added to `ALLOWED_BLOCKS`
-only, so it's insertable from the block inserter (as one of `gateway/
-data-cards`'s allowed children) but never auto-added to an existing OR
-brand-new Data Cards block, and never re-inserted if removed -- a site
-owner who doesn't want this feature never sees an empty placeholder
-frame cluttering their editor. Its own InnerBlocks area has no
-`allowedBlocks` restriction at all (unlike Header/Footer, each locked to
-a specific small set of sibling widgets) -- "anything inside" was the
-request, so `render.php` simply echoes `$content`, the same plain
-dynamic-block shape `gateway/single-record`'s own render.php already
-uses, rather than Header/Footer's own "filter `$block->inner_blocks` by
-an allowed-name list" dance.
+**A new named zone -- originally opt-in only, now one of the five
+self-healing required ones (`REQUIRED_BLOCKS`).** The first version
+added it to `ALLOWED_BLOCKS` only (insertable, but never auto-added,
+never self-healed if removed), reasoning a site owner who doesn't want
+this feature shouldn't see an empty placeholder frame cluttering their
+editor. Testing surfaced two real problems with that: it "did not show
+in the Data Cards template," and the block's own InnerBlocks area
+couldn't be searched to add it manually either (see "Data Cards' own
+InnerBlocks area is no longer locked to a fixed list" below for that
+second half). Reversed on direct follow-up feedback -- "Data Cards Empty
+should be in the template and auto added when we drop in Data Cards" --
+so it's now in `REQUIRED_BLOCKS` alongside Header/Body/Footer/Facets
+(self-healing an existing Data Cards block that predates this feature
+too, not just a freshly-inserted one) AND seeded into the initial
+`template` with a real, immediately useful default (`core/paragraph`,
+"No results found.") rather than an empty box -- the same "starting
+point, not a restriction" spirit `gateway/data-cards-body`'s own default
+card template (Featured Image + Title + Excerpt) already follows. A site
+owner who genuinely wants no visible empty-state content can still empty
+out its OWN InnerBlocks entirely (`render.php` renders nothing at all
+once `$content` is blank -- see below); only the wrapper zone itself,
+like Header/Footer/Facets/Body before it, is never removable outright.
+Its own InnerBlocks area has no `allowedBlocks` restriction at all
+(unlike Header/Footer, each locked to a specific small set of sibling
+widgets) -- "anything inside" was the original request, so `render.php`
+simply echoes `$content`, the same plain dynamic-block shape `gateway/
+single-record`'s own render.php already uses, rather than Header/
+Footer's own "filter `$block->inner_blocks` by an allowed-name list"
+dance.
 
 **Rendered exactly once, then toggled client-side -- not re-rendered per
 fetch.** `gateway/data-cards-search`/`-facet`/`-pagination`/`-page-size`
@@ -2570,13 +2584,12 @@ arbitrary, record-independent content. So:
   instead of rewriting text. Also reconciles once on mount (a defensive
   no-op in the common case, matching Results' own `initResults()` shape)
   before ever fetching anything.
-- `gateway/data-cards/render.php`'s own fixed-order dispatch
-  (`$markup_by_name`) now has FOUR entries -- Header, Body, **Empty**,
-  Footer -- rendered in that canonical order regardless of wherever a
-  site owner actually drags "Data Cards Empty" among its siblings in the
-  editor, the same "simpler and more predictable than preserving exact
-  interleaved position" reasoning already applied to a loose
-  `gateway/card-facet`.
+- `gateway/data-cards/render.php` originally dispatched Header/Body/
+  Empty/Footer in a fixed canonical order regardless of a site owner's
+  own actual arrangement (plus separate Facets-zone/loose-`gateway/
+  card-facet` buckets) -- superseded by the natural-order rendering
+  described in "Data Cards' own InnerBlocks area is no longer locked to
+  a fixed list" below, once arbitrary extra blocks needed supporting too.
 
 Verified with a new standalone PHP smoke test -- unlike most block
 `render.php` files in this plugin (which need a real `WP_Block`/block
@@ -2595,6 +2608,98 @@ production build. The actual front-end toggle-on-fetch behavior, and the
 editor's own unrestricted InnerBlocks area, need manual verification in
 a real block editor + browser, the same caveat every other front-end
 -only piece of this family already carries.
+
+### Follow-up, from real testing: Empty missing, InnerBlocks locked, editor stacking
+
+Reported directly, after testing the feature above: "in testing Data
+Cards Empty did not show in the Data Cards template. The template is
+also locked so I can't search to add it. Rectify both these issues. Data
+Cards should allow more items to be added in case user wants to add rows
+or other core blocks. Data Cards Empty should be in the template and
+auto added when we drop in Data Cards." A separate report in the same
+round: "check the styling for data cards in the editor because even when
+there is space to set the items on a row as expected, they stack
+anyway." Three real, distinct fixes:
+
+**1. `gateway/data-cards-empty` is now required and template-seeded** --
+covered above (reversed from opt-in-only).
+
+**2. Data Cards' own InnerBlocks area is no longer locked to a fixed
+list.** `gateway/data-cards/src/edit.js`'s `useInnerBlocksProps()` used
+to pass `allowedBlocks: ALLOWED_BLOCKS` (`REQUIRED_BLOCKS` +
+`gateway/card-facet` + `gateway/data-cards-empty`) -- meaning the block
+inserter's own search, right there inside a Data Cards block, would
+never turn up anything NOT on that fixed list. That's what made
+"Data Cards Empty did not show" doubly true: not seeded by default AND
+unfindable by search once you went looking for it. Dropping
+`allowedBlocks` entirely fixes both at once, and directly satisfies
+"allow more items to be added in case user wants to add rows or other
+core blocks" -- literally any block (`core/group`, `core/paragraph`,
+whatever) can now be inserted directly inside a Data Cards block, not
+just the five named zones and `gateway/card-facet`. Each of those six
+still only belongs there at all via ITS OWN `block.json`'s own `parent`
+restriction -- removing the parent's `allowedBlocks` doesn't weaken
+that, it only stops blocking everything else.
+
+This meant `gateway/data-cards/render.php`'s own dispatch had to change
+too: it used to render Header/Body/Empty/Footer in a fixed canonical
+order (plus separate Facets-zone/loose-`card-facet` buckets) regardless
+of where they actually sat among a site owner's own InnerBlocks --
+deliberately simpler, back when NOTHING else could ever be inserted
+there. Once arbitrary extra blocks are allowed, keeping that rigid order
+for just the named zones while a site owner's own extra blocks render
+wherever they actually placed them would be inconsistent (and silently
+DROP those extra blocks entirely -- the old dispatch only ever rendered
+recognized names, nothing else). Replaced with one plain loop over
+`$block->inner_blocks`, rendering every child -- known zone or brand-new
+extra block alike -- in its own real, natural document order: whatever's
+actually first in the editor's own InnerBlocks list renders first on the
+front end too, WYSIWYG. `$content` (WordPress's own automatic
+concatenation) still can't be used for this: it's computed BEFORE this
+render callback runs, which is BEFORE `Data_Cards_Renderer::
+set_current()` ever had a chance to -- every zone that reads that state
+(Body, Empty, Pagination/Results under Footer) needs it to already
+exist, so explicit, ordered `$inner_block->render()` calls stay
+required, not just tidier.
+
+**3. The editor canvas was stacking Header/Footer/Facets' own children
+even with room to spare.** Real bug, and a classic one: their own
+`style.scss` (`display: flex; flex-wrap: wrap; justify-content:
+space-between; ...`) is loaded in the editor iframe same as the front
+end, but CSS alone was never going to fix this -- none of the three
+declared `supports.layout`, so Gutenberg's own editor canvas wraps each
+child in its normal stacking block-list element instead of a real flex
+child, completely independent of whatever CSS the parent itself
+declares. This is exactly what `supports.layout` exists to fix (the same
+mechanism `gateway/data-cards-body` already relies on for its own grid
+of cards, and what `core/buttons` uses for its own row of buttons) --
+added `"layout": {"allowSwitching": false, "allowVerticalAlignment":
+false, "default": {"type": "flex", ...}}` to `gateway/data-cards-header`/
+`-footer`/`-facets`' own `block.json`, matching each one's own existing
+hand-written CSS (`justifyContent: "space-between"` for Header/Footer,
+`flexWrap: "nowrap"` for Footer only -- WordPress's own flex layout
+default is already `"wrap"`, matching Header/Facets, so neither needs it
+spelled out). Deliberately does NOT declare `spacing.blockGap` support --
+WordPress only emits a generated `gap` CSS rule when that support
+exists and a value is actually set, so leaving it off means the
+generated layout CSS can never fight each block's own hand-written
+`gap: 1em`. No JS changes needed at all: `supports.layout` is a pure
+`block.json` declaration that `useBlockProps()`/`useInnerBlocksProps()`
+already apply automatically, the same reason `gateway/data-cards-body`'s
+own grid layout never needed any either.
+
+Verified: the render.php dispatch change re-uses the exact same
+`Data_Cards_Renderer::get_current()`/`set_current()` contract every
+existing zone already relies on (no behavior change for any of them
+individually, confirmed by reading each one's own render.php again after
+the change) -- still no way to exercise a real `WP_Block` tree in this
+project's own test suite, so this needed direct code reading + `php -l`
++ a real production build rather than a smoke test, the same established
+caveat as `gateway/datatable`/`gateway/data-cards`'s own dispatch logic
+already carries. The `block.json` `layout` additions and the "no more
+stacking, arbitrary blocks insertable and render correctly" front-end
+behavior both need manual verification in a real block editor, the same
+caveat every other block-editor-only UI change in this plugin carries.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 

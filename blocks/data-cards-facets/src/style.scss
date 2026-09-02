@@ -4,6 +4,11 @@
  * Loaded on both the front end and inside the editor iframe (block.json's
  * "style" field is enqueued in both contexts by WordPress core). Direct
  * copy of gateway/datatable-facets' own style.scss, renamed.
+ *
+ * Same "CSS alone isn't enough for the editor" fix gateway/data-cards
+ * -header's own style.scss docblock explains -- `supports.layout` in
+ * block.json is what actually stops each gateway/card-facet child from
+ * stacking in the editor canvas.
  */
 
 .gateway-data-cards-facets {
