@@ -5285,25 +5285,44 @@ sides: a `<table>`'s own rows sit flush against each other with no
 gap to lean on for spacing between fields, so real breathing room
 before the next field's own row has to come from inside this row's own
 last cell instead. Every `.gateway-field-editor-form-grid`'s own `gap`
-(between Type/Name/Label/Default Value in General, and between whichever
+(between Type/Label/Name/Default Value in General, and between whichever
 inputs Presentation shows) is `32px` too, for the same "real, deliberate
 space" reasoning -- up from a plain `1em` that read as visually tight
 once the labels above each input got their own smaller, lighter styling
 (see below).
 
-Type/Name/Label live in General, **Type first** -- deliberately, not
-Name/Label/Type: it's both the more natural order to fill the form out
-in, and what the other fields' own type-dependent rendering (Name
-becoming a relationship picker for a relate type; Default Value, below,
-switching between a text and a number input) already assumes; a
-`ChoicesEditor`
+Type/Label/Name live in General, **Type first** -- deliberately, not
+last: it's both the more natural order to fill the form out in, and
+what the other fields' own type-dependent rendering (Name becoming a
+relationship picker for a relate type; Default Value, below, switching
+between a text and a number input) already assumes.
+
+**Label comes before Name, and Name auto-fills from it, per a direct
+request: "put the label first and the name of the field after, and have
+name slugify the title so if we enter 'True False' it makes a field
+name 'true_false' automatically. This copies how ACF handles it."**
+`slugifyFieldName()` (lowercase, non-alphanumeric runs collapsed to a
+single underscore, matching the "Lowercase and underscores only" hint
+Name has always shown) fills Name as Label is typed, live -- but only
+until Name is touched directly: `nameManuallyEditedRef` starts `false`
+only for a brand new, still-unsaved draft (`handleStartAdd()`), flips to
+`true` (permanently, for the rest of this add/edit session, however
+Name ends up looking from there) the instant its own `onChange` fires
+at all, even if it's cleared back to blank -- the same "one manual edit
+ends the sync for good" behavior ACF's own field editor has. Editing an
+already-EXISTING field starts with the sync already off
+(`startEdit()` marks it "touched" immediately): that field's own Name
+is a real column already, so retyping its Label should never risk
+silently renaming that column out from under it.
+
+A `ChoicesEditor`
 (`admin-app/src/components/ChoicesEditor.jsx`) appears inline underneath
-them, in that same tab, only when the picked type's own `has_choices` (a
-key on `Field_Type_Registry::describe_all()`'s own output, alongside a
-Choice type's own `is_multiple`) is `true` -- two text inputs per choice
-(Value, then Label -- the same order Name comes before Label at the
-field level itself, the technical identity typed first, the optional
-display override second), a "⠿" handle to drag-reorder it (the same
+General's own Type/Label/Name, in that same tab, only when the picked
+type's own `has_choices` (a key on `Field_Type_Registry::describe_all()`'s
+own output, alongside a Choice type's own `is_multiple`) is `true` --
+two text inputs per choice (Value, then Label -- the technical identity
+typed first, the optional display override second, unlike the field
+level's own Label-then-Name), a "⠿" handle to drag-reorder it (the same
 native HTML5 drag-and-drop convention `FieldEditor`'s own fields table
 already uses, not a second different mechanism), "Remove" to delete one,
 "Add Choice" to append a blank one. A tab's own heading grows a small

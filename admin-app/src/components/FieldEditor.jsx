@@ -59,6 +59,26 @@ const normalizeSettings = ( settings ) =>
 	settings && ! Array.isArray( settings ) ? settings : {};
 
 /**
+ * Slugifies a Label into a field Name -- lowercase, non-alphanumeric
+ * runs collapsed to a single underscore, leading/trailing underscores
+ * trimmed -- e.g. "True False" -> "true_false", matching the "Lowercase
+ * and underscores only" hint the Name input has always shown. Deliberately
+ * simpler than `sanitize_text_field()`/whatever `Model_Fields::validate()`
+ * ultimately enforces server-side (no accent-folding, no length cap) --
+ * this only ever feeds a live, client-side auto-fill a site owner can
+ * still freely retype over (see `nameManuallyEditedRef` below), never a
+ * value trusted as-is, the same "client hint, server enforces" split
+ * every other approximate client-side preview in this app already has
+ * (`PermalinkControl`'s own `slugify()`, e.g.).
+ */
+const slugifyFieldName = ( value ) =>
+	String( value ?? '' )
+		.toLowerCase()
+		.trim()
+		.replace( /[^a-z0-9]+/g, '_' )
+		.replace( /^_+|_+$/g, '' );
+
+/**
  * A small ACF-style field editor for one model: add a field, edit one in
  * place, delete one -- backed by Gateway\Model_Fields via
  * /gateway/v1/models/<class>/fields. Every field here is a *real* column
@@ -212,13 +232,27 @@ const normalizeSettings = ( settings ) =>
  * as every other field type.
  *
  * Four tabs, always all present, mirroring ACF's own field-settings
- * layout: **General** (Type/Name/Label, in that order -- Type comes
- * FIRST, not last: picking it before typing a Name/Label/Default Value
- * is both the more natural order for a site owner filling this out top
- * to bottom, and what those other inputs' own type-dependent rendering
- * (the relationship picker in place of Name for a relate type, the
- * Default Value input switching between text/number/a choices `<select>`
- * further below) already implicitly assumes; directly under Label, when
+ * layout: **General** (Type/Label/Name, in that order -- Type comes
+ * FIRST: picking it before typing a Label/Name/Default Value is both the
+ * more natural order for a site owner filling this out top to bottom,
+ * and what those other inputs' own type-dependent rendering (the
+ * relationship picker in place of Name for a relate type, the Default
+ * Value input switching between text/number/a choices `<select>` further
+ * below) already implicitly assumes. Label comes before Name -- not
+ * Name before Label -- per a direct request, "copy how ACF handles it":
+ * Name auto-fills from Label as it's typed (`slugifyFieldName()`,
+ * lowercase with underscores -- "True False" becomes "true_false") for
+ * as long as Name hasn't been touched by hand yet
+ * (`nameManuallyEditedRef`, reset to "not yet touched" only when
+ * `handleStartAdd()` starts a brand new, still-unsaved draft; an
+ * already-EXISTING field's own Name is a real column, so `startEdit()`
+ * marks it "already touched" immediately, permanently skipping this
+ * sync -- retyping a saved field's own Label should never silently
+ * rename its column out from under it). The moment a site owner types
+ * into Name directly, that sync ends for the rest of this add/edit
+ * session, however Name ends up looking from there -- the same "one
+ * manual edit ends it for good" behavior ACF's own field editor has.
+ * Directly under Name, when
  * the picked type's own `supports_default_value` is true AND it has no
  * choices list of its own -- Text, Number, Range, Email, URL today -- a
  * plain Default Value text/number input, applied by `RecordForm` as the
@@ -441,6 +475,19 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	// flushes via finishEditing()) -- instead of just cancelling it.
 	const pendingSaveValuesRef = useRef( null );
 	const savedFlashTimerRef = useRef( null );
+	// ACF-style "Name auto-fills from Label until you type into Name
+	// yourself" -- per a direct request ("in our field create/edit forms
+	// put the label first and the name of the field after, and have name
+	// slugify the title... this copies how ACF handles it"). `false` only
+	// while adding a brand NEW, still-unsaved field (handleStartAdd resets
+	// it) -- editing an EXISTING field always starts `true` (startEdit sets
+	// it), so retyping a saved field's own Label never silently renames its
+	// real column out from under it the way it does for a draft that has no
+	// column yet to protect. Flipped to `true` the moment the Name input's
+	// own onChange fires at all (even if the user clears it back to blank),
+	// same "one manual edit ends the sync for good, however it plays out
+	// from there" behavior ACF's own field editor has.
+	const nameManuallyEditedRef = useRef( false );
 
 	const {
 		control,
@@ -835,6 +882,26 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ editType, relationships, editingIndex ] );
 
+	// ACF-style Name auto-fill from Label -- see `nameManuallyEditedRef`'s
+	// own comment above for the full "until you type into Name yourself,
+	// and never at all for an already-existing field" rule this enforces.
+	// Skipped entirely for a relate type too: Name isn't even a real text
+	// input there (a relationship-method `<select>` takes its place, see
+	// the General tab's own JSX below), so there's nothing of this editor's
+	// own to keep in sync with Label in the first place.
+	useEffect( () => {
+		if (
+			null === editingIndex ||
+			nameManuallyEditedRef.current ||
+			editRelationshipType
+		) {
+			return;
+		}
+
+		setValue( 'name', slugifyFieldName( editLabel ) );
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ editLabel, editRelationshipType, editingIndex ] );
+
 	const flashSaved = () => {
 		clearTimeout( savedFlashTimerRef.current );
 		setJustSaved( true );
@@ -980,6 +1047,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 		lastSavedRef.current = null; // nothing saved yet at all -- anything valid should autosave.
 		isNewDraftRef.current = true;
 		editOriginalNameRef.current = '';
+		nameManuallyEditedRef.current = false; // a brand new draft: Name starts synced to Label.
 
 		setEditingIndex( fields.length );
 		setIsNewDraft( true );
@@ -1028,6 +1096,10 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 		lastSavedRef.current = defaults;
 		isNewDraftRef.current = false;
 		editOriginalNameRef.current = field.name;
+		// An already-saved field's own Name is a real column -- never
+		// re-synced from Label edits, see nameManuallyEditedRef's own
+		// comment above.
+		nameManuallyEditedRef.current = true;
 
 		setEditingIndex( index );
 		setIsNewDraft( false );
@@ -1362,6 +1434,15 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 						</p>
 					) }
 					<label>
+						<span>Label</span>
+						<input
+							type="text"
+							className="regular-text"
+							placeholder="Label (optional)"
+							{ ...register( 'label' ) }
+						/>
+					</label>
+					<label>
 						<span>Name</span>
 						{ editRelationshipType ? (
 							matchingRelationships.length > 0 ? (
@@ -1389,21 +1470,27 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								className="regular-text"
 								placeholder="e.g. first_name"
 								disabled={ editingIsRelate }
-								{ ...register( 'name' ) }
+								{ ...register( 'name', {
+									onChange: () => {
+										// The one thing that permanently ends
+										// the Label->Name auto-slug sync for
+										// this session -- see
+										// nameManuallyEditedRef's own comment
+										// further up. RHF's own `onChange`
+										// (still what actually updates form
+										// state here) fires on top of this,
+										// not instead of it -- `register()`
+										// merges a config-object `onChange`
+										// like this one into its own handler
+										// rather than replacing it.
+										nameManuallyEditedRef.current = true;
+									},
+								} ) }
 							/>
 						) }
 						<span className="description">
 							Lowercase and underscores only.
 						</span>
-					</label>
-					<label>
-						<span>Label</span>
-						<input
-							type="text"
-							className="regular-text"
-							placeholder="Label (optional)"
-							{ ...register( 'label' ) }
-						/>
 					</label>
 					{ editSupportsBooleanSettings && (
 						<label>
