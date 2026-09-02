@@ -2564,10 +2564,11 @@ instead (`id`, timestamps, anything else Eloquent exposes that isn't a
 real, user-defined field). The value itself is read via
 `Column_Registry::resolve_collection_value( $record, $field_key )` (see
 "Related Fields" below for why this isn't just `$record->{$field_key}`
-anymore) and printed with `esc_html()`, no other formatting -- later
-field-display blocks (Number, Date, Image, ...) are expected to follow
-this same shape (one block per "how to render this field's value") with
-their own type-appropriate output instead.
+anymore) and printed with `esc_html()` for a plain-text field, or as
+real, trusted HTML for a WYSIWYG one (see below) -- later field-display
+blocks (Number, Date, Image, ...) are expected to follow this same shape
+(one block per "how to render this field's value") with their own
+type-appropriate output instead.
 
 **Not every field belongs in this block's own picker.** A Password
 field's raw value is a secret with no legitimate reason to be printed as
@@ -2589,6 +2590,48 @@ list, and `render.php` applies the identical filter to `fieldKey` itself
 before this existed, or one whose type changed into a non-renderable one
 since, is rejected the same way a genuinely removed field already was,
 rather than ever printing a secret or crashing on an uncastable value.
+
+**Also displays a WYSIWYG field's own value, as real HTML -- per a
+direct request** ("the text field should be able to display WYSIWYG
+fields... be sure we render any HTML because the WYSIWYG produces line
+breaks"), rather than a second, near-identical block existing solely to
+flip one rendering detail. A new, separate `Field_Type::is_html_renderable()`
+(`isHtmlRenderable` via `Column_Registry`) is what makes this possible
+without disturbing `is_text_renderable()`'s own existing contract: that
+flag specifically means "safe to print AS PLAIN TEXT," which every OTHER
+consumer of it (`Permalink_Field_Type`'s own Source Field eligibility, a
+Select/Checkboxes facet's own comparison, the admin app's own Records
+table cell display) still needs to mean exactly that -- genuine HTML is
+neither meaningfully slugifiable nor safe to compare/display as a raw
+string, so flipping `is_text_renderable()` to `true` for `WYSIWYG_Field_Type`
+instead would have quietly broken all three. `true` only for
+`WYSIWYG_Field_Type`, `false` for every other built-in type (`Text_Area_Field_Type`'s
+own plain multi-line string included -- already covered by
+`is_text_renderable()`, with no HTML of its own to trust). `edit.js`'s
+own Field picker now offers a field whenever EITHER flag is `true`, and
+its own live preview renders a WYSIWYG field's value via
+`dangerouslySetInnerHTML` (real markup, matching what render.php prints)
+rather than as escaped plain text. `render.php` checks the SAME flag,
+per resolved field, to decide `esc_html()` vs. printing the value
+completely raw -- safe for the same reason a WordPress Post's own
+`post_content` already gets that trust from core: a WYSIWYG field's
+value only ever reaches this block through `RecordForm`'s own classic
+editor, itself gated behind the exact same `manage_options`-only REST
+write path (`Records_REST_Controller::permissions_check()`) a
+single-site admin's own `unfiltered_html` capability already covers.
+
+Verified with a new standalone PHP smoke test (`Field_Type_Registry::
+describe_all()`'s own `is_html_renderable` exposure; `Column_Registry`'s
+own `isTextRenderable`/`isHtmlRenderable` pair for a model's own Text/
+WYSIWYG/Password/Relate to Many fields AND a related model's WYSIWYG
+field; the exact eligibility decision `render.php` makes from those two
+flags; and, end to end, a real record's own Text value staying escaped
+-- even one deliberately made to LOOK like markup -- while its own
+WYSIWYG value prints completely raw) alongside the full existing
+regression suite, plus a successful production build of the updated
+block. The live editor preview's own `dangerouslySetInnerHTML` rendering
+needs manual verification in a real block editor, the same caveat every
+other block-editor-only UI change in this plugin already carries.
 
 ### `gateway/card-field-number` -- a second field-display block, with Currency/Percent/decimal formatting
 

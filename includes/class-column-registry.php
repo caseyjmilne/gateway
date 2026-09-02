@@ -228,6 +228,16 @@ class Column_Registry {
 	 * interface method's own docblock). `true` for the synthetic `id`
 	 * column and every other built-in field type.
 	 *
+	 * `isHtmlRenderable` is `isTextRenderable`'s own close cousin, via
+	 * the separate `Field_Type::is_html_renderable()` (see that method's
+	 * own docblock for why it isn't just folded into `isTextRenderable`
+	 * itself) -- `true` only for a WYSIWYG field, `gateway/card-field-text`'s
+	 * own SECOND eligibility signal: its Field picker offers a field
+	 * whenever EITHER this or `isTextRenderable` is `true`, and its own
+	 * render.php/edit.js check this specifically to print the resolved
+	 * value as real, trusted HTML instead of escaping it into visible
+	 * literal tags.
+	 *
 	 * `isNumeric` is the same pattern again, via `Field_Type::is_numeric()`
 	 * -- what `gateway/card-field-number`'s own Field picker (and
 	 * `gateway/datatable`'s own per-column Number Format button) reads to
@@ -277,6 +287,7 @@ class Column_Registry {
 				// would be unusable, same reasoning as core `ID`.
 				'facetType'        => array( 'input' ),
 				'isTextRenderable' => true,
+				'isHtmlRenderable' => false,
 				// Technically a number, but never meant for
 				// gateway/card-field-number's own Currency/Percent
 				// formatting -- an id is an identifier, not a quantity.
@@ -289,6 +300,11 @@ class Column_Registry {
 			$type_class          = Field_Type_Registry::get( $field['type'] );
 			$is_filterable       = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
 			$is_text_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
+			// gateway/card-field-text's own second eligibility signal --
+			// see Field_Type::is_html_renderable()'s own docblock for why
+			// this is a separate flag from is_text_renderable rather than
+			// folded into it (true only for WYSIWYG_Field_Type today).
+			$is_html_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_html_renderable();
 			$is_numeric          = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
 			// Reuses the EXISTING supports_media_settings() flag rather
 			// than a new one -- it's already true for exactly one
@@ -344,6 +360,7 @@ class Column_Registry {
 				'isFilterable'     => ! empty( $facet_type ),
 				'facetType'        => array_values( $facet_type ),
 				'isTextRenderable' => $is_text_renderable,
+				'isHtmlRenderable' => $is_html_renderable,
 				'isNumeric'        => $is_numeric,
 				'isImage'          => $is_image,
 				'returnFormat'     => $return_format,
@@ -430,15 +447,18 @@ class Column_Registry {
 					'type'                => 'model_related_field',
 					'isFilterable'        => false,
 					'facetType'           => array(),
-					// Always true in practice today -- the "one level deep
-					// only" skip above already excludes a related field
-					// that's itself a relate field, and the is_sensitive()
-					// skip already excludes Password, so nothing left here
-					// could ever resolve to false. Computed properly
-					// anyway (rather than hardcoded true) so this stays
-					// correct by construction if either of those exclusions
-					// is ever loosened.
+					// False only for a related WYSIWYG field today (see
+					// isHtmlRenderable below for that one instead) -- the
+					// "one level deep only" skip above already excludes a
+					// related field that's itself a relate field, and the
+					// is_sensitive() skip already excludes Password.
 					'isTextRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
+					// Same isHtmlRenderable flag gateway/card-field-text's
+					// own Field picker/render.php already check for a
+					// model's OWN fields, just against a related model's
+					// field instead -- true only for a related WYSIWYG
+					// field.
+					'isHtmlRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_html_renderable(),
 					'isNumeric'           => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
 					'isImage'             => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
 					'returnFormat'        => $related_field['settings']['return_format'] ?? 'array',

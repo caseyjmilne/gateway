@@ -24,6 +24,20 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
  * empty. The real, correct value is always what render.php prints on an
  * actual front-end/full-page render, straight off the real Eloquent
  * record injected via block context.
+ *
+ * Also offers/previews a WYSIWYG field's own value (`isHtmlRenderable`,
+ * `Field_Type::is_html_renderable()`) alongside every plain-text one --
+ * per a direct request ("the text field should be able to display
+ * WYSIWYG fields... be sure we render any HTML"), rather than a second,
+ * near-identical block existing solely to flip one rendering detail.
+ * `dangerouslySetInnerHTML` renders that one's own preview as real
+ * markup here too (a `<p>`/`<br>` genuinely breaks the line, matching
+ * what render.php actually prints on the front end) rather than escaped
+ * plain text -- safe for the same reason render.php's own docblock
+ * gives: this value only ever reaches here from the record's own
+ * already-fetched REST response, itself gated behind the same
+ * manage_options-only write path a WordPress admin's own post content
+ * already gets the identical trust for.
  */
 export default function Edit( { attributes, setAttributes, context } ) {
 	const { fieldKey } = attributes;
@@ -40,20 +54,24 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		error,
 	} = useAvailableColumns( '', { sourceType: 'collection', collection } );
 
-	// Only a field whose own type declares itself isTextRenderable
-	// (Column_Registry::get_columns_for_collection(), driven by each
-	// Field_Type's own is_text_renderable()) is offered here at all --
-	// a Password field's secret value has no business being printed as
-	// public text, and a Relate to One/Relate to Many field's own raw
-	// value is either a meaningless bare id or, for Relate to Many, not
-	// even a real column (reading it as a plain attribute would return
-	// the relationship itself, which render.php can't cast to a string
-	// at all). Neither ever belongs in this block's own picker -- a
-	// related record's own label needs the dedicated relate-field
-	// handling gateway/related-items/gateway/data-display already do,
-	// not this generic "print the raw attribute" block.
+	// A field whose own type declares itself EITHER isTextRenderable OR
+	// isHtmlRenderable (Column_Registry::get_columns_for_collection(),
+	// driven by each Field_Type's own is_text_renderable()/
+	// is_html_renderable()) is offered here -- a Password field's secret
+	// value has no business being printed as public text, and a Relate
+	// to One/Relate to Many field's own raw value is either a
+	// meaningless bare id or, for Relate to Many, not even a real column
+	// (reading it as a plain attribute would return the relationship
+	// itself, which render.php can't cast to a string at all). Neither
+	// ever belongs in this block's own picker -- a related record's own
+	// label needs the dedicated relate-field handling
+	// gateway/related-items/gateway/data-display already do, not this
+	// generic "print the raw attribute" block. A WYSIWYG field (only
+	// isHtmlRenderable, never isTextRenderable -- see that flag's own
+	// docblock) IS offered here now, per a direct request to display it
+	// through this same block rather than a second one of its own.
 	const renderableColumns = availableColumns.filter(
-		( column ) => false !== column.isTextRenderable
+		( column ) => false !== column.isTextRenderable || true === column.isHtmlRenderable
 	);
 
 	// A hasOne/belongsTo relationship's own fields (Column_Registry::
@@ -107,10 +125,16 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const isFieldConfigured = Boolean( selectedColumn );
 
 	let previewText = __( '(no field selected)', 'gateway' );
+	// Only ever true alongside a real record value below, never for the
+	// "(no field selected)"/label fallbacks -- those are always this
+	// plugin's own plain, trusted UI copy, nothing that ever needs
+	// rendering as markup.
+	let previewIsHtml = false;
 
 	if ( fieldKey && isFieldConfigured ) {
 		if ( record && Object.prototype.hasOwnProperty.call( record, fieldKey ) ) {
 			previewText = String( record[ fieldKey ] ?? '' );
+			previewIsHtml = true === selectedColumn.isHtmlRenderable;
 		} else {
 			previewText = selectedColumn.label;
 		}
@@ -153,7 +177,11 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					) }
 				</PanelBody>
 			</InspectorControls>
-			<span { ...blockProps }>{ previewText }</span>
+			{ previewIsHtml ? (
+				<span { ...blockProps } dangerouslySetInnerHTML={ { __html: previewText } } />
+			) : (
+				<span { ...blockProps }>{ previewText }</span>
+			) }
 		</>
 	);
 }

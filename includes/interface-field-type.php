@@ -155,6 +155,39 @@ interface Field_Type {
 	public static function is_text_renderable();
 
 	/**
+	 * Whether this type's own stored value is genuine HTML that a
+	 * display block should render TRUSTED -- as real markup, never
+	 * escaped -- rather than the plain string `is_text_renderable()`
+	 * already covers. A deliberately separate flag, not a second meaning
+	 * folded into `is_text_renderable()` itself: that one's own contract
+	 * (see its own docblock) is specifically "safe to print AS PLAIN
+	 * TEXT," which every OTHER consumer of it -- `Permalink_Field_Type`'s
+	 * own Source Field eligibility, a Select/Checkboxes facet's own
+	 * comparison, the admin app's own Records table cell display --
+	 * still needs to mean exactly that; genuine HTML is neither
+	 * meaningfully slugifiable nor safe to compare/display as a raw
+	 * string, so it was never a good fit to just flip `is_text_renderable()`
+	 * to `true` for a type this is true for instead.
+	 *
+	 * `true` only for `WYSIWYG_Field_Type` (a real WordPress classic
+	 * -editor value -- `<p>`/`<br>` and the like, exactly what makes its
+	 * own stored value genuine markup rather than plain text to begin
+	 * with; see that class's own docblock) -- `false` for every other
+	 * built-in type, `Text_Area_Field_Type`'s own plain multi-line string
+	 * included (already covered by `is_text_renderable()` instead, with
+	 * no HTML of its own to trust). `gateway/card-field-text`'s own Field
+	 * picker offers a field whenever EITHER this or `is_text_renderable()`
+	 * is `true` -- the same block now doubles as this type's own display,
+	 * rather than a second, near-identical block existing solely to flip
+	 * one rendering detail; its own render.php/edit.js are what actually
+	 * decide, per field, whether to print the resolved value raw or
+	 * escaped.
+	 *
+	 * @return bool
+	 */
+	public static function is_html_renderable();
+
+	/**
 	 * The Eloquent native cast name (`$casts`, e.g. "array"/"boolean") a
 	 * generated model's own column for this type needs declared against
 	 * it, or `null` for the default (no cast -- what every plain scalar

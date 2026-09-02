@@ -95,6 +95,13 @@ class Range_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_html_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function eloquent_cast() {
 		return null;
 	}

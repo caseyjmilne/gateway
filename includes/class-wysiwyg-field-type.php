@@ -12,13 +12,23 @@
  *
  * `is_text_renderable()` is `false`, unlike Text_Area's own `true`:
  * Column_Registry's own "render this field's value as plain text"
- * concept (Data Table/Data Cards columns, currently the only consumer)
- * assumes a value safe to print as-is -- true for Text_Area's own plain
- * string, not for this type's own HTML, which would either show raw
- * `<p>` tags as literal text (escaped) or need a whole separate
- * "render as trusted HTML" story this field type doesn't have yet.
- * Nothing asked for that story; leaving this `false` keeps the gap
- * explicit rather than silently doing the wrong thing either way.
+ * concept (Data Table/Data Cards columns) assumes a value safe to print
+ * as-is -- true for Text_Area's own plain string, not for this type's
+ * own HTML, which would show raw `<p>` tags as literal, escaped text
+ * rather than actually formatting anything.
+ *
+ * `is_html_renderable()` is `true` instead -- the separate "render this
+ * TRUSTED, as real markup" flag `gateway/card-field-text` also checks
+ * (see that interface method's own docblock for why this needed a
+ * second flag rather than just flipping `is_text_renderable()` itself):
+ * reported directly ("the text field should be able to display WYSIWYG
+ * fields... be sure we render any HTML because the WYSIWYG produces
+ * line breaks"), rather than a second, near-identical block existing
+ * solely to flip one rendering detail. `gateway/card-field-text`'s own
+ * Field picker now offers a WYSIWYG field alongside every plain-text
+ * one, and its own render.php/edit.js print this type's own resolved
+ * value as real HTML (a `<p>`/`<br>` actually breaks the line) rather
+ * than escaping it into visible literal tags.
  *
  * `is_filterable()` stays `true` -- a "contains" search still means
  * something against the raw markup (the same way WordPress's own
@@ -99,12 +109,22 @@ class WYSIWYG_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
-	 * See this class's own docblock -- the stored value is HTML, not
-	 * plain text, and there's no "render as trusted HTML" story yet for
-	 * Column_Registry's own consumers to fall back on.
+	 * See this class's own docblock -- the stored value is genuine HTML,
+	 * not plain text; `is_html_renderable()` below is the flag that
+	 * actually covers displaying it.
 	 */
 	public static function is_text_renderable() {
 		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * See this class's own docblock -- this type's own stored value is
+	 * exactly the real HTML this flag exists for.
+	 */
+	public static function is_html_renderable() {
+		return true;
 	}
 
 	/**

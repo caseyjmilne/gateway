@@ -24,6 +24,16 @@
  * off the record itself (`get_class( $record )`), which is always correct
  * by construction and needs no context at all.
  *
+ * Also renders a WYSIWYG field's own value -- rather than a second,
+ * near-identical block existing solely to flip one rendering detail, per
+ * a direct request ("the text field should be able to display WYSIWYG
+ * fields... be sure we render any HTML"). `Field_Type::is_html_renderable()`
+ * (`isHtmlRenderable` via `Column_Registry`) is the flag that actually
+ * decides, per resolved field, whether to print the raw, trusted HTML
+ * (a `<p>`/`<br>` genuinely breaks the line) or escape it as plain text
+ * -- see that interface method's own docblock for why this needed a
+ * second flag rather than reusing `isTextRenderable` itself.
+ *
  * @package Gateway
  *
  * @var array    $attributes Block attributes: fieldKey.
@@ -44,7 +54,7 @@ if ( '' === $field_key || ! ( $record instanceof \Illuminate\Database\Eloquent\M
 $collection = get_class( $record );
 
 // Only ever trust a field key that's genuinely still one of this model's
-// own available, TEXT-RENDERABLE columns -- a stale fieldKey (the model's
+// own available, renderable columns -- a stale fieldKey (the model's
 // fields changed since this block was configured, or the field's own
 // type changed) must never surface whatever attribute happens to share
 // its name on the record instead (id, timestamps, anything else Eloquent
@@ -58,17 +68,29 @@ $collection = get_class( $record );
 // -- the same "never trust the editor's own picker alone" reasoning
 // every other render.php in this plugin already applies to its own
 // fieldKey/relationship attributes.
-$renderable_keys = wp_list_pluck(
-	array_filter(
-		\Gateway\Column_Registry::get_columns_for_collection( $collection ),
-		function ( $column ) {
-			return false !== ( $column['isTextRenderable'] ?? true );
-		}
-	),
-	'key'
+//
+// "Renderable" means isTextRenderable OR isHtmlRenderable -- this block
+// now doubles as the WYSIWYG field's own display too (see
+// Field_Type::is_html_renderable()'s own docblock for why that's a
+// second, separate flag rather than folded into isTextRenderable
+// itself), so this needs to know WHICH of the two a resolved field
+// actually is, not just whether it's renderable at all -- built as a
+// key => column map (rather than a flat list of eligible keys) for
+// exactly that reason.
+$columns_by_key = array();
+
+foreach ( \Gateway\Column_Registry::get_columns_for_collection( $collection ) as $column ) {
+	$columns_by_key[ $column['key'] ] = $column;
+}
+
+$column = $columns_by_key[ $field_key ] ?? null;
+
+$is_renderable = $column && (
+	false !== ( $column['isTextRenderable'] ?? true )
+	|| ! empty( $column['isHtmlRenderable'] )
 );
 
-if ( ! in_array( $field_key, $renderable_keys, true ) ) {
+if ( ! $is_renderable ) {
 	return;
 }
 
@@ -82,4 +104,19 @@ $value = \Gateway\Column_Registry::resolve_collection_value( $record, $field_key
 
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-card-field-text' ) );
 ?>
-<span <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html( (string) $value ); ?></span>
+<span <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php
+if ( ! empty( $column['isHtmlRenderable'] ) ) {
+	// A WYSIWYG field's own stored value is genuine, admin-authored HTML
+	// -- the classic editor this field type uses is only ever reachable
+	// through RecordForm, itself gated behind this same manage_options
+	// -only REST write path (Records_REST_Controller::permissions_check())
+	// -- the same trust boundary a WordPress Page/Post's own post_content
+	// already gets from core (an author with unfiltered_html, which a
+	// manage_options user always has on a single-site install). Printed
+	// verbatim so its own `<p>`/`<br>` actually break lines instead of
+	// showing as literal, escaped text.
+	echo (string) $value; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted HTML, see comment above.
+} else {
+	echo esc_html( (string) $value );
+}
+?></span>

@@ -119,6 +119,13 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_html_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function relationship_type() {
 		return 'belongsToMany';
 	}

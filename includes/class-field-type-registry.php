@@ -193,7 +193,16 @@ class Field_Type_Registry extends Registry {
 	 * `Column_Registry::get_columns_for_collection()`'s own `isNumeric`
 	 * (computed from this), not straight from here.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,max_one_per_model:bool}>
+	 * `is_html_renderable` (`Field_Type::is_html_renderable()`) is the
+	 * same "not read from here, only via `Column_Registry`" shape again
+	 * -- `true` only for `WYSIWYG_Field_Type` -- `gateway/card-field-text`'s
+	 * own Field picker/render.php read it (as `isHtmlRenderable`) to
+	 * offer a WYSIWYG field alongside every plain-text one, and to print
+	 * its own resolved value as real, trusted HTML rather than escaping
+	 * it. See that interface method's own docblock for why this is a
+	 * separate flag from `is_text_renderable` rather than folded into it.
+	 *
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_html_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,max_one_per_model:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -212,6 +221,7 @@ class Field_Type_Registry extends Registry {
 				'input_type'                  => $class::input_type(),
 				'is_sensitive'                => $class::is_sensitive(),
 				'is_text_renderable'          => $class::is_text_renderable(),
+				'is_html_renderable'          => $class::is_html_renderable(),
 				'is_numeric'                  => $class::is_numeric(),
 				'relationship_type'           => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
 				'has_choices'                 => $has_choices,
