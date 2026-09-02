@@ -645,8 +645,8 @@ export default function RecordForm( {
 										value={ choice.value }
 										checked={ values[ field.name ] === choice.value }
 										onChange={ handleChange( field.name ) }
-									/>{ ' ' }
-									{ choice.label }
+									/>
+									<span>{ choice.label }</span>
 								</label>
 							) ) }
 						{ 'buttons' === inputType &&
@@ -684,8 +684,8 @@ export default function RecordForm( {
 											field.name,
 											choice.value
 										) }
-									/>{ ' ' }
-									{ choice.label }
+									/>
+									<span>{ choice.label }</span>
 								</label>
 							) ) }
 						{ 'boolean' === inputType && (

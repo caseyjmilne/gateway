@@ -599,6 +599,7 @@
 	 * checkbox input. */
 	display: inline-flex;
 	align-items: center;
+	gap: 6px;
 	font-weight: normal;
 	font-size: 14px;
 	color: inherit;
@@ -607,6 +608,25 @@
 
 .gateway-admin-app .gateway-record-form-choice:last-child {
 	margin-right: 0;
+}
+
+.gateway-admin-app .gateway-record-form-choice input {
+	/* Reported directly (follow-up): "try to make text vertical center
+	 * aligned with radio or checkboxes currently the text sits lower
+	 * than the items... maybe use flexbox to align?" `align-items:
+	 * center` above already centers this label's own two flex items
+	 * (the input, and its own choice text, now a real <span> rather
+	 * than a bare text node -- an actual element flexbox can size and
+	 * center on its own terms) against each other -- but wp-admin's own
+	 * default radio/checkbox styling ships its own small negative
+	 * top/positive right margin, tuned for INLINE baseline alignment
+	 * next to running text, not a flex row. That margin box is exactly
+	 * what flexbox centers, so it was nudging the input itself upward
+	 * relative to its own visual center, reading as "the text sits
+	 * lower" even though centering was otherwise working correctly.
+	 * Spacing between input and text now comes from this rule's own
+	 * `gap` instead, so the margin can simply be zeroed out here. */
+	margin: 0;
 }
 
 .gateway-admin-app .gateway-record-form-input-group {

@@ -5353,6 +5353,26 @@ choices, which renders through the exact same class. Needs manual
 verification in a real browser to confirm the actual visual spacing;
 `npm run build` (vite) compiled cleanly.
 
+**A follow-up, reported directly: "try to make text vertical center
+aligned with radio or checkboxes currently the text sits lower than the
+items... maybe use flexbox to align?"** `align-items: center` above
+already centers `.gateway-record-form-choice`'s own two children against
+each other -- the real bug was that the choice text was a bare text
+node, not an actual element, sitting alongside a `<input>` whose own
+inherited wp-admin styling ships a small negative-top/positive-right
+margin tuned for INLINE baseline alignment next to running text, not a
+flex row. Flexbox centers each item's own MARGIN box, so that margin
+nudged the input upward relative to its true visual center, reading as
+"the text sits lower" even though the two items were, strictly, centered
+against each other. Fixed two ways together: `RecordForm.jsx` now wraps
+each choice's label text in a real `<span>` (a proper flex item flexbox
+can size and center on its own terms, replacing the old bare text node
+plus a manual `{ ' ' }` for spacing), and `.gateway-record-form-choice
+input` zeroes out that inherited margin entirely, with the CSS `gap: 6px`
+on the parent taking over as the actual space between input and text.
+Needs manual verification in a real browser to confirm the fix; `npm run
+build` (vite) compiled cleanly.
+
 **A real bug, reported directly: "only the drag icon should be
 draggable. Having entire row draggable is interfering with editing
 inside the inputs."** `ChoicesEditor`'s own docblock always CLAIMED to
