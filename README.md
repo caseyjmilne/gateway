@@ -7346,6 +7346,19 @@ Image" wording); and its "after selection" state, a bordered row --
 Link Text, then the URL as a real clickable link, then a pencil (edit)
 and an "×" (remove).
 
+**Category: `Relational`, not `Content`** -- a follow-up correction,
+reported directly: "Link was organized under content, it should be
+listed under Relational." Filed alongside Relate to One/Relate to Many
+and `User_Field_Type` in the Type picker's own grouping (see that
+class's own docblock for the same reasoning): what a Link actually
+points AT -- another page on this site, or anywhere else -- is closer
+in spirit to "a reference to something" than to "media this record
+itself holds" the way Image/File/WYSIWYG are, even though, like User,
+it deliberately does NOT implement `Relationship_Field_Type` -- there's
+no `Model_Relationships` binding here, since picking a page from the
+list only ever copies its current URL, a one-time snapshot, never a
+live foreign key.
+
 **Storage.** `{url, title, target}` -- `target` is the literal string
 `'_blank'` (open in a new tab) or `''` (same tab), matching ACF's own
 real `target` attribute value rather than inventing a separate boolean

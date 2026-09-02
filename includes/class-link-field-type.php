@@ -60,9 +60,21 @@ class Link_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * "Relational," not "Content" -- reported directly: "Link was
+	 * organized under content, it should be listed under Relational."
+	 * Filed alongside Relate to One/Relate to Many and `User_Field_Type`
+	 * (see that class's own docblock for the same reasoning) rather than
+	 * Image/File/WYSIWYG: what a Link actually points AT -- another page
+	 * on this site, or anywhere else -- is closer in spirit to "a
+	 * reference to something" than to "media this record itself holds,"
+	 * even though, like User, it deliberately does NOT implement
+	 * `Relationship_Field_Type` (there's no `Model_Relationships`
+	 * binding here -- picking a page from the list only ever COPIES its
+	 * current URL, a one-time snapshot, never a live foreign key).
 	 */
 	public static function category() {
-		return 'Content';
+		return 'Relational';
 	}
 
 	/**
