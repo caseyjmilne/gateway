@@ -7101,6 +7101,23 @@ field-display blocks inside it) needs manual verification in a real WP
 install, the same caveat every other block-editor-only UI change in
 this plugin already carries.
 
+**A real `<a href>` in the editor canvas is clickable, which navigates
+the browser instead of selecting this block -- reported directly** ("the
+link block can be clicked in the editor, it should not be possible to
+click through because this messes up editing"). The exact same problem
+WordPress core itself already has for an identical shape
+(`core/post-title`'s own "Make title a link" option), and the exact same
+fix, confirmed by reading `packages/block-library/src/post-title/edit.js`
+directly: `onClick={ ( event ) => event.preventDefault() }` on the
+anchor. Stops navigation while leaving every other click behavior
+(selecting the block, clicking into one of its own inner blocks to edit
+it) completely untouched -- `preventDefault()` only ever cancels the
+browser's own default action for that event (following the link), never
+React's synthetic event propagation, so block selection still fires
+normally. The front end (`render.php`'s own real, non-React `<a>`) was
+never affected -- a real page is supposed to navigate on click, this is
+purely an editor-canvas fix.
+
 ## The Gateway admin app
 
 A single top-level "Gateway" page in wp-admin, added as the home for

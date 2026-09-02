@@ -119,7 +119,22 @@ export default function Edit( { context } ) {
 					) }
 				</Notice>
 			) }
-			<a { ...innerBlocksProps } />
+			{ /* A real `<a href>` in the editor canvas is clickable like any
+			   other link, which navigates the browser instead of selecting
+			   this block for editing -- reported directly ("the link block
+			   can be clicked in the editor, it should not be possible to
+			   click through because this messes up editing"). Same fix
+			   WordPress core itself uses for an identical case
+			   (core/post-title's own "Make title a link" -- confirmed by
+			   reading packages/block-library/src/post-title/edit.js
+			   directly): `onClick={ (event) => event.preventDefault() }`,
+			   which stops navigation while leaving every other click
+			   behavior (selecting the block, clicking into an inner block
+			   to edit it) completely untouched. */ }
+			<a
+				{ ...innerBlocksProps }
+				onClick={ ( event ) => event.preventDefault() }
+			/>
 		</>
 	);
 }
