@@ -2696,10 +2696,14 @@ spelled out). Deliberately does NOT declare `spacing.blockGap` support --
 WordPress only emits a generated `gap` CSS rule when that support
 exists and a value is actually set, so leaving it off means the
 generated layout CSS can never fight each block's own hand-written
-`gap: 1em`. No JS changes needed at all: `supports.layout` is a pure
-`block.json` declaration that `useBlockProps()`/`useInnerBlocksProps()`
-already apply automatically, the same reason `gateway/data-cards-body`'s
-own grid layout never needed any either.
+`gap: 1em`. No JS changes needed here: all three call plain
+`useInnerBlocksProps()`/`useBlockProps()` for their own single wrapper
+element, which merges `supports.layout`'s generated classes in
+automatically. **This turned out NOT to be universally true for every
+block with `layout` support** -- see "The actual card grid was still
+stacking" below for the real exception this assumption missed, found the
+next time this exact bug was reported again, on `gateway/data-cards-body`
+itself.
 
 Verified: the render.php dispatch change re-uses the exact same
 `Data_Cards_Renderer::get_current()`/`set_current()` contract every
@@ -2914,6 +2918,103 @@ Inspector behavior -- a TextArea-backed `gateway/facet` no longer
 offering Select/Checkboxes -- needs manual verification in a real block
 editor, the same caveat every other editor-only UI change in this
 plugin carries.
+
+### The actual card grid was still stacking in the editor
+
+Reported directly, a second time: "the data cards still do not render
+the cards properly in the editor, they are stacked even when they have
+room. Please ensure we have the correct styling in the editor this is
+the second time trying to fix it." The first fix (see "Follow-up, from
+real testing" above, item 3) addressed a real bug, but the WRONG cards:
+Header/Footer/Facets' own child controls (Page Size + Search, Pagination
++ Results, filter widgets) -- never the actual grid of CARDS itself
+(`gateway/data-cards-body`), which is what "stacked... even when they
+have room" was actually describing.
+
+**Root cause, found by reading WordPress core's own real source
+(`packages/block-library/src/post-template/edit.js` in a
+`wordpress/gutenberg` checkout) rather than guessing again:**
+`supports.layout` alone is NOT always enough, and the earlier fix's own
+claim that it was ("`useBlockProps()`/`useInnerBlocksProps()` already
+apply automatically") is only true for a block that calls
+`useInnerBlocksProps()` ONCE, for its own single wrapper element, the
+same call that also renders its own children. `gateway/data-cards-body`
+was never that shape -- like `core/post-template` (the real block it was
+ported from), it renders a hand-rolled `.map()` over query results
+(posts or records) inside a plain `<ul { ...blockProps }>`, where
+`blockProps` comes from a bare `useBlockProps()` call with no
+InnerBlocks underneath it at all (the REAL, editable InnerBlocks only
+exist one level deeper, inside exactly one `<li>` -- the "active" card).
+
+For that shape, WordPress's own layout-support machinery
+(`withLayoutStyles`, `packages/block-editor/src/hooks/layout.js`) still
+computes the real generated CSS/class names for the block's own `layout`
+attribute -- but it injects them as an EXTRA prop,
+`__unstableLayoutClassNames`, onto the registered `Edit` component
+itself (confirmed by tracing the actual prop flow: `withLayoutStyles` →
+`BlockListBlock` → `block-edit/index.js`'s `<Edit {...props} />`), NOT
+by automatically folding them into whatever a later, unrelated
+`useBlockProps()` call happens to produce. A block using
+`useInnerBlocksProps()` for its own wrapper never notices this plumbing
+detail because `useInnerBlocksProps()` itself already reads that same
+context internally. A block like this one, which calls a separate,
+plain `useBlockProps()` on an element that ISN'T the InnerBlocks
+wrapper, has to reach in and merge `__unstableLayoutClassNames` in by
+hand -- which is exactly what `core/post-template/edit.js` itself does
+(`useBlockProps({ className: clsx( __unstableLayoutClassNames, ... ) })`)
+and what `gateway/data-cards-body/src/edit.js` never did. Confirmed as
+the real, complete explanation: the FRONT END never had this bug at all
+(`get_block_wrapper_attributes()` applies layout classes automatically
+server-side, no equivalent gap exists in PHP), matching every report so
+far -- broken only in the editor, fine on a real page.
+
+Fixed by destructuring `__unstableLayoutClassNames` off `Edit()`'s own
+props (it's injected automatically by the editor for any block
+declaring `layout` support -- nothing to opt into beyond reading it) and
+merging it into the grid wrapper's own `useBlockProps()` call:
+```js
+export default function Edit( { clientId, __unstableLayoutClassNames, context: { ... } } ) {
+	// ...
+	const blockProps = useBlockProps( {
+		className: [ 'gateway-data-cards-grid', __unstableLayoutClassNames ]
+			.filter( Boolean )
+			.join( ' ' ),
+	} );
+```
+No `block.json` change needed -- `layout: { type: 'grid' }` was already
+correctly declared; the generated classes/CSS it already produced simply
+never reached the element that needed them.
+
+**Also added while in here, per a direct follow-up request** ("we need
+gap (Block Space) for our Card Template block so we can put space
+between items, let's also enable margin and padding on that block"):
+`gateway/data-cards-body`'s own `supports.spacing` already declared
+`blockGap` (with a `1.25em` default, `__experimentalDefaultControls:
+{blockGap: true}`) but not `margin`/`padding` at all. Added both,
+`__experimentalDefaultControls` set `true` for all three (not `false`
+the way core's own `post-template` block.json leaves margin/padding --
+the exact "hidden behind a '+' toggle instead of actually disabled"
+lesson this plugin already learned the hard way for `gateway/card-field-text`,
+applied proactively here instead of waiting for the same bug report a
+third time). Purely declarative -- `get_block_wrapper_attributes()`
+(front end) and the now-already-correct `useBlockProps()` call (editor)
+both apply margin/padding automatically once declared; no code of this
+block's own reads or applies either directly.
+
+Verified: traced the real `__unstableLayoutClassNames` prop flow through
+Gutenberg's own source (`hooks/layout.js` → `block-edit/index.js`) to
+confirm it's genuinely injected for any block with `layout` support, not
+something bespoke to `core/post-template`; confirmed a production build
+picks up the change (`grep` for the prop name in the compiled
+`data-cards-body/build/index.js`); confirmed via JSON validation and a
+clean build that the `block.json` spacing addition is well-formed. The
+full existing PHP regression suite passes unaffected (nothing in it
+touches editor-side React rendering). The actual "cards now lay out in a
+real CSS grid in the editor, and Block Spacing/Margin/Padding controls
+show up and work" behavior needs manual verification in a real block
+editor -- this is, on its own admission, the second (now third) attempt
+at the same front-end-only bug in a project with no way to
+automatically test real Gutenberg rendering.
 
 ### Editor preview: real records, not just posts
 

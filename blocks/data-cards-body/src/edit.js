@@ -116,6 +116,24 @@ const MemoizedDataCardsBodyPreview = memo( DataCardsBodyPreview );
 
 export default function Edit( {
 	clientId,
+	// Injected automatically by the block editor's own layout-support HOC
+	// (`withLayoutStyles`, block-editor/src/hooks/layout.js) whenever
+	// `supports.layout` is declared -- the real classes/generated CSS that
+	// actually turn this block's own `layout: { type: 'grid' }` into a
+	// real CSS grid. A block built the ordinary way (a single
+	// `useInnerBlocksProps()` call for both wrapper and children) gets
+	// this merged in automatically; this block's own synthetic, hand
+	// -rolled query-loop wrapper (below, `<ul { ...blockProps }>` around a
+	// `.map()`, not `useInnerBlocksProps()`) does NOT, and must merge it
+	// in explicitly -- confirmed against `core/post-template/edit.js`'s
+	// own real Gutenberg source (`packages/block-library/src/post-template/edit.js`,
+	// the exact same synthetic-wrapper shape this block is already ported
+	// from), which does the identical merge into its own `useBlockProps()`
+	// call. Missing here before now -- reported directly, twice: cards
+	// stacked in the editor "even when there is room," while the front
+	// end (server-side `get_block_wrapper_attributes()`, which applies
+	// layout classes automatically with no equivalent gap) rendered fine.
+	__unstableLayoutClassNames,
 	context: {
 		'gateway/data-cards/sourceType': sourceType = 'postType',
 		'gateway/data-cards/postType': postType = 'post',
@@ -329,7 +347,11 @@ export default function Edit( {
 		} ) );
 	}, [ isCollection, records, posts ] );
 
-	const blockProps = useBlockProps( { className: 'gateway-data-cards-grid' } );
+	const blockProps = useBlockProps( {
+		className: [ 'gateway-data-cards-grid', __unstableLayoutClassNames ]
+			.filter( Boolean )
+			.join( ' ' ),
+	} );
 
 	const items = isCollection ? records : posts;
 

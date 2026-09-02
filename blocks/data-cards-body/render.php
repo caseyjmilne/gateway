@@ -12,7 +12,9 @@
  *
  * A single <ul> carries both the wrapper/layout-support classes (via
  * get_block_wrapper_attributes(), which also applies this block's
- * `supports.layout` grid styling -- see block.json) and this instance's
+ * `supports.layout` grid styling AND its `supports.spacing`
+ * margin/padding/blockGap -- see block.json -- entirely declaratively;
+ * nothing here needs to change for any of that) and this instance's
  * own data-* attributes -- matching WordPress core's own
  * render_block_core_post_template() structure (`<ul %wrapper%>%items%</ul>`,
  * confirmed by reading packages/block-library/src/post-template/index.php
