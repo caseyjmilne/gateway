@@ -51,7 +51,9 @@ defined( 'ABSPATH' ) || exit;
 $source_type = 'collection' === ( $attributes['sourceType'] ?? 'postType' ) ? 'collection' : 'postType';
 
 $limit     = absint( $attributes['limit'] ?? 0 );
-$page_size = max( 1, absint( $attributes['pageSize'] ?? 12 ) );
+// 10 -- matching this block's own block.json attribute default; only a
+// fallback for a genuinely absent/stripped attribute.
+$page_size = max( 1, absint( $attributes['pageSize'] ?? 10 ) );
 
 // Find the gateway/data-cards-body child to read its own authored template
 // (its innerBlocks -- arbitrary user-authored content) directly off the

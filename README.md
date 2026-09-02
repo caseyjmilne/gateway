@@ -3493,6 +3493,48 @@ only a docblock). The actual "an oversized image now shrinks to fit its
 column instead of overlapping the next card" behavior needs manual
 verification in a real block editor + browser.
 
+### Default Page Size fixed at a non-standard 12
+
+Reported directly: "data cards default page size seems to be fixed at
+12. When I drop in new data cards the page size is 12, it should be a
+standard size like 10." `shared/length-menu.js`'s own `DEFAULT_LENGTH_MENU`
+-- `[10, 25, 50, 100]`, the standard page-size vocabulary this plugin
+already uses everywhere else, `gateway/datatable`'s own `pageLength`
+attribute default (`10`) included -- never actually included `12` at
+all, so `gateway/data-cards`'s own default was simultaneously
+non-standard AND not even one of its own Page Size dropdown's real
+choices.
+
+Six places all independently hardcoded the same `12`, exactly the kind
+of scattered-default drift risk a single source of truth is supposed to
+prevent -- fixed everywhere at once, all now `10`, matching
+`gateway/datatable`'s own attribute default exactly:
+
+- `gateway/data-cards`'s own `block.json` `pageSize` attribute default
+  -- the one REAL source of truth for a freshly-inserted block; every
+  other occurrence below is only ever a fallback for a genuinely absent
+  value (a stale/hand-edited attribute, block context reached before the
+  parent's own value propagates, a REST request that omits the param
+  outright), never a second place this value is actually configured.
+- `gateway/data-cards-body/src/edit.js`'s own context destructuring
+  fallback, and `gateway/data-cards-page-size/src/edit.js`'s own
+  `context[...] || 12`.
+- `gateway/data-cards-page-size/render.php`'s own `?? 12`, and
+  `gateway/data-cards/render.php`'s own `?? 12`.
+- `Data_Cards_REST_Controller`'s own two `page_size` route args (the
+  postType and Collection routes both had their own independent
+  `'default' => 12`).
+
+Verified with a successful production build, `php -l` on every touched
+PHP file, and a clean run of the full existing PHP regression suite
+(confirmed no existing test asserted against the old `12` value --
+`data-cards-collection-smoke-test.php`'s own `12`s are all a
+deliberately-chosen `$limit` test value, a completely different
+parameter, never `$page_size`). A freshly-inserted Data Cards block
+showing `10` by default, and its own Page Size dropdown offering it as
+a real, already-selected choice, needs manual verification in a real
+block editor.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)

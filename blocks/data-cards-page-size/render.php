@@ -18,7 +18,9 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$page_size   = absint( $block->context['gateway/data-cards/pageSize'] ?? 12 );
+// 10 -- matching gateway/data-cards's own block.json attribute default;
+// only a fallback for a genuinely absent context value.
+$page_size   = absint( $block->context['gateway/data-cards/pageSize'] ?? 10 );
 $length_menu = \Gateway\Data_Cards_Renderer::build_length_menu( $page_size );
 
 $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-data-cards-page-size' ) );

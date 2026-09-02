@@ -28,7 +28,7 @@
 		},
 		"pageSize": {
 			"type": "number",
-			"default": 12
+			"default": 10
 		},
 		"facets": {
 			"type": "array",

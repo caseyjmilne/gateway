@@ -19,7 +19,9 @@ import { buildLengthMenu } from '../../shared/length-menu';
  * @param {Object} props.context Block context (usesContext in block.json).
  */
 export default function Edit( { context } ) {
-	const pageSize = context[ 'gateway/data-cards/pageSize' ] || 12;
+	// 10 -- matching block.json's own attribute default, same reasoning
+	// gateway/data-cards-body/src/edit.js's own identical fallback gives.
+	const pageSize = context[ 'gateway/data-cards/pageSize' ] || 10;
 	const blockProps = useBlockProps( { className: 'gateway-data-cards-page-size' } );
 	const lengthMenu = buildLengthMenu( pageSize );
 

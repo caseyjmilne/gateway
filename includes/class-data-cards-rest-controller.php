@@ -81,7 +81,10 @@ class Data_Cards_REST_Controller {
 					),
 					'page_size'   => array(
 						'type'              => 'integer',
-						'default'           => 12,
+						// 10 -- matching gateway/data-cards's own block.json
+						// attribute default; only a fallback for a request
+						// that genuinely omits page_size.
+						'default'           => 10,
 						'sanitize_callback' => 'absint',
 					),
 					'limit'       => array(
@@ -140,7 +143,10 @@ class Data_Cards_REST_Controller {
 					),
 					'page_size'   => array(
 						'type'              => 'integer',
-						'default'           => 12,
+						// 10 -- matching gateway/data-cards's own block.json
+						// attribute default; only a fallback for a request
+						// that genuinely omits page_size.
+						'default'           => 10,
 						'sanitize_callback' => 'absint',
 					),
 					'limit'       => array(

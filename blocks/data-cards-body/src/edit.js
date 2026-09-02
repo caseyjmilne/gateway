@@ -138,7 +138,12 @@ export default function Edit( {
 		'gateway/data-cards/sourceType': sourceType = 'postType',
 		'gateway/data-cards/postType': postType = 'post',
 		'gateway/data-cards/collection': collection = '',
-		'gateway/data-cards/pageSize': pageSize = 12,
+		// 10 -- matching block.json's own attribute default and
+		// shared/length-menu.js's own DEFAULT_LENGTH_MENU (its first,
+		// smallest option) -- same standard size gateway/datatable's own
+		// pageLength attribute already defaults to; only a fallback for a
+		// genuinely absent context value, not a second source of truth.
+		'gateway/data-cards/pageSize': pageSize = 10,
 	},
 } ) {
 	const [ activeBlockContextId, setActiveBlockContextId ] = useState();
