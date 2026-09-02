@@ -29,14 +29,22 @@ const REQUIRED_BLOCKS = [
 	'gateway/data-cards-footer',
 ];
 
-// The four fixed zones above, plus gateway/card-facet itself: one of its
-// three allowed homes is directly here, as a sibling of the four zones
-// (the other two are inside gateway/data-cards-header/-footer -- see
-// each one's own edit.js) -- see that block's own "parent" restriction
-// in its block.json. Deliberately NOT added to REQUIRED_BLOCKS itself:
-// it's optional and repeatable, not a fixed named zone
-// useRequiredInnerBlocks() should ever insert or self-heal.
-const ALLOWED_BLOCKS = [ ...REQUIRED_BLOCKS, 'gateway/card-facet' ];
+// The four fixed zones above, plus two more that are ALLOWED here but
+// deliberately NOT in REQUIRED_BLOCKS (useRequiredInnerBlocks() would
+// otherwise self-heal them right back the moment a site owner removed
+// one, which is wrong for something genuinely optional):
+// - gateway/card-facet itself: one of its three allowed homes is
+//   directly here, as a sibling of the four zones (the other two are
+//   inside gateway/data-cards-header/-footer -- see each one's own
+//   edit.js) -- see that block's own "parent" restriction in its
+//   block.json. Optional AND repeatable.
+// - gateway/data-cards-empty: shown instead of an empty grid, per a
+//   direct request ("give the user the ability to setup a block for
+//   it") -- deliberately opt-in, not auto-inserted for every existing
+//   (or brand new) Data Cards block: a site owner adds it from the
+//   inserter only if they want this feature, so it's absent from the
+//   `template` array below too.
+const ALLOWED_BLOCKS = [ ...REQUIRED_BLOCKS, 'gateway/card-facet', 'gateway/data-cards-empty' ];
 
 /**
  * @param {string} name One of REQUIRED_BLOCKS.

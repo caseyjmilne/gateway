@@ -1,0 +1,20 @@
+/**
+ * Styles for the gateway/data-cards-empty block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core) -- but
+ * `--hidden` only ever matters on the front end: render.php is what adds
+ * it (see that file's own docblock), and edit.js never calls render.php
+ * at all, so the editor always shows this block's own frame regardless
+ * of whether the grid it's paired with would currently be empty. Same
+ * min-height reasoning gateway/data-cards-header's own style.scss already
+ * gives for its own empty-InnerBlocks editing UX.
+ */
+
+.gateway-data-cards-empty {
+	min-height: 2em;
+}
+
+.gateway-data-cards-empty--hidden {
+	display: none;
+}

@@ -7,22 +7,24 @@
  * that needs it -- gateway/datatable-body), THIS parent does the real
  * work itself: running the WP_Query, rendering the card template per
  * post, and computing pager metadata, all ONCE, right here -- then hands
- * that one computed result to Header/Body/Footer via
+ * that one computed result to Header/Body/Empty/Footer via
  * Data_Cards_Renderer::set_current() before dispatching them, and clears
  * it immediately after.
  *
  * Why here and not in gateway/data-cards-body/render.php (which is where
- * the equivalent work lives for the table family): THREE of this family's
- * children need the same query result -- Body (the grid itself), and
- * Pagination/Results (nested under Footer, needing the real page/pager
- * counts to render real initial state instead of an empty skeleton, per
- * this family's whole point -- see Data_Cards_Renderer's own docblock).
- * Those are independently-dispatched SIBLING blocks; WordPress block
- * context only flows from ancestor to descendant, never sideways between
- * them, and re-running the same WP_Query redundantly in each of their own
- * render.php calls would defeat that "real initial state" goal at the
- * cost of the query, not save it. The one common ancestor -- this block --
- * is the only place that can compute it once and hand it to all three.
+ * the equivalent work lives for the table family): FOUR of this family's
+ * children need the same query result -- Body (the grid itself), Empty
+ * (needs `recordsTotal` to know whether to show itself at all -- see its
+ * own render.php), and Pagination/Results (nested under Footer, needing
+ * the real page/pager counts to render real initial state instead of an
+ * empty skeleton, per this family's whole point -- see Data_Cards_Renderer's
+ * own docblock). Those are independently-dispatched SIBLING blocks;
+ * WordPress block context only flows from ancestor to descendant, never
+ * sideways between them, and re-running the same WP_Query redundantly in
+ * each of their own render.php calls would defeat that "real initial
+ * state" goal at the cost of the query, not save it. The one common
+ * ancestor -- this block -- is the only place that can compute it once
+ * and hand it to all four.
  *
  * `sourceType` ('postType' or 'collection') branches this file the same
  * way gateway/datatable-body/render.php branches -- see that file's own
@@ -197,18 +199,20 @@ if ( 'collection' === $source_type ) {
 $markup_by_name = array(
 	'gateway/data-cards-header' => '',
 	'gateway/data-cards-body'   => '',
+	'gateway/data-cards-empty'  => '',
 	'gateway/data-cards-footer' => '',
 );
 
 // gateway/card-facet is allowed THREE places (its own block.json's
 // "parent"): the dedicated gateway/data-cards-facets zone (falls under
 // the $markup_by_name lookup above like any other named zone), OR loose,
-// directly here as a sibling of the four zones -- which $markup_by_name's
-// fixed-key lookup alone can't render, since it isn't one of those four
-// names. Collected separately and rendered right after the Facets zone,
-// regardless of where among the other zones it actually sits in the
-// editor's own InnerBlocks list -- simpler and more predictable than
-// trying to preserve its exact interleaved position.
+// directly here as a sibling of the five zones (Header/Body/Empty/Footer/
+// Facets) -- which $markup_by_name's fixed-key lookup alone can't render,
+// since it isn't one of those five names. Collected separately and
+// rendered right after the Facets zone, regardless of where among the
+// other zones it actually sits in the editor's own InnerBlocks list --
+// simpler and more predictable than trying to preserve its exact
+// interleaved position.
 $facets_zone_markup  = '';
 $loose_facets_markup = '';
 

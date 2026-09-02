@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-cards-empty",
+	"title": "Data Cards Empty",
+	"category": "widgets",
+	"icon": "warning",
+	"description": "Shown in place of the grid whenever a Data Cards block's current search, facets, or pagination state matches no records at all -- design any content here (a message, an image, a button, ...). Hidden the rest of the time.",
+	"keywords": [ "empty", "no results", "not found", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"parent": [ "gateway/data-cards" ],
+	"supports": {
+		"html": false
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

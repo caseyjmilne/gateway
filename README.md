@@ -2513,6 +2513,89 @@ actual front-end input/debounced-fetch behavior needs manual
 verification in a real block editor + browser, the same caveat every
 other front-end-only piece of this feature already carries.
 
+### `gateway/data-cards-empty` -- a designable "no results" state
+
+Requested directly: "we need to show an 'empty' block when cards are
+cleared instead of showing nothing as we do now. To enable this best we
+want to give the user the ability to setup a block for it so we should
+add this as a direct child of data cards 'Data Cards Empty' and anything
+inside that we show only if cards empty." Before this, an empty result
+set (no records at all, or a search/facet combination matching nothing)
+just rendered a bare, empty `<ul>` -- nothing told a visitor the grid
+wasn't broken, just empty.
+
+**A new named zone, but deliberately NOT one of the four self-healing
+required ones (`REQUIRED_BLOCKS`).** Header/Body/Footer are structural --
+the grid doesn't function without them, so `useRequiredInnerBlocks()`
+re-inserts any that go missing. This is opt-in: added to `ALLOWED_BLOCKS`
+only, so it's insertable from the block inserter (as one of `gateway/
+data-cards`'s allowed children) but never auto-added to an existing OR
+brand-new Data Cards block, and never re-inserted if removed -- a site
+owner who doesn't want this feature never sees an empty placeholder
+frame cluttering their editor. Its own InnerBlocks area has no
+`allowedBlocks` restriction at all (unlike Header/Footer, each locked to
+a specific small set of sibling widgets) -- "anything inside" was the
+request, so `render.php` simply echoes `$content`, the same plain
+dynamic-block shape `gateway/single-record`'s own render.php already
+uses, rather than Header/Footer's own "filter `$block->inner_blocks` by
+an allowed-name list" dance.
+
+**Rendered exactly once, then toggled client-side -- not re-rendered per
+fetch.** `gateway/data-cards-search`/`-facet`/`-pagination`/`-page-size`
+can all change which records match *without a full page reload* (a
+fetch via `shared/cards.js`'s `fetchCardsPage()`/`renderCardsPage()`),
+but that fetch's own REST response only ever carries the grid's `<li>`
+markup + pager counts -- never a second copy of this block's own
+arbitrary, record-independent content. So:
+
+- `blocks/data-cards-empty/render.php` reads `Data_Cards_Renderer::
+  get_current()` (populated by `gateway/data-cards/render.php` the exact
+  same way it already is for `gateway/data-cards-body`) and adds a
+  `gateway-data-cards-empty--hidden` class whenever `recordsTotal > 0` on
+  the initial, full-page render -- real initial state, not a flash of
+  the wrong one, the same reasoning `Data_Cards_Renderer`'s own docblock
+  already gives for computing real pager counts up front rather than an
+  empty skeleton. Renders nothing at all (regardless of `recordsTotal`)
+  if the zone has no InnerBlocks content configured, or if there's no
+  `gateway/data-cards` parent state at all (moved out via List View, or
+  previewed standalone) -- both mirroring `gateway/data-cards-header`'s/
+  `-body`'s own identical early-return conventions.
+- `blocks/data-cards-empty/src/view.js` listens for the same
+  `'gatewaycards:update'` event `gateway/data-cards-results`'s own
+  `view.js` already listens for (dispatched by `renderCardsPage()` on
+  every fetch ANY sibling widget triggers), and toggles that same
+  `--hidden` class based on the fetched response's own `recordsTotal` --
+  the front-end equivalent of Results' "rendered once server-side, kept
+  in sync by view.js from then on" shape, just toggling visibility
+  instead of rewriting text. Also reconciles once on mount (a defensive
+  no-op in the common case, matching Results' own `initResults()` shape)
+  before ever fetching anything.
+- `gateway/data-cards/render.php`'s own fixed-order dispatch
+  (`$markup_by_name`) now has FOUR entries -- Header, Body, **Empty**,
+  Footer -- rendered in that canonical order regardless of wherever a
+  site owner actually drags "Data Cards Empty" among its siblings in the
+  editor, the same "simpler and more predictable than preserving exact
+  interleaved position" reasoning already applied to a loose
+  `gateway/card-facet`.
+
+Verified with a new standalone PHP smoke test -- unlike most block
+`render.php` files in this plugin (which need a real `WP_Block`/block
+registry this project has no test harness for), this one reads nothing
+off `$block` at all, only `$attributes`/`$content` and
+`Data_Cards_Renderer::get_current()`, so it's `include`'d directly with
+a stubbed `get_block_wrapper_attributes()`: no parent state at all
+(renders nothing); empty/whitespace-only configured content (renders
+nothing even though the grid IS empty); a genuinely empty grid (content
+renders, visible, no `--hidden` class); a non-empty grid (content still
+renders, for later client-side toggling, but carries `--hidden`); and a
+state defensively missing `recordsTotal` entirely (treated as empty/
+visible, never a fatal). Alongside a clean run of the full existing
+regression suite (both default and assertions modes) and a successful
+production build. The actual front-end toggle-on-fetch behavior, and the
+editor's own unrestricted InnerBlocks area, need manual verification in
+a real block editor + browser, the same caveat every other front-end
+-only piece of this family already carries.
+
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 
 Marking Collection fields filterable surfaced a real gap: `gateway/card-facet`'s
