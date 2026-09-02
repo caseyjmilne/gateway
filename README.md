@@ -5784,10 +5784,15 @@ for the PHP fix.
 A Text, Number, Range, Email, URL, or Choice (Buttons/Select/Radio/
 Checkbox) field can be given a default value -- what a brand new record
 starts out with, not how the field is displayed, which is why it lives
-in **General**, directly under Label, rather than alongside
-instructions/placeholder/step/prepend/append in Presentation. It's shown
-with its own small note underneath, "Appears when creating a new
-record.", and only ever actually applies there: editing an existing
+in **General** rather than alongside instructions/placeholder/step/
+prepend/append in Presentation: directly under Label for Text/Number/
+Range/Email/URL, but -- reported directly, "default value placement
+needs to be AFTER choices because the user needs to add choices first"
+-- AFTER the Choices list instead for a Choice type, since picking a
+default there means picking one of the field's own choices, and there's
+nothing to pick from until at least one exists. It's shown with its own
+small note underneath, "Appears when creating a new record.", and only
+ever actually applies there: editing an existing
 record always shows that record's own real (even if blank) value, never
 silently replaced by the field's configured default. For Range
 specifically, this is a starting position for the slider -- exactly the
@@ -5850,26 +5855,30 @@ numeric). `Field_Type_Registry::describe_all()` exposes
 input only when the currently-picked type's own `supports_default_value`
 is true, registered as `settings.default` -- the same RHF field object
 Presentation's own inputs live in, just a different key -- so it
-autosaves exactly like everything else here. For a Choice type (the same
+autosaves exactly like everything else here. For every non-Choice type
+that supports a default, it renders directly under Label, switching
+between a plain text input and a real `<input type="number" step="any">`
+right along with the picked Type. For a Choice type (the same
 `editHasChoices` flag that already gates `ChoicesEditor` itself), this
-renders as a `<select>` instead of a plain input -- "— None —" plus one
-`<option>` per the field's own currently-configured choices, built
-straight from the already-live-watched `choices` array `ChoicesEditor`
-itself edits, so the option list updates the moment a choice is renamed
-or removed, with no separate fetch of its own. This is what keeps a
-Choice default constrained to "none, or one of the choices" entirely at
-entry time, without needing any new server-side validation: the
-`<select>` simply never offers a value that isn't real. A default that
-goes stale later (its choice renamed or deleted after being set) is left
-as-is rather than silently cleared -- the same "tolerate staleness
-gracefully" precedent `RecordsCrud`'s own already-saved-value display
-already follows when a stored value's label no longer matches. For every
-non-Choice type that supports a default, this still switches between a
-plain text input and a real `<input type="number" step="any">` right
-along with the picked Type, same as before. General's own tab-heading
-dot now reflects *either* a non-blank Default Value *or* a non-blank
-Choices list (previously just Choices) -- and, in the other direction,
-Presentation's own dot is computed only from the keys
+control instead renders as a `<select>`, INSIDE the same
+`.gateway-field-editor-choices-inline` block as `ChoicesEditor`,
+immediately after it -- not up under Label -- so a site owner always
+sees, and can add to, the real choices list before being asked to pick a
+default from it. That `<select>` offers "— None —" plus one `<option>`
+per the field's own currently-configured choices, built straight from
+the already-live-watched `choices` array `ChoicesEditor` itself edits,
+so the option list updates the moment a choice is added, renamed, or
+removed, with no separate fetch of its own. This is what keeps a Choice
+default constrained to "none, or one of the choices" entirely at entry
+time, without needing any new server-side validation: the `<select>`
+simply never offers a value that isn't real. A default that goes stale
+later (its choice renamed or deleted after being set) is left as-is
+rather than silently cleared -- the same "tolerate staleness gracefully"
+precedent `RecordsCrud`'s own already-saved-value display already
+follows when a stored value's label no longer matches. General's own
+tab-heading dot now reflects *either* a non-blank Default Value *or* a
+non-blank Choices list (previously just Choices) -- and, in the other
+direction, Presentation's own dot is computed only from the keys
 `presentation_fields()` actually returns for the current type, not every
 key `settings` happens to hold, so a Default Value configured on a Text
 field never falsely lights up its Presentation tab too.

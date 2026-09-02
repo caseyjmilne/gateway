@@ -218,29 +218,33 @@ const normalizeSettings = ( settings ) =>
  * to bottom, and what those other inputs' own type-dependent rendering
  * (the relationship picker in place of Name for a relate type, the
  * Default Value input switching between text/number/a choices `<select>`
- * below) already implicitly assumes; directly under Label, when the
- * picked type's own `supports_default_value` is true -- Text, Number,
- * Range, and (per a direct request: "all of the choices field types
- * need to have default value option... the default can be either none
- * or one of the choices chosen from a select") Buttons/Select/Radio/
- * Checkbox today -- a Default Value control, applied by `RecordForm` as
- * the initial value of its own "Add New" form and nowhere else, with its
- * own small "Appears when creating a new record." note underneath. For
- * one of the four Choice types (`editHasChoices`, the exact same flag
- * `ChoicesEditor`'s own rendering below is gated on), this is a
- * `<select>` instead of a plain text/number input -- "— None —" plus
- * every one of `editChoices`' own CURRENT, live, non-blank rows (already
- * watched at the top of this component, the exact same `choices` state
- * `ChoicesEditor` itself is bound to, so adding/renaming/removing a
- * choice updates this list immediately, with no separate fetch or sync
- * of its own) -- so a default can only ever be "none," or one of the
- * choices actually offered right now, never a stray, mistyped value; the
- * server's own generic `sanitize_settings()` trims/stores whatever
- * string `settings.default` holds either way, the same tolerant
- * treatment Number's own default (never validated as truly numeric)
- * already gets, so a default that later goes stale (its own choice
- * renamed/removed) is left as-is rather than actively scrubbed, same
- * "tolerate staleness gracefully" precedent `RecordsCrud`'s own
+ * further below) already implicitly assumes; directly under Label, when
+ * the picked type's own `supports_default_value` is true AND it has no
+ * choices list of its own -- Text, Number, Range, Email, URL today -- a
+ * plain Default Value text/number input, applied by `RecordForm` as the
+ * initial value of its own "Add New" form and nowhere else, with its own
+ * small "Appears when creating a new record." note underneath. For one
+ * of the four Choice types instead (per a direct request: "all of the
+ * choices field types need to have default value option... the default
+ * can be either none or one of the choices chosen from a select") --
+ * Buttons/Select/Radio/Checkbox -- that same Default Value control is
+ * deliberately placed AFTER the Choices list further below, not here
+ * under Label: reported directly, "default value placement needs to be
+ * AFTER choices because the user needs to add choices first," since it
+ * renders as a `<select>` built from those very choices and is useless
+ * (nothing to pick) before at least one exists. That `<select>` offers
+ * "— None —" plus every one of `editChoices`' own CURRENT, live,
+ * non-blank rows (already watched at the top of this component, the
+ * exact same `choices` state `ChoicesEditor` itself is bound to, so
+ * adding/renaming/removing a choice updates this list immediately, with
+ * no separate fetch or sync of its own) -- so a default can only ever be
+ * "none," or one of the choices actually offered right now, never a
+ * stray, mistyped value; the server's own generic `sanitize_settings()`
+ * trims/stores whatever string `settings.default` holds either way, the
+ * same tolerant treatment Number's own default (never validated as truly
+ * numeric) already gets, so a default that later goes stale (its own
+ * choice renamed/removed) is left as-is rather than actively scrubbed,
+ * same "tolerate staleness gracefully" precedent `RecordsCrud`'s own
  * already-saved-value display already has. Image and File are the two
  * types whose General tab looks different again -- no Default Value at
  * all for either (`supports_default_value` false; there's no sensible
@@ -281,10 +285,13 @@ const normalizeSettings = ( settings ) =>
  * from `Field_Type::max_one_per_model()` -- see that component's own
  * docblock) -- a client-side nicety on top of the same rejection
  * `Model_Fields::add()`/`update()` already enforce server-side; plus --
- * further below,
- * never a tab of its own -- a ChoicesEditor for the field's own
- * orderable choice list, Gateway\\Model_Field_Choices on the server,
- * shown only when the picked type's own `has_choices` is true),
+ * further below, never a tab of its own -- a ChoicesEditor for the
+ * field's own orderable choice list, Gateway\\Model_Field_Choices on the
+ * server, shown only when the picked type's own `has_choices` is true,
+ * immediately followed, inside that same block, by the choices-`<select>`
+ * Default Value control described above -- placed there and nowhere else
+ * so a site owner always has a real choice list to pick a default from
+ * before being asked to pick one),
  * then **Validation** (a "Required" toggle, Gateway\\Model_Fields::
  * validate_required_fields() on the server -- applies to every field
  * regardless of type; plus, when the picked type's own
@@ -1346,27 +1353,10 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 							{ ...register( 'label' ) }
 						/>
 					</label>
-					{ editSupportsDefault && (
+					{ editSupportsDefault && ! editHasChoices && (
 						<label>
 							<span>Default Value</span>
-							{ editHasChoices ? (
-								<select
-									className="regular-text"
-									{ ...register( 'settings.default' ) }
-								>
-									<option value="">— None —</option>
-									{ ( editChoices || [] )
-										.filter( ( choice ) => choice.value.trim() )
-										.map( ( choice ) => (
-											<option
-												key={ choice.value }
-												value={ choice.value }
-											>
-												{ choice.label || choice.value }
-											</option>
-										) ) }
-								</select>
-							) : 'number' === editType ? (
+							{ 'number' === editType ? (
 								<input
 									type="number"
 									step="any"
@@ -1520,6 +1510,30 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								/>
 							) }
 						/>
+						{ editSupportsDefault && (
+							<label>
+								<span>Default Value</span>
+								<select
+									className="regular-text"
+									{ ...register( 'settings.default' ) }
+								>
+									<option value="">— None —</option>
+									{ ( editChoices || [] )
+										.filter( ( choice ) => choice.value.trim() )
+										.map( ( choice ) => (
+											<option
+												key={ choice.value }
+												value={ choice.value }
+											>
+												{ choice.label || choice.value }
+											</option>
+										) ) }
+								</select>
+								<span className="description">
+									Appears when creating a new record.
+								</span>
+							</label>
+						) }
 					</div>
 				) }
 			</div>
