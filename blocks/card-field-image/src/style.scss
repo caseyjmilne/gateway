@@ -1,0 +1,42 @@
+/**
+ * Styles for the gateway/card-field-image block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ *
+ * `max-width: 100%` + `height: auto` on the actual `<img>` -- reported
+ * directly: "the data cards in some cards are able to overlap,
+ * specifically with an image larger than the column... Maybe our image
+ * should have max-width: 100% by default?" Exactly right. Neither
+ * `wp_get_attachment_image()` (the 'array'/'id' Return Format branch) nor
+ * this block's own hand-built `<img>` tag ('url' format -- see
+ * Image_Renderer's own docblock) ever had any width constraint of their
+ * own beyond the registered size's own `width`/`height` HTML attributes,
+ * and `gateway/data-cards-body`'s own grid (`supports.layout.type: "grid"`,
+ * a real CSS Grid, not flex) doesn't shrink an oversized child by default
+ * either -- a grid item's own implicit `min-width: auto` means its
+ * content (here, a large intrinsic image) can force it wider than its
+ * own track, visually overlapping neighboring cards, the classic CSS
+ * Grid "min-size auto" overflow gotcha. This is the same universal
+ * responsive-image fix every CSS reset applies (and what an ordinary
+ * theme's own global styles would otherwise have silently been relied
+ * on to provide) -- `height: auto` alongside `max-width: 100%` keeps the
+ * image's own aspect ratio correct as its width shrinks to fit, rather
+ * than distorting it against the registered size's own fixed `height`
+ * HTML attribute. Targets any `<img>` at any depth (whether wrapped in
+ * this block's own optional Link Settings `<a>` or not) via a plain
+ * descendant selector.
+ *
+ * A configured Aspect Ratio (render.php's own `aspectRatio`/`scale`
+ * attributes) already sets `width:100%;height:100%;` directly as an
+ * INLINE style on the `<img>` tag itself, which always wins over this
+ * external stylesheet rule regardless of load order (inline style beats
+ * any selector-based rule in the cascade) -- so this default never
+ * fights that feature, it only ever applies when no Aspect Ratio is
+ * configured at all.
+ */
+
+.gateway-card-field-image img {
+	max-width: 100%;
+	height: auto;
+}

@@ -3455,6 +3455,44 @@ Inspector panels (Aspect Ratio, Link Settings) and every declarative
 real block editor, the same caveat every other block-editor-only UI
 change in this plugin already carries.
 
+**An oversized image could overlap neighboring cards -- reported
+directly**: "the data cards in some cards are able to overlap,
+specifically with an image larger than the column... is this a flex or
+a grid? Maybe our image should have max-width: 100% by default?"
+`gateway/data-cards-body`'s own grid IS a real CSS Grid
+(`supports.layout.default.type: "grid"`, not flex), and the user's own
+diagnosis was exactly right: neither `wp_get_attachment_image()` (the
+`'array'`/`'id'` Return Format branch) nor this block's own hand-built
+`<img>` tag (`'url'` format) had any width constraint beyond the
+registered size's own fixed `width`/`height` HTML attributes -- and a
+CSS Grid item's own implicit `min-width: auto` means an oversized child
+can force it wider than its own track, the classic "min-size auto"
+overflow gotcha. This block never had a stylesheet of its own at all
+before now (no `src/style.scss`, no `"style"` in `block.json`) -- added
+one: `.gateway-card-field-image img { max-width: 100%; height: auto; }`
+(descendant selector, so it reaches the `<img>` whether or not it's
+wrapped in this block's own optional Link Settings `<a>`). `height: auto`
+alongside `max-width: 100%` is the universal responsive-image pairing
+-- without it, a shrinking width without a matching height adjustment
+would distort the image against its own fixed `height` attribute. A
+configured Aspect Ratio (this block's own `aspectRatio`/`scale`
+attributes, above) already sets `width:100%;height:100%;` directly as
+an INLINE style on the `<img>`, which always wins the cascade over this
+external rule regardless of load order -- so the new default never
+fights that feature, it only applies when no Aspect Ratio is configured.
+Since this block had no `view.js` either (nothing interactive on the
+front end), a new one exists solely to get `style.scss` compiled into
+both contexts, the same "exists solely so the build picks it up as an
+entry" shape `gateway/data-cards-header`'s own identical-purpose
+`view.js` already has.
+
+Verified with a successful production build (confirmed
+`build/style-view.css` actually contains the compiled rule) and the
+full existing PHP regression suite (unaffected -- no PHP logic changed,
+only a docblock). The actual "an oversized image now shrinks to fit its
+column instead of overlapping the next card" behavior needs manual
+verification in a real block editor + browser.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)

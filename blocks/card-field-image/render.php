@@ -168,6 +168,12 @@ if ( $href ) {
 // avoids this same conflict by applying border/shadow to two DIFFERENT
 // selectors (the image directly, and its own placeholder), which isn't
 // worth replicating for one style option this block doesn't offer.
+//
+// The actual `<img>` itself also gets `max-width: 100%; height: auto;`
+// -- see this block's own src/style.scss -- so an oversized image can
+// never overflow its own grid column and visually overlap a neighboring
+// card, reported directly against gateway/data-cards-body's own CSS
+// Grid layout.
 $wrapper_attributes = get_block_wrapper_attributes( array(
 	'class' => 'gateway-card-field-image',
 	'style' => 'display:inline-block;overflow:hidden;',
