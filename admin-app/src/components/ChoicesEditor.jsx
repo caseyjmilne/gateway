@@ -8,7 +8,18 @@ import { useState } from 'react';
  * drag-and-drop, the same mechanism (and the same drag-handle
  * convention) FieldEditor's own fields table already uses to reorder
  * fields -- one drag pattern this app expects an orderable list to use,
- * not a second, different one.
+ * not a second, different one. `draggable`/`onDragStart` live on the "⠿"
+ * handle ITSELF, not the row -- reported directly: "only the drag icon
+ * should be draggable. Having entire row draggable is interfering with
+ * editing inside the inputs" (a `draggable="true"` ancestor otherwise
+ * intercepts the browser's own native text-selection/cursor-drag inside
+ * a plain `<input>`, since inputs don't automatically opt back out of an
+ * ancestor's own drag gesture). `onDragOver`/`onDrop` stay on the row --
+ * it's still the whole row that's the valid DROP target, only where a
+ * drag can be PICKED UP from that's now restricted to the handle -- the
+ * same split `FieldEditor`'s own fields table already has between its
+ * `<tr>` (drop target) and its own `.gateway-field-editor-grip` handle
+ * (the only `draggable` element).
  *
  * `value` is what's actually stored/returned/compared when the field is
  * used elsewhere (`Choice_Field_Type::cast()` only ever sees this half);
@@ -92,14 +103,14 @@ export default function ChoicesEditor( { choices, onChange } ) {
 					}
 					// eslint-disable-next-line react/no-array-index-key -- choices have no other stable identity; reordering is handled via onChange above, not by React tracking this key across renders.
 					key={ index }
-					draggable
-					onDragStart={ handleDragStart( index ) }
 					onDragOver={ handleDragOver }
 					onDrop={ handleDrop( index ) }
 				>
 					<span
 						className="gateway-choices-editor-drag-col"
 						title="Drag to reorder"
+						draggable
+						onDragStart={ handleDragStart( index ) }
 					>
 						⠿
 					</span>

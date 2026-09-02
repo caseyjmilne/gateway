@@ -5316,6 +5316,27 @@ of the field's *current* choices (one since renamed or removed from the
 list, but never retroactively scrubbed from already-saved records --
 see `Checkbox_Field_Type::cast()`'s own docblock for why).
 
+**A real bug, reported directly: "only the drag icon should be
+draggable. Having entire row draggable is interfering with editing
+inside the inputs."** `ChoicesEditor`'s own docblock always CLAIMED to
+follow `FieldEditor`'s own fields-table drag convention, but the actual
+implementation put `draggable`/`onDragStart` on the whole row `<div>`,
+not just the "⠿" handle -- `FieldEditor`'s own table already had this
+right (`draggable` lives only on its `.gateway-field-editor-grip` span).
+A `draggable="true"` ancestor intercepts the browser's own native text
+-selection/cursor-drag gesture inside a plain `<input>` nested under it
+(inputs don't automatically opt back out of an ancestor's own drag
+gesture), which is exactly what made editing a choice's Value/Label feel
+broken -- trying to select or drag-select text inside either input could
+instead start reordering the row. Fixed by moving `draggable`/
+`onDragStart` onto the handle span itself; the row keeps `onDragOver`/
+`onDrop` (it's still the whole row that's a valid DROP target -- HTML5
+drag-and-drop never requires `draggable` on a drop target, only on the
+element a drag is picked up FROM), so reordering still works exactly the
+same, just only initiated from the handle now. No CSS change needed --
+`.gateway-choices-editor-drag-col`'s own `cursor: grab` was already
+scoped to the handle span, never the row.
+
 ### Required fields
 
 A new plain boolean column on `gateway_fields`, `required` -- applies
