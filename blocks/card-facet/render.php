@@ -7,15 +7,27 @@
  * this needs about that parent -- sourceType, postType/collection, facets
  * -- arrives via block context (see gateway/data-cards's block.json
  * "providesContext" and this block's "usesContext"), which propagates
- * transitively through any number of intermediate blocks (gateway/
- * data-cards-facets, -header, or -footer, whichever this instance happens
- * to live in) that don't themselves override it -- this block doesn't
- * need to be a *direct* child of gateway/data-cards to see its context.
- * Unlike gateway/card-field-text, this block is never a descendant of
- * gateway/data-cards-body's own synthetic per-record wrapper (its allowed
- * homes are gateway/data-cards-facets/-header/-footer, or gateway/
- * data-cards itself directly -- never -body), so this context is always
- * the real thing, propagated normally.
+ * transitively through any number of intermediate blocks that don't
+ * themselves override it -- this block doesn't need to be a *direct*
+ * child of gateway/data-cards to see its context.
+ *
+ * `block.json`'s own "ancestor" (not "parent") restriction reflects this
+ * directly: this block only requires SOME gateway/data-cards ancestor,
+ * at any depth, with no restriction at all on what sits directly around
+ * it -- a plain core/group ("Row"/"Stack"/whatever a site owner
+ * transforms it into), core/columns, or any other layout block. An
+ * earlier version restricted this to a small, fixed set of allowed
+ * DIRECT parents (a dedicated gateway/data-cards-facets zone -- since
+ * removed entirely -- or gateway/data-cards-header/-footer/itself)
+ * before this plugin started preferring real core blocks for layout over
+ * more bespoke container blocks of its own; see this plugin's own
+ * README for the fuller reasoning. The one thing that hasn't changed:
+ * this is still never expected as a descendant of gateway/data-cards
+ * -body's own synthetic per-record wrapper -- nothing technically stops
+ * it (context still resolves fine there too), but a per-record facet
+ * control has no coherent meaning; that's simply not a placement this
+ * block's own Inspector or documentation ever guides a site owner
+ * toward.
  *
  * A trimmed gateway/facet/render.php: gateway/facet also requires its
  * facet's field to be a currently *displayed column* (its DataTables

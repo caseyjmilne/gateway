@@ -9,12 +9,7 @@
 	"keywords": [ "facet", "filter", "search", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [
-		"gateway/data-cards-facets",
-		"gateway/data-cards",
-		"gateway/data-cards-header",
-		"gateway/data-cards-footer"
-	],
+	"ancestor": [ "gateway/data-cards" ],
 	"usesContext": [
 		"gateway/data-cards/sourceType",
 		"gateway/data-cards/postType",

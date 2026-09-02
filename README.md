@@ -2228,27 +2228,29 @@ the same relocated `FacetsPanel` -- including the exact same Default
 twice by `gateway/datatable/edit.js` -- also relocated to `shared/hooks/`)
 reconciles it against `isFilterable` fields the same way.
 
-### `gateway/data-cards-facets` (new zone) + `gateway/card-facet` (new block)
+### `gateway/card-facet` (new block)
 
-A fourth required, self-healing zone -- `gateway/data-cards-facets`, a
-direct copy of `gateway/datatable-facets`' own shape -- joins Header/Body/
-Footer as `gateway/data-cards`' own children, rendered first (Facets,
-Header, Body, Footer, matching the table family's fixed order exactly).
-It's the *encouraged* home for `gateway/card-facet` blocks, not the only
-one: per explicit request, `gateway/card-facet`'s own `block.json`
-`parent` also lists `gateway/data-cards`, `gateway/data-cards-header`, and
-`gateway/data-cards-footer` directly -- never `gateway/data-cards-body`
-(the repeated template), where a filter would render once per visible
-card with no well-defined way to reconcile conflicting values. Each of
-those three other homes' own `allowedBlocks`/`$allowed_names` (editor
-*and* render.php -- both need to agree, or the block silently never
-renders even if the inserter offers it) was updated to match. A loose
-`gateway/card-facet` dropped directly under `gateway/data-cards` itself
-(a sibling of the four named zones, not nested in any of them) is
-collected and rendered right after the Facets zone, regardless of where
-among the other zones it actually sits in the editor's own list --
-simpler and more predictable than preserving its exact interleaved
-position.
+Originally shipped alongside a fourth required, self-healing zone,
+`gateway/data-cards-facets` -- a direct copy of `gateway/datatable-facets`'
+own shape, joining Header/Body/Footer as `gateway/data-cards`' own
+children, rendered first. **That zone has since been removed entirely**
+(see "Preferring core blocks over bespoke containers" below) -- its one
+real job, "an editable InnerBlocks area for `gateway/card-facet`
+controls," is exactly what a plain `core/group` already does, so
+building and maintaining a bespoke Gateway block for it was never
+justified. `gateway/data-cards`' own initial `template` now seeds a
+`core/group` there instead (see that section below for the full
+reasoning), and `gateway/card-facet` itself now declares
+`"ancestor": ["gateway/data-cards"]` in its own `block.json` rather than
+a fixed `"parent"` list -- it can live anywhere inside a Data Cards
+block's own InnerBlocks tree, at any depth, inside whatever layout a
+site owner chooses, with no other placement restriction at all. The one
+placement that's still never sensible (though nothing technically
+prevents it) is nested inside `gateway/data-cards-body` (the repeated
+per-record template), where a filter would render once per visible card
+with no well-defined way to reconcile conflicting values -- not a hard
+restriction, just not a placement this block's own docs ever guide a
+site owner toward.
 
 `gateway/card-facet` itself is `gateway/facet/render.php` and `edit.js`
 minus the "is it a displayed column" half of every check (no counterpart
@@ -2423,12 +2425,14 @@ parameter, so a configured default value narrows the grid on first paint,
 exactly like the postType path.
 
 **`gateway/card-facet`** gains `gateway/data-cards/sourceType`/
-`gateway/data-cards/collection` in its own `usesContext` (it lives inside
-`gateway/data-cards-facets`/`-header`/`-footer`, or directly under
-`gateway/data-cards` itself -- never inside `gateway/data-cards-body`'s
-own synthetic per-record wrapper, so this context is always the real
-thing, propagated normally -- see `gateway/card-field-text`'s own section
-above for the contrasting case where it isn't). Its `edit.js`/`render.php`
+`gateway/data-cards/collection` in its own `usesContext` (it can live
+anywhere inside `gateway/data-cards`' own InnerBlocks tree, at any depth
+-- see "`gateway/card-facet` (new block)" above for its current
+placement rules -- context propagates transitively regardless, as long
+as it's never inside `gateway/data-cards-body`'s own synthetic per
+-record wrapper, so this context is always the real thing, propagated
+normally -- see `gateway/card-field-text`'s own section above for the
+contrasting case where it isn't). Its `edit.js`/`render.php`
 branch on `sourceType` to resolve a facet's column definition and its
 Select/Checkboxes options via `Column_Registry::get_column_for_collection()`/
 `Facet_Query::get_facet_options_for_collection()` in place of their
@@ -2700,6 +2704,77 @@ already carries. The `block.json` `layout` additions and the "no more
 stacking, arbitrary blocks insertable and render correctly" front-end
 behavior both need manual verification in a real block editor, the same
 caveat every other block-editor-only UI change in this plugin carries.
+
+### Preferring core blocks over bespoke containers: `gateway/data-cards-facets` removed
+
+Requested directly: "I'm realizing we made a mistake earlier building
+out our own container blocks instead of using core blocks. Let's begin
+to correct that. Remove Data Card Facets block completely. Instead
+update the template to include a row with left alignment. Use native
+core row there... The facet block should be ancestor of Data Card but
+that's the only restriction they can choose whatever layout for the
+facets." `gateway/data-cards-facets` was always a thin wrapper -- an
+editable InnerBlocks area with a button appender, nothing else -- around
+whatever `gateway/card-facet` controls a site owner dropped into it.
+Once `gateway/data-cards`' own InnerBlocks area stopped being locked to
+a fixed list (see the follow-up section above), a real `core/group`
+already does everything that zone ever did, with none of the
+maintenance cost of a bespoke block.
+
+- **`blocks/data-cards-facets/` deleted outright** -- `block.json`,
+  `render.php`, every `src/*.js`, `build/*`, all of it. No PHP
+  registration list needed updating (`Block_Loader::register_blocks()`
+  globs `blocks/*` directories directly), and no other PHP class ever
+  referenced its name.
+- **`gateway/data-cards`'s own initial `template` seeds a plain
+  `core/group` instead**, with the exact attributes core's own "Row"
+  transform produces (confirmed against `packages/block-library/src/
+  group/variations.js` in a `wordpress/gutenberg` checkout: `layout: {
+  type: 'flex', flexWrap: 'nowrap' }`) plus an explicit `justifyContent:
+  'left'` for the requested left alignment (matching the removed zone's
+  own default, unset-justify-content, flex-start-by-browser-default
+  layout, just made explicit rather than incidental). Left empty --
+  same "start empty, add facets via +" convention the removed zone's own
+  `ButtonBlockAppender` already had. **Not** one of the four required,
+  self-healing zones (`REQUIRED_BLOCKS`): a plain `core/group` is
+  ordinary, freely replaceable content from here on, exactly like any
+  other block a site owner might add -- `templateLock: false` (already
+  the setting for everything else in this template) means a site owner
+  can transform it to a Stack, turn it into Columns, or delete it
+  outright, per a direct request: "user should be able to replace that
+  block... they may choose a stack."
+- **`gateway/card-facet`'s own `block.json` swaps `"parent"` for
+  `"ancestor": ["gateway/data-cards"]`.** It used to require being a
+  DIRECT child of one of four specific blocks (the removed Facets zone,
+  Header, Footer, or `gateway/data-cards` itself); now it only requires
+  SOME `gateway/data-cards` ancestor, at any depth, inside whatever
+  layout a site owner chooses -- the requested "ancestor of Data Card...
+  that's the only restriction, they can choose whatever layout." Context
+  (`gateway/data-cards/sourceType`/`postType`/`collection`/`facets`)
+  already propagated transitively through any number of intermediate
+  blocks regardless of nesting depth (confirmed true before this change
+  too, since it already worked nested one level inside Header/Footer) --
+  nothing about resolving it needed to change, only the placement
+  restriction itself. `gateway/data-cards-header`/`-footer` still list
+  it in their OWN, separately-chosen `allowedBlocks` (unrelated to
+  `gateway/card-facet`'s own restriction, and unchanged by this) -- a
+  site owner can still choose to put a facet control there specifically,
+  it's just no longer the ancestor rule doing the restricting.
+
+Verified via `php -l` on the one touched PHP file (`gateway/card-facet/render.php`,
+docblock only -- the actual context-resolution logic needed no code
+changes), `python3 -m json.tool` on both touched `block.json` files, a
+clean run of the full existing PHP regression suite (unaffected --
+nothing in it ever exercised `gateway/data-cards-facets`, per this
+project's own "no real `WP_Block` tree" testing limitation already
+documented throughout this family), and a successful production build
+confirming the deleted block's entry disappeared from the compiled
+output with no dangling reference anywhere else in the bundle. The
+actual editor experience -- the seeded Row appearing on a fresh Data
+Cards insert, transforming it to a Stack, dropping a `gateway/card-facet`
+control at any depth inside it -- needs manual verification in a real
+block editor, the same caveat every other block-editor-only UI change in
+this plugin carries.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 

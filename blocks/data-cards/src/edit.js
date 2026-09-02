@@ -13,40 +13,55 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from '../../shared/hooks/use-reconcile-field-list';
 import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-blocks';
 
-// The entire front-end contract, in order: Facets above everything,
-// Header (Page Size + Search) next, the grid itself, Empty (shown only
-// when the grid currently has nothing to display -- see gateway/
-// data-cards-empty's own render.php), then Footer (Results +
-// Pagination) -- mirrors gateway/datatable's own four zones, plus this
-// one addition (see README.md for the "why" behind reusing the table's
-// own top-level Facets panel/Default-value UI here, just without its
-// "displayed column" gate). useRequiredInnerBlocks() keeps exactly these
-// five present (inserting whichever are missing, without touching any
-// that already exist) -- see that hook's own docblock for why, over a
-// locked `template`/`templateLock: 'all'`. gateway/data-cards-empty was
+// The entire front-end contract, in order: Header (Page Size + Search),
+// the grid itself, Empty (shown only when the grid currently has nothing
+// to display -- see gateway/data-cards-empty's own render.php), then
+// Footer (Results + Pagination) -- mirrors gateway/datatable's own zones
+// (see README.md for the "why" behind reusing the table's own top-level
+// Facets panel/Default-value UI here, just without its "displayed
+// column" gate). useRequiredInnerBlocks() keeps exactly these four
+// present (inserting whichever are missing, without touching any that
+// already exist) -- see that hook's own docblock for why, over a locked
+// `template`/`templateLock: 'all'`. gateway/data-cards-empty was
 // originally left OUT of this list (opt-in only, never seeded into the
 // `template` below) -- reversed per direct, explicit follow-up
 // feedback: "Data Cards Empty should be in the template and auto added
 // when we drop in Data Cards." A site owner who genuinely doesn't want
 // the feature can still empty out its OWN InnerBlocks content (render.php
 // renders nothing at all once `$content` is blank -- see that file's own
-// docblock); only the wrapper zone itself, like Header/Footer/Facets/Body
+// docblock); only the wrapper zone itself, like Header/Footer/Body
 // before it, is never removable outright.
+//
+// There used to be a FIFTH required zone here, gateway/data-cards-facets
+// -- a bespoke container block whose only real job was "an editable
+// InnerBlocks area, holding gateway/card-facet controls." Removed
+// entirely: a plain `core/group` (transformable to Row/Stack/whatever a
+// site owner wants) already does exactly that, and this plugin was
+// building its own narrow container blocks in places a real core block
+// already covers -- see "Preferring core blocks over bespoke containers"
+// in README.md for the fuller reasoning. Its own front-end role (a
+// left-aligned row of facet controls above the grid) is now just a
+// `template`-seeded `core/group` -- see below -- not a required, self
+// -healing zone: it's ordinary, freely replaceable content from here on,
+// exactly like any other block a site owner might add.
 const REQUIRED_BLOCKS = [
-	'gateway/data-cards-facets',
 	'gateway/data-cards-header',
 	'gateway/data-cards-body',
 	'gateway/data-cards-empty',
 	'gateway/data-cards-footer',
 ];
 
-// gateway/card-facet stays optional and repeatable, unlike the five
-// zones above (one of its three allowed homes -- its own block.json's
-// own "parent" -- is directly here, as a sibling of the five zones; the
-// other two are inside gateway/data-cards-header/-footer, see each
-// one's own edit.js), so it's never added to REQUIRED_BLOCKS --
-// useRequiredInnerBlocks() would otherwise self-heal a removed one right
-// back.
+// gateway/card-facet stays optional and repeatable, unlike the four
+// zones above, so it's never added to REQUIRED_BLOCKS -- useRequiredInnerBlocks()
+// would otherwise self-heal a removed one right back. It's also no
+// longer restricted to a fixed set of allowed DIRECT parents at all --
+// its own block.json now declares `"ancestor": ["gateway/data-cards"]`
+// instead of a `"parent"` list, so it can live anywhere inside a Data
+// Cards block's own InnerBlocks tree, at any depth, inside whatever
+// layout a site owner chooses (the `core/group` row seeded below, a
+// Stack, Columns, directly loose here, wherever) -- "ancestor of Data
+// Cards" is now the ONLY placement restriction it has, per a direct
+// request.
 //
 // No `allowedBlocks` is passed to useInnerBlocksProps() below at all --
 // an earlier version restricted this block's own InnerBlocks to exactly
@@ -54,9 +69,9 @@ const REQUIRED_BLOCKS = [
 // could never add a plain layout block (a Row/Group, a Heading, ...)
 // directly here. Reported directly: "Data Cards should allow more items
 // to be added in case user wants to add rows or other core blocks."
-// Every one of the five zones (plus gateway/card-facet) still only
-// belongs here at all via ITS OWN block.json's own "parent" restriction
-// -- removing this list doesn't weaken that, it only stops blocking
+// Every one of the four zones (plus gateway/card-facet) still only
+// belongs here at all via ITS OWN block.json's own restriction --
+// removing this list doesn't weaken that, it only stops blocking
 // everything else.
 
 /**
@@ -111,7 +126,21 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		// No `allowedBlocks` here at all, deliberately -- see the
 		// gateway/card-facet comment above for why.
 		template: [
-			[ 'gateway/data-cards-facets', {} ],
+			// A plain core/group, seeded as its own "Row" variation
+			// (`layout: { type: 'flex', flexWrap: 'nowrap', justifyContent:
+			// 'left' }` -- the exact attributes core's own Row transform
+			// produces, confirmed against `packages/block-library/src/
+			// group/variations.js` in a `wordpress/gutenberg` checkout)
+			// left empty for a site owner to drop gateway/card-facet
+			// controls into -- the direct replacement for the old,
+			// bespoke gateway/data-cards-facets container block. Ordinary,
+			// freely replaceable/transformable content from here on
+			// (`templateLock: false` below, same as everything else in
+			// this template) -- a site owner can turn it into a Stack, a
+			// Columns block, or delete it outright, per a direct request:
+			// "user should be able to replace that block... they may
+			// choose a stack."
+			[ 'core/group', { layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' } }, [] ],
 			[
 				'gateway/data-cards-header',
 				{},
