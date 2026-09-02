@@ -291,12 +291,23 @@ interface Field_Type {
 	 * into the one set of keys a given type's `settings` may ever contain.
 	 *
 	 * `true` for `Text_Field_Type`, `Number_Field_Type`, `Range_Field_Type`,
-	 * `Email_Field_Type`, and `URL_Field_Type` today -- a default makes
-	 * little sense for a Choice type (its own choices list already offers
-	 * a natural "pick one" default the UI doesn't have yet) or a Relate
-	 * field (a default related record raises its own set of questions --
-	 * does it still exist, is it still valid -- this doesn't attempt to
-	 * answer). `false` for every other built-in type.
+	 * `Email_Field_Type`, `URL_Field_Type`, and -- per a direct request
+	 * ("all of the choices field types need to have default value
+	 * option... the default can be either none or one of the choices
+	 * chosen from a select") -- every `Choice_Field_Type` implementer
+	 * (`Buttons_Field_Type`/`Select_Field_Type`/`Radio_Field_Type`/
+	 * `Checkbox_Field_Type`) today. An earlier version of this docblock
+	 * reasoned a default made little sense for a Choice type "since its
+	 * own choices list already offers a natural 'pick one' default the UI
+	 * doesn't have yet" -- true only until that UI actually got built:
+	 * `FieldEditor.jsx`'s own General tab now renders a `<select>` (not
+	 * the plain text/number input every other type here gets) offering
+	 * "— None —" plus each of the field's own current choices, so a
+	 * default here is always exactly one real, currently-offered choice
+	 * or none, never a stray value the choices list doesn't recognize.
+	 * `false` still for a Relate field (a default related record raises
+	 * its own set of questions -- does it still exist, is it still valid
+	 * -- this doesn't attempt to answer) and every other built-in type.
 	 *
 	 * @return bool
 	 */

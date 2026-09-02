@@ -110,7 +110,7 @@ class Buttons_Field_Type implements Choice_Field_Type {
 	 * @inheritDoc
 	 */
 	public static function supports_default_value() {
-		return false;
+		return true;
 	}
 
 	/**

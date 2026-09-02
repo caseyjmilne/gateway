@@ -217,15 +217,34 @@ const normalizeSettings = ( settings ) =>
  * is both the more natural order for a site owner filling this out top
  * to bottom, and what those other inputs' own type-dependent rendering
  * (the relationship picker in place of Name for a relate type, the
- * Default Value input switching between text/number below) already
- * implicitly assumes; directly under Label, when the picked type's own
- * `supports_default_value` is true -- Text, Number, and Range today -- a
- * Default Value input, applied by `RecordForm` as the initial value of
- * its own "Add New" form and nowhere else, with its own small "Appears
- * when creating a new record." note underneath; Image and File are the
- * two types whose General tab looks different again -- no Default Value
- * at all for either (`supports_default_value` false; there's no
- * sensible "default attachment" for a brand new record to start from),
+ * Default Value input switching between text/number/a choices `<select>`
+ * below) already implicitly assumes; directly under Label, when the
+ * picked type's own `supports_default_value` is true -- Text, Number,
+ * Range, and (per a direct request: "all of the choices field types
+ * need to have default value option... the default can be either none
+ * or one of the choices chosen from a select") Buttons/Select/Radio/
+ * Checkbox today -- a Default Value control, applied by `RecordForm` as
+ * the initial value of its own "Add New" form and nowhere else, with its
+ * own small "Appears when creating a new record." note underneath. For
+ * one of the four Choice types (`editHasChoices`, the exact same flag
+ * `ChoicesEditor`'s own rendering below is gated on), this is a
+ * `<select>` instead of a plain text/number input -- "— None —" plus
+ * every one of `editChoices`' own CURRENT, live, non-blank rows (already
+ * watched at the top of this component, the exact same `choices` state
+ * `ChoicesEditor` itself is bound to, so adding/renaming/removing a
+ * choice updates this list immediately, with no separate fetch or sync
+ * of its own) -- so a default can only ever be "none," or one of the
+ * choices actually offered right now, never a stray, mistyped value; the
+ * server's own generic `sanitize_settings()` trims/stores whatever
+ * string `settings.default` holds either way, the same tolerant
+ * treatment Number's own default (never validated as truly numeric)
+ * already gets, so a default that later goes stale (its own choice
+ * renamed/removed) is left as-is rather than actively scrubbed, same
+ * "tolerate staleness gracefully" precedent `RecordsCrud`'s own
+ * already-saved-value display already has. Image and File are the two
+ * types whose General tab looks different again -- no Default Value at
+ * all for either (`supports_default_value` false; there's no sensible
+ * "default attachment" for a brand new record to start from),
  * but, gated on the picked type's own `supports_media_settings`
  * (Image)/`supports_file_settings` (File) instead, a Return Format
  * `<select>` sharing the same three underlying values and the same
@@ -1330,7 +1349,24 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 					{ editSupportsDefault && (
 						<label>
 							<span>Default Value</span>
-							{ 'number' === editType ? (
+							{ editHasChoices ? (
+								<select
+									className="regular-text"
+									{ ...register( 'settings.default' ) }
+								>
+									<option value="">— None —</option>
+									{ ( editChoices || [] )
+										.filter( ( choice ) => choice.value.trim() )
+										.map( ( choice ) => (
+											<option
+												key={ choice.value }
+												value={ choice.value }
+											>
+												{ choice.label || choice.value }
+											</option>
+										) ) }
+								</select>
+							) : 'number' === editType ? (
 								<input
 									type="number"
 									step="any"

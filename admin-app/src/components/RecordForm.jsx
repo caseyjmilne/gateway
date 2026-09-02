@@ -164,15 +164,27 @@ import PermalinkControl from './PermalinkControl.jsx';
  * `Model_Fields::validate_range_values()` on the server, this is only
  * what keeps the slider's own draggable range honest in the meantime.
  *
- * `settings.default` (`Field_Type::supports_default_value()`, currently
- * Text/Number/Range only -- FieldEditor's own General tab, not
- * Presentation) is different from the rest of `settings` in one way: it
- * only ever applies to a brand new record, never an existing one being
- * edited, so `initialValues` state's own initializer above checks
+ * `settings.default` (`Field_Type::supports_default_value()`, Text/
+ * Number/Range and, per a direct request, all four Choice types --
+ * Buttons/Select/Radio/Checkbox -- today; FieldEditor's own General tab,
+ * not Presentation) is different from the rest of `settings` in one way:
+ * it only ever applies to a brand new record, never an existing one
+ * being edited, so `initialValues` state's own initializer above checks
  * `!initialValues` (true only for "Add New" -- editing always passes a
  * real, even if blank, `initialValues`) before falling back to it,
  * rather than reading it unconditionally the way
- * `instructions`/`placeholder`/etc. do.
+ * `instructions`/`placeholder`/etc. do. Buttons/Select/Radio all read it
+ * through that exact same generic fallback branch, unchanged -- their
+ * own `existing` value is a plain string either way, no different from
+ * Text/Number. `checkboxes` (the multi-Checkbox type) is the one
+ * exception: it has its own EARLIER branch (a real, saved value is
+ * always an array, `existing` never reaches the generic fallback below
+ * at all), so applying a Default Value for it needed its own explicit
+ * check instead -- wrapped as a single-element array
+ * (`[ field.settings.default ]`), since FieldEditor's own new `<select>`
+ * for this only ever configures "none, or ONE of the choices," never
+ * several, even for a field whose own real saved value is otherwise a
+ * whole array.
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -350,9 +362,21 @@ export default function RecordForm( {
 			} else if ( 'relate_many' === inputType ) {
 				initial[ field.name ] = existing || [];
 			} else if ( 'checkboxes' === inputType ) {
-				initial[ field.name ] = Array.isArray( existing )
-					? existing
-					: [];
+				if ( Array.isArray( existing ) ) {
+					initial[ field.name ] = existing;
+				} else if ( ! initialValues && field.settings?.default ) {
+					// Same "Add New only" Default Value convention every
+					// other type has (see this component's own docblock) --
+					// but as a single pre-checked value, not several: a
+					// Default Value is always "none, or ONE of the
+					// choices," the same singular vocabulary FieldEditor's
+					// own new `<select>` for it already enforces, even
+					// though this field type's own real, saved value is
+					// otherwise a whole array.
+					initial[ field.name ] = [ field.settings.default ];
+				} else {
+					initial[ field.name ] = [];
+				}
 			} else if ( 'boolean' === inputType ) {
 				initial[ field.name ] = Boolean( existing );
 			} else if ( 'permalink' === inputType ) {

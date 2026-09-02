@@ -5353,6 +5353,13 @@ same, just only initiated from the handle now. No CSS change needed --
 `.gateway-choices-editor-drag-col`'s own `cursor: grab` was already
 scoped to the handle span, never the row.
 
+**Buttons/Select/Radio/Checkbox each support a Default Value too**, per
+a direct request -- "none, or one of the choices," picked from a
+`<select>` on the General tab that's always built from the field's own
+current choices. See "Default value" below for the full detail (why
+True/False stays excluded, how `RecordForm` applies it, and the one
+`checkboxes`-specific wrinkle of wrapping a single value in an array).
+
 ### Required fields
 
 A new plain boolean column on `gateway_fields`, `required` -- applies
@@ -5753,69 +5760,115 @@ for the PHP fix.
 
 ### Default value
 
-A Text, Number, Range, Email, or URL field can be given a default value
--- what a brand new record starts out with, not how the field is
-displayed, which is why it lives in **General**, directly under Label,
-rather than alongside instructions/placeholder/step/prepend/append in
-Presentation. It's shown with its own small note underneath, "Appears
-when creating a new record.", and only ever actually applies there:
-editing an existing record always shows that record's own real (even if
-blank) value, never silently replaced by the field's configured default.
-For Range specifically, this is a starting position for the slider --
-exactly the same idea as a Number field's own default, just for a
-control that otherwise always starts at whatever a bare
-`<input type="range">` defaults to (`0`, or its own `min` if higher).
-Email/URL are presentationally just another single-line string, so a
-default there is the same idea again -- e.g. pre-filling a "Reply to"
-field with the site owner's own address, or a "Website" field with their
-own domain. **Password is the deliberate exception** despite being
-presentationally identical to Text/Email/URL otherwise (it gets
-Placeholder/Prepend/Append same as they do) -- a default PASSWORD
-pre-filling every new record raises the exact "is this actually secret
-if it's the same guessable value on every unfilled record" question a
-default value doesn't raise for an ordinary string, so
+A Text, Number, Range, Email, URL, or Choice (Buttons/Select/Radio/
+Checkbox) field can be given a default value -- what a brand new record
+starts out with, not how the field is displayed, which is why it lives
+in **General**, directly under Label, rather than alongside
+instructions/placeholder/step/prepend/append in Presentation. It's shown
+with its own small note underneath, "Appears when creating a new
+record.", and only ever actually applies there: editing an existing
+record always shows that record's own real (even if blank) value, never
+silently replaced by the field's configured default. For Range
+specifically, this is a starting position for the slider -- exactly the
+same idea as a Number field's own default, just for a control that
+otherwise always starts at whatever a bare `<input type="range">`
+defaults to (`0`, or its own `min` if higher). Email/URL are
+presentationally just another single-line string, so a default there is
+the same idea again -- e.g. pre-filling a "Reply to" field with the site
+owner's own address, or a "Website" field with their own domain.
+**Password is the deliberate exception** despite being presentationally
+identical to Text/Email/URL otherwise (it gets Placeholder/Prepend/
+Append same as they do) -- a default PASSWORD pre-filling every new
+record raises the exact "is this actually secret if it's the same
+guessable value on every unfilled record" question a default value
+doesn't raise for an ordinary string, so
 `Password_Field_Type::supports_default_value()` stays `false`.
 
-**`Field_Type::supports_default_value()`** (new interface method) is a
+**Choice types (Buttons/Select/Radio/Checkbox) support a default value
+too**, per a direct request: "all of the choices field types need to
+have default value option. The record editor should respect the default
+set. The default can be either none or one of the choices chosen from a
+select." An earlier version of this section reasoned a default made
+little sense for a Choice type "since its own choices list already
+offers a natural 'pick one' default the UI doesn't have yet" -- true only
+until that UI actually got built (see below). `True_False_Field_Type` is
+deliberately excluded from this even though it superficially looks
+choice-like: its own docblock is explicit that it is NOT a
+`Choice_Field_Type` (a fixed boolean, no configurable choices list to
+default into), so it keeps `supports_default_value() => false`,
+unchanged.
+
+**`Field_Type::supports_default_value()`** (interface method) is a
 second, separate whitelist alongside `presentation_fields()` -- `true`
 for `Text_Field_Type`/`Number_Field_Type`/`Range_Field_Type`/
-`Email_Field_Type`/`URL_Field_Type` today,
-`false` for every other built-in type, including `Password_Field_Type`
-(per above) -- a default makes little sense for a Choice type, whose own
-choices list already offers a natural "pick one," or a Relate field,
-where a default related record raises its own questions -- does it
-still exist, is it still valid -- this doesn't attempt to answer. The
-two methods are kept separate because they answer different questions
-(which Presentation-tab inputs to show vs. whether a default value makes
-sense for this type at all) and render in different tabs, but a default
-value is stored no differently a *shape* of data than a placeholder is --
-so `Model_Fields::sanitize_settings()` merges both into one combined
+`Email_Field_Type`/`URL_Field_Type` and, now, every real
+`Choice_Field_Type` implementer (`Buttons_Field_Type`/
+`Select_Field_Type`/`Radio_Field_Type`/`Checkbox_Field_Type`), `false`
+for every other built-in type, including `Password_Field_Type` (per
+above), `True_False_Field_Type` (per above), and a Relate field, where a
+default related record raises its own questions -- does it still exist,
+is it still valid -- this doesn't attempt to answer. The two methods are
+kept separate because they answer different questions (which
+Presentation-tab inputs to show vs. whether a default value makes sense
+for this type at all) and render in different tabs, but a default value
+is stored no differently a *shape* of data than a placeholder is -- so
+`Model_Fields::sanitize_settings()` merges both into one combined
 whitelist (`presentation_fields()`'s own list, plus `'default'` when
 `supports_default_value()` is true) before filtering a field's raw
 `settings`, and the same one `gateway_fields.settings` JSON column holds
-`default` right alongside placeholder/step/prepend/append/instructions.
-`Field_Type_Registry::describe_all()` exposes `supports_default_value`
-per type, the same way it exposes `presentation_fields`.
+`default` right alongside placeholder/step/prepend/append/instructions,
+with the SAME generic `sanitize_text_field(trim(...))` applied
+regardless of type -- no type-specific validation of a default's actual
+value (a Choice type's default isn't checked server-side against its
+current choices list any more than Number's is checked to be truly
+numeric). `Field_Type_Registry::describe_all()` exposes
+`supports_default_value` per type, the same way it exposes
+`presentation_fields`.
 
 **The admin app.** `FieldEditor`'s General tab shows the Default Value
 input only when the currently-picked type's own `supports_default_value`
 is true, registered as `settings.default` -- the same RHF field object
 Presentation's own inputs live in, just a different key -- so it
-autosaves exactly like everything else here, and switches between a
+autosaves exactly like everything else here. For a Choice type (the same
+`editHasChoices` flag that already gates `ChoicesEditor` itself), this
+renders as a `<select>` instead of a plain input -- "— None —" plus one
+`<option>` per the field's own currently-configured choices, built
+straight from the already-live-watched `choices` array `ChoicesEditor`
+itself edits, so the option list updates the moment a choice is renamed
+or removed, with no separate fetch of its own. This is what keeps a
+Choice default constrained to "none, or one of the choices" entirely at
+entry time, without needing any new server-side validation: the
+`<select>` simply never offers a value that isn't real. A default that
+goes stale later (its choice renamed or deleted after being set) is left
+as-is rather than silently cleared -- the same "tolerate staleness
+gracefully" precedent `RecordsCrud`'s own already-saved-value display
+already follows when a stored value's label no longer matches. For every
+non-Choice type that supports a default, this still switches between a
 plain text input and a real `<input type="number" step="any">` right
-along with the picked Type, same as every other type-dependent part of
-this form. General's own tab-heading dot now reflects *either* a
-non-blank Default Value *or* a non-blank Choices list (previously just
-Choices) -- and, in the other direction, Presentation's own dot is
-computed only from the keys `presentation_fields()` actually returns for
-the current type, not every key `settings` happens to hold, so a
-Default Value configured on a Text field never falsely lights up its
-Presentation tab too.
+along with the picked Type, same as before. General's own tab-heading
+dot now reflects *either* a non-blank Default Value *or* a non-blank
+Choices list (previously just Choices) -- and, in the other direction,
+Presentation's own dot is computed only from the keys
+`presentation_fields()` actually returns for the current type, not every
+key `settings` happens to hold, so a Default Value configured on a Text
+field never falsely lights up its Presentation tab too.
 
 `RecordForm` applies `field.settings.default` as a field's initial value
 only when `initialValues` itself is entirely absent -- true "Add New,"
 never an edit of an existing record, which always passes a real (even if
-blank) `initialValues` object of its own.
+blank) `initialValues` object of its own. Buttons/Select/Radio all read
+this through that exact same generic fallback -- their own `existing`
+value is a plain string either way, no different from Text/Number, so
+none of them needed any code changes of their own to gain this.
+`checkboxes` (the multi-Checkbox type) is the one exception: it has its
+own earlier, dedicated branch in `initialValues`'s own initializer (a
+real, saved value there is always an array, so `existing` never reaches
+the generic fallback at all), so applying a Default Value for it needed
+its own explicit check, applied as a single-element array
+(`[ field.settings.default ]`) -- since the General tab's own `<select>`
+for this only ever configures "none, or ONE of the choices," never
+several, even for a field whose own real saved value is otherwise a
+whole array.
 
 ### Character limit
 
