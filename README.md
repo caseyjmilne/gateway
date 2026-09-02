@@ -5452,6 +5452,44 @@ vertically instead of side by side -- the wrapping div sidesteps that
 entirely, since the grid's child selector only reaches its own direct
 children, never the toggle `<label>` nested one level deeper inside it.
 
+**A second real bug, reported directly: "there is a bug in the true
+false toggle, when I click it the form is removed from the modal...
+its something to do with styling, almost like the toggle covers the
+entire form"** -- confirmed via the reporter's own DevTools inspection
+(disabling `position: absolute` on the offending element made the form
+reappear). `.gateway-toggle` (the label wrapping the actual, invisible
+`<input type="checkbox">` and its visible `.gateway-toggle-slider`
+sibling) never had `position: relative` of its own. That checkbox is
+`position: absolute`, and it's also a FLEX ITEM (`.gateway-toggle` is
+`display: inline-flex`) -- per the flexbox spec, an absolutely
+-positioned flex item is taken OUT of flex layout entirely, and its
+containing block falls back to whatever the nearest ACTUALLY positioned
+ancestor further up the tree happens to be, since `.gateway-toggle`
+itself was never one. For every use of this component up to now
+(Required, this same Show Toggle switch, Conditional Logic), that
+accidentally worked out fine -- nothing between them and the page root
+is positioned either, so the checkbox just stayed roughly where it
+visually belonged. `RecordForm`'s own real record-editing toggle
+(rendered for a True/False field with Show Toggle on) is the FIRST use
+of this component ever rendered inside a `position: fixed` ancestor
+(`.gateway-modal-overlay`, the Add/Edit Record modal's own dimmed
+backdrop) -- with no LOCAL containing block of its own to anchor
+against, the checkbox ended up positioned (and sized) against that far
+-away fixed ancestor instead of its own small label, invisibly
+(`opacity: 0`) covering the rest of the form and intercepting every
+click meant for the fields underneath it -- exactly matching "no
+errors, the modal itself stays open, but the form disappears and
+nothing responds," since the checkbox was still there, just now the
+size of the whole modal instead of 1px. A plain, non-toggle checkbox
+(`.gateway-record-form-choice`, Show Toggle off -- confirmed unaffected)
+was never `position: absolute` at all, which is exactly why only the
+toggle-switch rendering broke. Fixed with one declaration --
+`.gateway-toggle { position: relative; }` -- giving the checkbox (and
+`.gateway-toggle-slider`'s own `::before` knob) a real, LOCAL containing
+block to stay confined to, the standard way this exact
+hidden-checkbox-plus-visible-slider toggle pattern is supposed to be
+built in the first place.
+
 ### Required fields
 
 A new plain boolean column on `gateway_fields`, `required` -- applies

@@ -274,6 +274,33 @@
 }
 
 .gateway-admin-app .gateway-toggle {
+	/* `position: relative` -- this label is what its own absolutely
+	 * -positioned children (the hidden `input[type='checkbox']` below,
+	 * and `.gateway-toggle-slider`'s own `::before` knob) are actually
+	 * supposed to be positioned against. Without it, an absolutely
+	 * -positioned FLEX ITEM (this label is `display: inline-flex`) is
+	 * taken out of flex layout and its containing block falls back to
+	 * whatever the nearest ACTUALLY positioned ancestor further up the
+	 * tree happens to be -- for every use of this component up to now
+	 * (Required/Show Toggle/Conditional Logic, all on a plain,
+	 * unpositioned page), that accidentally worked out fine since
+	 * nothing between them and the page root is positioned either.
+	 * `RecordForm`'s own real record-editing toggle is the FIRST use of
+	 * this component ever rendered inside a `position: fixed` ancestor
+	 * (`.gateway-modal-overlay`) -- a real bug, reported directly
+	 * ("there is a bug in the true false toggle, when I click it the
+	 * form is removed from the modal... its something to do with
+	 * styling, almost like the toggle covers the entire form"),
+	 * confirmed via the reporter's own DevTools inspection (disabling
+	 * `position: absolute` on the offending element made the form
+	 * reappear): with no local containing block of its own, the
+	 * absolutely-positioned checkbox ended up sized/positioned against
+	 * that FAR ancestor instead of this small label, visually (if
+	 * invisibly, `opacity: 0`) covering the rest of the form and
+	 * intercepting clicks meant for it. A plain, non-toggle checkbox
+	 * (never absolutely positioned at all, see `.gateway-record-form-choice`
+	 * above) was never affected by this. */
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
