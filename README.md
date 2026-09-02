@@ -5443,6 +5443,33 @@ current choices. See "Default value" below for the full detail (how
 `RecordForm` applies it, and the one `checkboxes`-specific wrinkle of
 allowing several values in an array).
 
+**A real bug, reported directly: "on choice fields default value is
+mangled, see needs space after other field"** -- and, on a single
+-select type specifically, a follow-up: "this one is even worse, select
+is inline between text." Every OTHER `<label>` in this component's own
+General/Presentation tabs gets stacked `display: flex; flex-direction:
+column` layout (label text, then its control, then its own description,
+each on their own line) from `.gateway-field-editor-form-grid > label`
+-- but a Choice type's own Default Value `<label>` lives inside
+`.gateway-field-editor-choices-inline` instead (see "default value
+placement needs to be AFTER choices" above for why), a DIFFERENT
+container with no label styling of its own at all, so it fell back to
+the browser's own default inline flow -- label text, `<select>`, and
+description all running together on one line (worst for a plain
+single-select `<select>`, which has no height of its own to force a
+line break the way the multi-select's own taller listbox happened to).
+The SAME container also had no space at all between `ChoicesEditor`'s
+own "Add Choice" button and this label right after it, reading as
+"mangled"/overlapping. Fixed with two new rules,
+`.gateway-field-editor-choices-inline > label` (the same stacked layout
+every other label already gets, plus its own `margin-top` to separate
+it from "Add Choice" above) and `.gateway-field-editor-choices-inline >
+label .description` (resetting the description text back to normal
+weight). Verified with Playwright screenshots (against a temporary,
+uncommitted harness) of both the single-select and multi-select cases,
+each now showing a clean, stacked layout with real spacing above it.
+`admin-app` rebuilt via `npm run build` (vite), which compiled cleanly.
+
 **True/False gets its own small settings bundle, reported directly:
 "true false under general tab needs a 'Message' which will be displayed
 next to the checkbox or toggle. Under presentation show option 'Show
