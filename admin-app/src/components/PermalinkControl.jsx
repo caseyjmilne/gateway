@@ -97,7 +97,7 @@ export default function PermalinkControl( {
 					<code id={ id }>
 						{ ! hasSourceField
 							? '(no Source Field configured -- click Edit to set a slug manually)'
-							: autoSlug || '(fill in the tracked field above to generate a slug)' }
+							: autoSlug || '--' }
 					</code>{ ' ' }
 					<button
 						type="button"
