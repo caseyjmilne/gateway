@@ -6,6 +6,7 @@ import UserPicker from './UserPicker.jsx';
 import WysiwygEditor from './WysiwygEditor.jsx';
 import OEmbedPicker from './OEmbedPicker.jsx';
 import PermalinkControl from './PermalinkControl.jsx';
+import LinkPicker from './LinkPicker.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -134,6 +135,18 @@ import PermalinkControl from './PermalinkControl.jsx';
  * preview possible. `handleSubmit()` sends both keys together, since the
  * server needs the flag to know whether to take the submitted value
  * literally or recompute it fresh from `source_field`.
+ *
+ * "link" (Link_Field_Type) copies ACF's own Link field, per a direct
+ * request. Form state is `null` (no link) or `{url, title, target}` --
+ * exactly `Link_Field_Type::cast()`'s own shape, sent straight through
+ * to the payload unchanged (the generic fallback branch below already
+ * covers it; no reduction needed the way Image/File's own richer form
+ * state gets, since this type never stores a bare id in the first
+ * place). Renders as a `LinkPicker` -- see that component's own
+ * docblock for its "Insert/edit link" modal, copying WordPress's own
+ * classic popup, and for the one real limitation `return_format: 'url'`
+ * has for an EXISTING record being edited (Title/"open in a new tab"
+ * can't be recovered from a bare URL string alone).
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -454,6 +467,29 @@ export default function RecordForm( {
 				// already handled generically by "passed through
 				// unchanged" either way.
 				initial[ field.name ] = existing;
+			} else if ( 'link' === inputType ) {
+				// The real, stored shape is always the full
+				// {url, title, target} object (or null) -- unlike Image/
+				// File/User above, Link_Field_Type::cast() never stores a
+				// bare id in the first place, so there's no "id"
+				// return_format for this type at all. return_format
+				// 'url' still narrows an EXISTING record's own GET
+				// response down to a bare URL string, though -- and,
+				// unlike Image's own bare-id/bare-url cases, there's no
+				// follow-up request that could ever recover the Title/
+				// "open in new tab" info lost in that narrowing (no
+				// separate resource a URL alone identifies the way an
+				// attachment id does). Tolerated rather than treated as
+				// broken: a bare string here is shown as-is, with a blank
+				// Link Text and "same tab" -- LinkPicker.jsx's own
+				// "Add Link" still writes back the full object regardless,
+				// the same way editing an Image field with return_format
+				// 'id'/'url' still normalizes back to the full shape
+				// once anything about it is actually touched again.
+				initial[ field.name ] =
+					'string' === typeof existing
+						? { url: existing, title: '', target: '' }
+						: existing;
 			} else if (
 				null === existing &&
 				! initialValues &&
@@ -862,6 +898,17 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'link' === inputType && (
+							<LinkPicker
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -877,6 +924,7 @@ export default function RecordForm( {
 							'oembed' !== inputType &&
 							'user' !== inputType &&
 							'permalink' !== inputType &&
+							'link' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

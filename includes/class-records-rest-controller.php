@@ -979,6 +979,7 @@ class Records_REST_Controller {
 		$image_fields  = array();
 		$file_fields   = array();
 		$user_fields   = array();
+		$link_fields   = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
@@ -998,6 +999,10 @@ class Records_REST_Controller {
 			if ( $type_class && $type_class::supports_user_settings() ) {
 				$user_fields[] = $field;
 			}
+
+			if ( $type_class && $type_class::supports_link_settings() ) {
+				$link_fields[] = $field;
+			}
 		}
 
 		// At most one -- Field_Type::max_one_per_model() is what
@@ -1008,9 +1013,9 @@ class Records_REST_Controller {
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) && empty( $link_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $permalink_field ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $link_fields, $permalink_field ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -1025,6 +1030,7 @@ class Records_REST_Controller {
 					self::enrich_image_fields( $array, $image_fields );
 					self::enrich_file_fields( $array, $file_fields );
 					self::enrich_user_fields( $array, $user_fields );
+					self::enrich_link_fields( $array, $link_fields );
 					self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 					return $array;
@@ -1049,7 +1055,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $link_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -1093,6 +1099,7 @@ class Records_REST_Controller {
 				self::enrich_image_fields( $array, $image_fields );
 				self::enrich_file_fields( $array, $file_fields );
 				self::enrich_user_fields( $array, $user_fields );
+				self::enrich_link_fields( $array, $link_fields );
 				self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 				return $array;
@@ -1388,6 +1395,61 @@ class Records_REST_Controller {
 			'email'      => $user->user_email,
 			'avatar_url' => get_avatar_url( $user_id ),
 		);
+	}
+
+	/**
+	 * Link_Field_Type's own close sibling of `enrich_image_fields()`/
+	 * `enrich_file_fields()`/`enrich_user_fields()` above -- but the raw
+	 * stored value here is already the FULL shape (`Link_Field_Type::cast()`'s
+	 * own `{url, title, target}` object, or `null`), never a bare id
+	 * needing a database lookup to resolve into one -- there's no
+	 * WordPress object behind a Link the way an attachment or user id
+	 * is, so this only ever narrows that already-complete shape down to
+	 * a bare URL string when `return_format` asks for one, via
+	 * `resolve_link_value()`.
+	 *
+	 * @param array $array       A record's own toArray(), modified in place.
+	 * @param array $link_fields Every field on this model with
+	 *                            `supports_link_settings()` true (this
+	 *                            method's own caller already resolved
+	 *                            this once per `enrich_records()` call,
+	 *                            not per record).
+	 */
+	private static function enrich_link_fields( array &$array, array $link_fields ) {
+		foreach ( $link_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$return_format           = $field['settings']['return_format'] ?? 'array';
+			$array[ $field['name'] ] = self::resolve_link_value( $array[ $field['name'] ], $return_format );
+		}
+	}
+
+	/**
+	 * @param array|null $value         The raw, already-cast column value
+	 *                                    (`Link_Field_Type::cast()`'s own
+	 *                                    `{url, title, target}` shape, or
+	 *                                    `null` for no link configured).
+	 * @param string     $return_format One of 'array'/'url' (anything
+	 *                                    else, including missing/invalid,
+	 *                                    is treated as 'array' -- the same
+	 *                                    "invalid falls back to the rich
+	 *                                    shape, not an error" convention
+	 *                                    every other return_format
+	 *                                    already has).
+	 * @return array{url:string,title:string,target:string}|string|null
+	 */
+	public static function resolve_link_value( $value, $return_format ) {
+		if ( ! is_array( $value ) || empty( $value['url'] ) ) {
+			return null;
+		}
+
+		if ( 'url' === $return_format ) {
+			return $value['url'];
+		}
+
+		return $value;
 	}
 
 	/**

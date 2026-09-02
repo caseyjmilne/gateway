@@ -1127,6 +1127,16 @@ class Model_Fields {
 			$recognized_keys[] = 'show_toggle';
 		}
 
+		if ( $type_class::supports_link_settings() ) {
+			// Link_Field_Type's own -- reuses the exact same
+			// 'return_format' key/enum check Image/File/User's own
+			// bundles already share below (this type just never
+			// actually submits 'id', since a Link has no WordPress
+			// object id of its own the way an attachment or user does --
+			// FieldEditor.jsx's own radio pair never offers it).
+			$recognized_keys[] = 'return_format';
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {

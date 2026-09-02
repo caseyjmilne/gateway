@@ -655,6 +655,35 @@ interface Field_Type {
 	public static function supports_boolean_settings();
 
 	/**
+	 * Whether this type recognizes Link_Field_Type's own Return Value
+	 * setting -- per a direct request to "copy ACF link field type...
+	 * Configuration for link field is simply Link, link, Return Value,
+	 * Required, Instructions. The return value is either array or URL."
+	 * One key, `return_format`, on **General** -- the same key name (and
+	 * the same `Model_Fields::sanitize_settings()` enum check) Image/
+	 * File/User's own `supports_media_settings()`/`supports_file_settings()`/
+	 * `supports_user_settings()` bundles already share, just narrower: a
+	 * Link has no WordPress object id of its own to return the way an
+	 * attachment or user does, so `'id'` is never actually offered here
+	 * even though the shared enum check would technically still accept
+	 * it -- `FieldEditor.jsx`'s own `<select>` simply never renders that
+	 * option for this type. `'array'` (the default) resolves to
+	 * `{url, title, target}` -- the same three keys `cast()` itself
+	 * already normalizes every stored value into, ACF's own "Link Array"
+	 * shape; `'url'` resolves to just the bare URL string. Kept as its
+	 * own bundle rather than folded into `supports_media_settings()`'s
+	 * (which already recognizes `'return_format'`) because it shares
+	 * only that one key -- none of Image's own min/max width/height/
+	 * size/allowed-types Validation-tab settings apply to a Link at all.
+	 *
+	 * `true` only for `Link_Field_Type` today; `false` for every other
+	 * built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function supports_link_settings();
+
+	/**
 	 * Whether a model can ever have more than one field of this type at
 	 * once -- `true` only for `Permalink_Field_Type` today, per the
 	 * user's own explicit request: a model's own single-record URL

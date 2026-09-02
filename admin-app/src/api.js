@@ -136,3 +136,74 @@ export async function fetchWpPages( search = '' ) {
 		title: page.title && page.title.rendered ? page.title.rendered : `(#${ page.id })`,
 	} ) );
 }
+
+/**
+ * `LinkPicker.jsx`'s own "Or link to existing content" list -- copying
+ * ACF's own Link field, per a direct request. Same `wp/v2` REST
+ * namespace as `fetchWpPages()` above, just querying BOTH `wp/v2/pages`
+ * and `wp/v2/posts` in parallel and merging the results, since ACF's own
+ * modal offers both post types together in one list, distinguished only
+ * by `type` (`PermalinkEditor`'s own picker only ever needed Pages, one
+ * model's own single-record template page, so `fetchWpPages()` itself
+ * stays narrower rather than gaining a post-type param nothing else uses
+ * yet). `status: 'publish'` -- only content a site visitor could actually
+ * land on is worth offering to link to, unlike `fetchWpPages()`'s own
+ * `status: 'any'` (a Template Page picker is an admin-only concern,
+ * where a still-draft page is a perfectly reasonable pick).
+ *
+ * A request search's own failure is swallowed to an empty array for
+ * that one post type rather than thrown -- one endpoint erroring (a
+ * custom post-type-removed `posts` route on some unusual install, e.g.)
+ * shouldn't block the other's own results from showing.
+ *
+ * Sorted newest-first and capped at a generous but bounded count -- this
+ * is a quick "recent items" picker, not a fully paginated browse of
+ * every page/post a large site has, the same "short list of candidates"
+ * scope `fetchWpPages()`'s own docblock already accepts.
+ *
+ * @param {string} search Optional title search string.
+ * @return {Promise<Array<{id: number, type: 'page'|'post', title: string, link: string, date: string}>>}
+ */
+export async function searchLinkableContent( search = '' ) {
+	const params = new URLSearchParams( {
+		per_page: '20',
+		status: 'publish',
+		orderby: 'date',
+		order: 'desc',
+		_fields: 'id,type,title,link,date',
+	} );
+	if ( search.trim() ) {
+		params.set( 'search', search.trim() );
+	}
+
+	const results = await Promise.all(
+		[ 'pages', 'posts' ].map( async ( endpoint ) => {
+			try {
+				const response = await fetch(
+					`${ config.wpApiUrl }wp/v2/${ endpoint }?${ params.toString() }`,
+					{ headers: { 'X-WP-Nonce': config.nonce } }
+				);
+
+				if ( ! response.ok ) {
+					return [];
+				}
+
+				return await response.json();
+			} catch {
+				return [];
+			}
+		} )
+	);
+
+	return results
+		.flat()
+		.map( ( item ) => ( {
+			id: item.id,
+			type: item.type,
+			title: item.title && item.title.rendered ? item.title.rendered : `(#${ item.id })`,
+			link: item.link,
+			date: item.date,
+		} ) )
+		.sort( ( a, b ) => new Date( b.date ) - new Date( a.date ) )
+		.slice( 0, 20 );
+}

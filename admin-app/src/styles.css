@@ -385,6 +385,22 @@
 	flex-wrap: wrap;
 }
 
+.gateway-admin-app .gateway-field-editor-radio-row {
+	/* Link_Field_Type's own Return Value -- two radio options side by
+	 * side, copying ACF's own Link field UI, rather than stacked the
+	 * way `.gateway-field-editor-form-field`'s own `flex-direction:
+	 * column` would otherwise leave them. */
+	display: flex;
+	gap: 16px;
+}
+
+.gateway-admin-app .gateway-field-editor-radio-row label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-weight: normal;
+}
+
 .gateway-admin-app .gateway-field-editor-media-bounds {
 	display: flex;
 	flex-direction: column;
@@ -1265,4 +1281,141 @@
 .gateway-admin-app .gateway-columns-config__empty {
 	font-style: italic;
 	color: #757575;
+}
+
+/* LinkPicker.jsx -- ACF's own Link field, copied per a direct request.
+ * "after selection of link" reference: a bordered row -- Title, then the
+ * URL as a real clickable link, then a pencil (edit) and × (remove). */
+.gateway-admin-app .gateway-link-picker-value {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 100%;
+	padding: 6px 10px;
+	border: 1px solid #dcdcde;
+	border-radius: 3px;
+	background: #f6f7f7;
+}
+
+.gateway-admin-app .gateway-link-picker-title {
+	font-weight: 600;
+}
+
+.gateway-admin-app .gateway-link-picker-value a {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gateway-admin-app .gateway-link-picker-edit,
+.gateway-admin-app .gateway-link-picker-remove {
+	display: inline-flex;
+	flex-shrink: 0;
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: #646970;
+	padding: 2px;
+}
+
+.gateway-admin-app .gateway-link-picker-edit:hover {
+	color: #2271b1;
+}
+
+.gateway-admin-app .gateway-link-picker-remove:hover {
+	color: #b32d2e;
+}
+
+/* LinkPicker.jsx's own "Insert/edit link" modal -- copying WordPress's
+ * own classic link-insert popup layout. Reuses `.gateway-record-form`'s
+ * own label/input/checkbox conventions (this modal is still a descendant
+ * of that form, Modal.jsx not portaling out of it) for every plain
+ * label+input row; only what's actually distinct about this modal's own
+ * content gets its own rule below. */
+.gateway-admin-app .gateway-link-modal label {
+	display: block;
+	margin: 0 0 12px;
+	font-weight: 600;
+}
+
+.gateway-admin-app .gateway-link-modal label span {
+	display: block;
+	margin: 0 0 4px;
+}
+
+.gateway-admin-app .gateway-link-modal-checkbox {
+	display: flex !important;
+	align-items: center;
+	gap: 6px;
+	font-weight: normal !important;
+}
+
+.gateway-admin-app .gateway-link-modal hr {
+	margin: 20px 0;
+	border: none;
+	border-top: 1px solid #dcdcde;
+}
+
+.gateway-admin-app .gateway-link-modal-results {
+	margin: 8px 0 20px;
+	border: 1px solid #dcdcde;
+	border-radius: 3px;
+	max-height: 240px;
+	overflow-y: auto;
+}
+
+.gateway-admin-app .gateway-link-modal-hint {
+	margin: 0;
+	padding: 10px;
+	background: #f0f6fc;
+	border-bottom: 1px solid #dcdcde;
+	color: #1d2327;
+}
+
+.gateway-admin-app .gateway-link-modal-empty {
+	margin: 0;
+	padding: 10px;
+	color: #646970;
+}
+
+.gateway-admin-app .gateway-link-modal-results ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.gateway-admin-app .gateway-link-modal-results li + li {
+	border-top: 1px solid #f0f0f1;
+}
+
+.gateway-admin-app .gateway-link-modal-results li button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 8px 10px;
+	font-weight: normal;
+}
+
+.gateway-admin-app .gateway-link-modal-results li button:hover {
+	background: #f0f0f1;
+}
+
+.gateway-admin-app .gateway-link-modal-result-meta {
+	flex-shrink: 0;
+	color: #646970;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.gateway-admin-app .gateway-link-modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
 }

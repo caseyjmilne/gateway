@@ -7328,6 +7328,134 @@ yet, both missing entirely and present-but-empty; `settings` arriving as
 `[]` rather than `{}`; a slug needing URL-encoding; a null record/fields
 array) alongside a successful `admin-app` production build.
 
+### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
+
+Per a direct request: "copy ACF link field type, it has URL/Link Text
+and Open link in new tab in the UI. UI also has list of pages and posts
+from the site under the manual entry and if the user clicks these the
+URL is put in automatically. Configuration for link field is simply
+Link, link, Return Value, Required, Instructions. The return value is
+either array or URL." Followed by three screenshots pinning down the
+exact UI: WordPress's own classic "Insert/edit link" popup (URL/Link
+Text/"Open link in a new tab", a divider, then "Or link to existing
+content" -- a Search box over a scrollable list of recent Pages/Posts,
+each row showing either a "PAGE" label or (for a Post) its own publish
+date, a Cancel/Add Link footer); the field's own collapsed state, a
+single "Select Link" button (matching `ImagePicker`'s own "Select
+Image" wording); and its "after selection" state, a bordered row --
+Link Text, then the URL as a real clickable link, then a pencil (edit)
+and an "×" (remove).
+
+**Storage.** `{url, title, target}` -- `target` is the literal string
+`'_blank'` (open in a new tab) or `''` (same tab), matching ACF's own
+real `target` attribute value rather than inventing a separate boolean
+-- in one `text` column (`blueprint_method()`), via Eloquent's own
+`'array'` cast (`eloquent_cast()`) -- the exact same "structured value
+in a text column" shape `Checkbox_Field_Type`'s own array-of-choices
+already uses, just an associative shape here instead of an indexed one.
+`null` (not `[]`) means "no link configured." `Link_Field_Type::cast()`
+never stores a partial shape -- a `title`/`target` with no real `url` is
+exactly as meaningless as no value at all, so it normalizes straight to
+`null` -- and runs `url` through `esc_url_raw()` (the same WordPress
+core function a post's own meta/options URL values are sanitized with)
+rather than just `sanitize_text_field()`, since an unsanitized URL can
+carry things (a stray `javascript:` scheme, e.g.) that function alone
+wouldn't strip.
+
+Picking a page/post from the site's own "Or link to existing content"
+list only ever **copies** that item's current permalink (and title)
+into the field at the moment it's clicked -- this is never a live
+reference the way a Relate field's own foreign key is. If that page is
+later renamed or its slug changes, this field's own already-saved `url`
+does not follow it, the same one-time-copy tradeoff ACF's own Link
+field has always had.
+
+**Return Value.** `supports_link_settings()` (new interface method,
+`true` only for `Link_Field_Type`) gates a single `return_format`
+setting on **General** -- the same key (and the same
+`Model_Fields::sanitize_settings()` enum check) Image/File/User's own
+settings bundles already share, just narrower: a Link has no WordPress
+object id of its own to return the way an attachment or user does, so
+`'id'` is never actually offered here even though the shared enum check
+would technically still accept it. `'array'` (the default) resolves to
+the full `{url, title, target}` object; `'url'` resolves to just the
+bare URL string --
+`Records_REST_Controller::resolve_link_value()`/`enrich_link_fields()`
+apply this on every GET the exact same way `resolve_image_value()`/
+`resolve_user_value()` already do for their own types, just without any
+database lookup to perform first (the raw stored value here is already
+the full shape, never a bare id needing one). Rendered in `FieldEditor.jsx`
+as two RADIO buttons, not the shared `<select>` Image/File/User's own
+Return Format uses -- copying ACF's own Link field UI pixel-for-pixel
+(labeled "Return Value," with ACF's own exact description, "Specify the
+returned value on front end," underneath) rather than folding it into
+that shared dropdown, even though it's the same underlying setting.
+
+**`RecordForm`/`LinkPicker.jsx`.** Form state is `null` or
+`{url, title, target}`, sent straight through to the create/update
+payload unchanged by `handleSubmit()` -- no reduction needed the way
+Image/File's own richer form state gets, since this type never stores a
+bare id in the first place. Rendered as `LinkPicker`, which opens the
+exact "Insert/edit link" modal described above (`Modal.jsx`, the same
+component the Add/Edit Record screen's own outer form already renders
+inside of -- nesting one further modal on top just stacks correctly in
+DOM order, no z-index of its own needed) -- deliberately backed by a
+local DRAFT (`draftUrl`/`draftTitle`/`draftTarget`), not a value
+live-bound straight to `onChange` the way every other `RecordForm`
+control is: this modal has real Cancel/Add Link buttons, so typing into
+URL/Link Text/searching must never touch the record's own live value
+until "Add Link" is actually clicked; Cancel (or the modal's own ×/
+Escape/overlay click, all routed through the same `onClose`) discards
+the draft outright. The "Or link to existing content" list is
+`searchLinkableContent()` (`api.js`) -- a live, 300ms-debounced search
+(the same debounce convention `RelateAutocomplete`'s own search
+already uses) over `wp/v2/pages` AND `wp/v2/posts` together (core
+WordPress REST, `status: 'publish'` only -- unlike `fetchWpPages()`'s
+own `status: 'any'`, a Template Page picker is an admin-only concern
+where a still-draft page is a reasonable pick, but a Link field is
+offering content an actual site visitor could land on), merged and
+sorted newest-first, distinguished the exact same way WordPress's own
+popup does -- a "PAGE" label for a Page, that item's own publish date
+for a Post. `onKeyDown` on the modal's own content blocks a plain Enter
+keypress from bubbling -- this whole picker is still nested inside
+`RecordForm`'s own outer `<form>` (`Modal.jsx` doesn't portal out of
+it), and an unblocked Enter inside a text `<input>` would otherwise
+submit -- and so save -- the entire record out from under someone still
+composing a link.
+
+**A real limitation, not silently papered over: `return_format: 'url'`
+loses Title/"open in a new tab" for an existing record being edited.**
+Unlike Image's own bare-id/bare-url narrowing (a follow-up
+`GET /gateway/v1/media/<id>`/`media-by-url` request can always recover
+the full shape, since an attachment id/URL both still identify a real,
+separately-stored resource), a Link field's own bare URL string
+identifies nothing else to look up -- the Title/target that
+`return_format: 'url'` discarded on the way out are genuinely gone.
+`RecordForm`'s own `initialValues` tolerates this rather than crashing
+on the unexpected shape: a bare string is shown as-is, with a blank
+Link Text and "same tab" -- `LinkPicker`'s own "Add Link" still writes
+back the full object regardless, the same way editing an Image field
+with `return_format` `'id'`/`'url'` still normalizes back to the full
+shape once anything about it is actually touched again.
+
+Verified end-to-end with a standalone PHP smoke test (`Link_Field_Type`'s
+own capability flags; `cast()`'s own null/malformed/`javascript:`-URL/
+trimming behavior; `Model_Fields::sanitize_settings()`'s `return_format`
+bundle, including the shared enum still accepting an unused `'id'`;
+`resolve_link_value()`'s both shapes plus a malformed stored value; a
+real record created/fetched/re-fetched through `Records_REST_Controller`
+after switching `return_format`, confirming Title/target genuinely
+survive a round trip back to `'array'`) run alongside the full existing
+regression suite in both default and `-d zend.assertions=1
+-d assert.exception=1` modes, plus an interactive Playwright pass
+(against a temporary, uncommitted harness) driving the real
+`LinkPicker`/`FieldEditor` components in a real browser: manual entry,
+re-opening pre-filled, picking a search result (filling both URL and
+Link Text), Cancel discarding a draft, Remove, a full Add-Record submit
+payload, and the Return Value radio pair actually persisting
+`return_format` via autosave. `admin-app` rebuilt via `npm run build`
+(vite), which compiled cleanly.
+
 ### Columns (`Model_Columns`) -- configurable, sortable Records-table columns
 
 The problem this solves: `RecordsCrud.jsx` used to render every one of a

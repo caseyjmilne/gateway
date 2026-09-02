@@ -580,6 +580,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const supportsBooleanSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_boolean_settings );
 
+	const supportsLinkSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_link_settings );
+
 	const isTextRenderableFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
 
@@ -601,6 +604,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const editSupportsUserSettings = supportsUserSettingsFor( editType );
 	const editSupportsPermalinkSettings = supportsPermalinkSettingsFor( editType );
 	const editSupportsBooleanSettings = supportsBooleanSettingsFor( editType );
+	const editSupportsLinkSettings = supportsLinkSettingsFor( editType );
 	const editIsMultiple = isMultipleFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
@@ -1572,6 +1576,44 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								) }
 							</select>
 						</label>
+					) }
+					{ /* Radio buttons, not a `<select>` like the Return Format
+					   * block just above -- copying ACF's own Link field UI
+					   * pixel-for-pixel, per a direct request, rather than
+					   * folding this into that shared `<select>` (a real
+					   * option: this is the exact same underlying
+					   * `settings.return_format` key/enum check, just
+					   * narrower -- 'array'/'url' only, no 'id'). A plain
+					   * `<div>`, not `<label>` -- same two-labelable
+					   * -descendants reasoning the Type field's own wrapper
+					   * uses: a real `<label>` here would only designate the
+					   * FIRST radio as its own labeled control. */ }
+					{ editSupportsLinkSettings && (
+						<div className="gateway-field-editor-form-field">
+							<span>Return Value</span>
+							<span className="gateway-field-editor-radio-row">
+								<label>
+									<input
+										type="radio"
+										value="array"
+										defaultChecked
+										{ ...register( 'settings.return_format' ) }
+									/>
+									Link Array
+								</label>
+								<label>
+									<input
+										type="radio"
+										value="url"
+										{ ...register( 'settings.return_format' ) }
+									/>
+									Link URL
+								</label>
+							</span>
+							<span className="description">
+								Specify the returned value on front end
+							</span>
+						</div>
 					) }
 					{ /* A plain <div>, not <label> -- same reasoning as the
 					   * Type field's own wrapper above it in this same tab:
