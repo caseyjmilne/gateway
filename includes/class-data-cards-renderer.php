@@ -147,15 +147,15 @@ class Data_Cards_Renderer {
 	 * together here rather than asking every caller to sequence them
 	 * correctly themselves.
 	 *
-	 * No search support yet for a Collection -- Eloquent has no equivalent
-	 * to WP_Query's own `s` full-text search built in, and building one
-	 * (which field(s) to search, how to weight them) is real, separate,
-	 * undone work. Facets ARE supported (`$facets`, validated the same
+	 * Search IS now supported for a Collection too (Eloquent has no
+	 * built-in equivalent to WP_Query's own `s` full-text search, so
+	 * `apply_collection_search()` below builds the closest match by hand --
+	 * see that method's own docblock). Facets are supported the same
 	 * defensive way as the postType path -- see Facet_Query::
-	 * validate_facets()/apply_collection_facets()), applied here after the
-	 * extensibility filter below so a site's own query narrowing and a
-	 * visitor's own facet choices compose the same way the postType path's
-	 * `get_query_args()` + `apply_facets()` already do.
+	 * validate_facets()/apply_collection_facets()), both applied here after
+	 * the extensibility filter below so a site's own query narrowing and a
+	 * visitor's own facet/search choices compose the same way the postType
+	 * path's `get_query_args()` + `apply_facets()` already do.
 	 *
 	 * @param string $collection      Model class name.
 	 * @param int    $page            Zero-based page index.
@@ -168,9 +168,10 @@ class Data_Cards_Renderer {
 	 *                                 corresponding relationship can be eager-loaded here
 	 *                                 rather than lazy-loaded (an N+1 query per record) once
 	 *                                 render_items_for_collection() gets to it.
+	 * @param string $search          Free-text search term, or '' for none.
 	 * @return array { records: \Illuminate\Support\Collection, pager_meta: array }
 	 */
-	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array(), array $template_blocks = array() ) {
+	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array(), array $template_blocks = array(), $search = '' ) {
 		$query = $collection::query()->orderBy( 'id', 'desc' );
 
 		$related_relationships = self::collect_related_field_relationships( $collection, $template_blocks );
@@ -189,6 +190,7 @@ class Data_Cards_Renderer {
 		 */
 		$query = apply_filters( 'gateway_data_cards_collection_query', $query, $collection );
 		$query = Facet_Query::apply_collection_facets( $query, $facets );
+		$query = self::apply_collection_search( $query, $collection, $search );
 
 		$found         = (int) $query->count();
 		$page_size     = max( 1, (int) $page_size );
@@ -234,6 +236,83 @@ class Data_Cards_Renderer {
 				'recordsDisplay' => $records_total,
 				'recordsTotal'   => $records_total,
 			),
+		);
+	}
+
+	/**
+	 * Layers a free-text search onto a Collection query -- the Eloquent
+	 * counterpart to get_query_args()'s own `$query_args['s']`, since
+	 * Eloquent has no built-in equivalent to WP_Query's own full-text `s`
+	 * param. Reported directly: a Data Cards grid's own Search field
+	 * "doesn't appear to work" -- an irrelevant term failed to empty a
+	 * Collection-sourced grid at all, because this method never existed:
+	 * `get_collection_page()` silently ignored `$search` entirely (its own
+	 * docblock used to say so explicitly), yet gateway/data-cards-search's
+	 * own render.php shows the same fully-enabled input regardless of
+	 * source type -- nothing told a site owner this half was unbuilt.
+	 *
+	 * ORs a `LIKE` across every currently-available TEXT-ish column of the
+	 * model's OWN fields (Column_Registry::get_columns_for_collection()'s
+	 * own `isTextRenderable`/`isHtmlRenderable` -- the exact eligibility
+	 * gateway/card-field-text's own Field picker already uses for "can this
+	 * be shown as text"), the closest a Gateway model's own columns get to
+	 * WP_Query's own title/content/excerpt search. Related fields
+	 * (Column_Registry::get_related_columns_for_collection()) are
+	 * deliberately excluded -- Facet_Query::apply_collection_facets()
+	 * never reaches into a relationship either (see that method's own
+	 * "Never filterable, for now" reasoning in this plugin's README);
+	 * teaching search to JOIN through a relationship is the same real,
+	 * separate, undone work. `id` is also excluded -- WP_Query's own `s`
+	 * doesn't search post IDs either, and a numeric search term
+	 * coincidentally substring-matching some unrelated record's own id
+	 * would be a confusing result for a free-text search box to produce.
+	 *
+	 * @param \Illuminate\Database\Eloquent\Builder $query      Query builder to modify.
+	 * @param string                                 $class_name Model class name.
+	 * @param string                                 $search     Free-text search term, or '' for none.
+	 * @return \Illuminate\Database\Eloquent\Builder
+	 */
+	private static function apply_collection_search( $query, $class_name, $search ) {
+		$search = trim( (string) $search );
+
+		if ( '' === $search ) {
+			return $query;
+		}
+
+		$keys = array();
+
+		foreach ( Column_Registry::get_columns_for_collection( $class_name ) as $column ) {
+			if ( 'id' === $column['key'] ) {
+				continue;
+			}
+
+			if ( ! empty( $column['isTextRenderable'] ) || ! empty( $column['isHtmlRenderable'] ) ) {
+				$keys[] = $column['key'];
+			}
+		}
+
+		if ( empty( $keys ) ) {
+			// Nothing searchable at all (e.g. every field is an Image/
+			// Relate/Password) -- matches WP_Query's own `s` behavior of
+			// simply not narrowing the query further when there's nothing
+			// sensible to compare against, rather than a stray SQL error.
+			return $query;
+		}
+
+		// Same best-effort '%'/'_' escaping Facet_Query::apply_collection_facets()'s
+		// own LIKE branch already uses -- see that method's own comment for
+		// why this is a documented, minor gap rather than a safety issue
+		// (the term itself is always parameter-bound by Eloquent regardless).
+		$escaped = str_replace( array( '\\', '%', '_' ), array( '\\\\', '\\%', '\\_' ), $search );
+		$like    = '%' . $escaped . '%';
+
+		return $query->where(
+			static function ( $inner ) use ( $keys, $like ) {
+				foreach ( $keys as $index => $key ) {
+					$method = 0 === $index ? 'where' : 'orWhere';
+					$inner->$method( $key, 'LIKE', $like );
+				}
+			}
 		);
 	}
 

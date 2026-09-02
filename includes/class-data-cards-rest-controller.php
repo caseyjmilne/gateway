@@ -25,11 +25,9 @@
  * /columns/<post_type> and /columns-for-collection/<class> apart:
  * sanitize_key() (needed for a post type slug) lowercases everything,
  * which would corrupt a model's real, case-sensitive class name. It
- * accepts `facets` the same way the post-type route does (Collections
- * DO support facets -- see Column_Registry::get_columns_for_collection()/
- * Facet_Query::apply_collection_facets()); it never accepts `search` --
- * see Data_Cards_Renderer::get_collection_page()'s own docblock for why
- * Collections don't support that yet.
+ * accepts `facets` AND `search` the same way the post-type route does --
+ * see Data_Cards_Renderer::get_collection_page()'s own docblock for how
+ * a Collection's own free-text search actually works.
  *
  * @package Gateway
  */
@@ -150,6 +148,11 @@ class Data_Cards_REST_Controller {
 						'default'           => 0,
 						'sanitize_callback' => 'absint',
 					),
+					'search'      => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
 					'facets'      => array(
 						'type'    => 'string',
 						'default' => '',
@@ -254,6 +257,7 @@ class Data_Cards_REST_Controller {
 		$page            = absint( $request->get_param( 'page' ) );
 		$page_size       = max( 1, absint( $request->get_param( 'page_size' ) ) );
 		$limit           = absint( $request->get_param( 'limit' ) );
+		$search          = (string) $request->get_param( 'search' );
 
 		// A visitor's own live facet state -- same re-validation boundary
 		// as get_items()'s own postType handling above, against this
@@ -268,7 +272,7 @@ class Data_Cards_REST_Controller {
 
 		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
-		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets, $template_blocks );
+		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets, $template_blocks, $search );
 		$html        = Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 
 		return rest_ensure_response( array_merge( array( 'html' => $html ), $page_result['pager_meta'] ) );

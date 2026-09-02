@@ -99,11 +99,10 @@ if ( 'collection' === $source_type ) {
 		$raw_facets = $attributes['facets'] ?? array();
 		$facets     = is_array( $raw_facets ) ? \Gateway\Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
-		// Page 0 (zero-based, see Data_Cards_Renderer's own docblock) --
-		// the always-fresh state for a real, full-page render. Later pages
-		// are fetched by the front end via Data_Cards_REST_Controller's
-		// own Collection route. No search yet -- see
-		// Data_Cards_Renderer::get_collection_page()'s own docblock.
+		// Page 0 (zero-based, see Data_Cards_Renderer's own docblock), no
+		// search -- the always-fresh state for a real, full-page render.
+		// Later pages/searches are fetched by the front end via
+		// Data_Cards_REST_Controller's own Collection route.
 		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets, $template_blocks );
 		$html        = \Gateway\Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 		$pager_meta  = $page_result['pager_meta'];

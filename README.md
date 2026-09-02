@@ -2324,10 +2324,9 @@ independent path:
   extensibility filter, before `->count()`, so a site's own query
   narrowing and a visitor's own facet choices compose the same way the
   postType path's `get_query_args()` + `apply_facets()` already do -- see
-  "Facets work for Collections too" below. No search support yet:
-  Eloquent has no built-in equivalent to `WP_Query`'s own `s` full-text
-  search, and building one (which field(s) to search, how to weight
-  them) is real, separate, undone work.
+  "Facets work for Collections too" below. `$search` composes the same
+  way, applied right after -- see "Free-text search works for
+  Collections too" below.
 - **`Data_Cards_Renderer::render_items_for_collection( $records,
   $template_blocks )`** -- the Collection counterpart to `render_items()`:
   same `core/null`-wrapper-block trick, but instead of injecting
@@ -2439,6 +2438,80 @@ parent" check, the actual `<input>`/`<select>`/checkboxes markup,
 since `shared/cards.js`'s `collectActiveFacets()` and the REST fetch it
 drives were already source-agnostic (they just read whatever's currently
 in the DOM).
+
+### Free-text search works for Collections too
+
+Reported directly: a Data Cards grid's own Search field "doesn't appear
+to work," an irrelevant term ("232312") failing to empty the grid at
+all -- sometimes doing nothing, sometimes leaving a stray card behind.
+Root cause: `gateway/data-cards-search`'s own `render.php` shows the
+exact same fully-enabled input regardless of `sourceType`, but
+`Data_Cards_Renderer::get_collection_page()` silently ignored `$search`
+entirely -- this method's own docblock used to say Collections simply
+didn't support search yet -- so a Collection-sourced grid always
+returned every record, completely unfiltered, no matter what was typed.
+Nothing in the UI told a site owner that half was unbuilt.
+
+**`Data_Cards_Renderer::apply_collection_search( $query, $class_name,
+$search )`** (new, private) is the fix -- the Eloquent counterpart to
+`get_query_args()`'s own `$query_args['s']`, since Eloquent has no
+built-in equivalent to `WP_Query`'s full-text `s` param:
+
+- ORs a `LIKE` across every currently-available TEXT-ish column of the
+  model's OWN fields -- `Column_Registry::get_columns_for_collection()`'s
+  own `isTextRenderable`/`isHtmlRenderable`, the exact eligibility
+  `gateway/card-field-text`'s own Field picker already uses for "can
+  this be shown as text." A Number field participates too (its stored
+  value compared as a string via `LIKE`), the closest a Gateway model's
+  own columns get to `WP_Query`'s own title/content/excerpt search.
+- **Related fields are deliberately excluded** -- `Facet_Query::
+  apply_collection_facets()` never reaches into a relationship either
+  (see "Never filterable, for now" above); teaching search to `JOIN`
+  through one is the same real, separate, undone work.
+- **`id` is deliberately excluded** -- `WP_Query`'s own `s` doesn't
+  search post IDs either, and a numeric search term coincidentally
+  substring-matching some unrelated record's own id would be a
+  confusing result for a free-text search box to produce.
+- Applied via `->where(fn ($inner) => ...)` (one grouped clause,
+  `OR`'d internally) so it composes correctly with `Facet_Query::
+  apply_collection_facets()`'s own separate `where()`/`whereIn()` calls
+  right before it -- both narrow the SAME query, `AND`'d together,
+  exactly like the postType path's `get_query_args()` + `apply_facets()`
+  already do.
+- Same best-effort `%`/`_` escaping `apply_collection_facets()`'s own
+  `LIKE` branch already uses (and the same documented, minor gap: no
+  `ESCAPE` clause, since Eloquent's fluent `where()` has no clean way to
+  specify one -- the term itself is always parameter-bound regardless,
+  never a SQL-injection concern).
+
+`Data_Cards_REST_Controller`'s Collection route (`/data-cards-collection/
+<class>`) now registers and reads a `search` request arg the same way
+its postType sibling always has, passing it straight into
+`get_collection_page()`'s new trailing `$search` parameter -- the actual
+wiring bug: the route's own `args` schema never even listed `search`
+before this fix, so a request for it was silently accepted and then
+never read. `gateway/data-cards-search`'s own `view.js`/`render.php`
+needed zero changes -- `shared/cards.js`'s `fetchCardsPage()` already
+sent `search` to whichever REST route a grid's own `data-rest-url`
+pointed at, regardless of source type; it was only ever the Collection
+route's own backend half that was missing.
+
+Verified with a new standalone PHP smoke test covering: the reported bug
+verbatim (an irrelevant term returns zero records); a match via a Text
+field, a Text Area field, and a Number field; a term matching two
+records at once (OR across rows); a Password field's own value NEVER
+matching even though it's literally present in the data (proves the
+field-type exclusion, not just "the term isn't anywhere"); `id` excluded
+even when a record's own id would otherwise coincidentally match; an
+empty or whitespace-only term as a no-op; search composed with a facet
+(AND'd together, correctly narrowing to fewer results than either alone,
+and correctly narrowing to zero even when the facet alone would still
+match); and no regression when `$search` is omitted entirely (a genuine
+trailing optional parameter) -- alongside a clean run of the full
+existing regression suite in both default and assertions modes. The
+actual front-end input/debounced-fetch behavior needs manual
+verification in a real block editor + browser, the same caveat every
+other front-end-only piece of this feature already carries.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 
