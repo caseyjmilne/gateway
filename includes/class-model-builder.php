@@ -79,18 +79,33 @@ class Model_Builder {
 	const TYPE_DATA_MODEL = 'data_model';
 
 	/**
-	 * A model pre-seeded with a `title` (Text) field and a `permalink`
-	 * (Permalink) field tracking it in Auto mode (`settings.source_field
-	 * => 'title'`) -- the two things this plugin's own single-page
-	 * permalink support (see Permalink_Field_Type/Permalink_Routes) needs
-	 * before a record can have its own real URL at all, added
-	 * automatically rather than left for a site owner to notice and add
-	 * by hand every single time. Root/Template Page (the rest of what a
-	 * working single page actually needs -- see PermalinkEditor.jsx) are
-	 * deliberately NOT set here: those are genuinely per-site choices
-	 * (what URL prefix, which template page) this class has no sensible
-	 * default for, unlike "does this kind of model want a title and a
-	 * slug at all," which Type answers once and for all up front.
+	 * A model pre-seeded with a `title` (Text, Required) field and a
+	 * `permalink` (Permalink) field tracking it in Auto mode
+	 * (`settings.source_field => 'title'`) -- the two things this
+	 * plugin's own single-page permalink support (see Permalink_Field_Type/
+	 * Permalink_Routes) needs before a record can have its own real URL
+	 * at all, added automatically rather than left for a site owner to
+	 * notice and add by hand every single time. **Title is Required by
+	 * default, per a direct request** ("when we make content type, title
+	 * must be set to required by default because we need the permalinks
+	 * made"): a blank Title on a record leaves Auto-mode slug computation
+	 * with nothing to slugify at all, so a Content Type record could
+	 * otherwise be saved with no real permalink ever computed for it --
+	 * defeating the entire point of seeding this field in the first
+	 * place. Required, not merely encouraged, exactly the way this class
+	 * already treats "does this kind of model want a title and a slug at
+	 * all" as a decision Type answers once and for all up front, not
+	 * something left to chance per record. Still freely editable
+	 * afterward like any other field -- a site owner can switch it back
+	 * to optional if they genuinely want to (see the Field Editor's own
+	 * Validation tab), the same "seeded, never locked" treatment every
+	 * other property of these two starter fields already has.
+	 * Root/Template Page (the rest of what a working single page
+	 * actually needs -- see PermalinkEditor.jsx) are deliberately NOT set
+	 * here: those are genuinely per-site choices (what URL prefix, which
+	 * template page) this class has no sensible default for, unlike
+	 * "does this kind of model want a title and a slug at all," which
+	 * Type answers once and for all up front.
 	 */
 	const TYPE_CONTENT_TYPE = 'content_type';
 
@@ -240,17 +255,18 @@ class Model_Builder {
 		$warnings = array();
 
 		// A Content Type's own two defining fields -- see TYPE_CONTENT_TYPE's
-		// own docblock for why these two specifically, and why Root/
-		// Template Page are deliberately left for the site owner to set
-		// afterward instead. Added via the exact same Model_Fields::add()
-		// a site owner would use by hand -- real ADD COLUMN migrations,
-		// not something baked into model_template()/migration_template()
-		// above, so a Content Type's fields show up in the Field Editor
-		// exactly like any other field, freely editable (label, Character
-		// Limit, etc.) from that point on -- only Type itself, not what it
-		// seeded, is fixed forever.
+		// own docblock for why these two specifically (Title Required by
+		// default included), and why Root/Template Page are deliberately
+		// left for the site owner to set afterward instead. Added via the
+		// exact same Model_Fields::add() a site owner would use by hand --
+		// real ADD COLUMN migrations, not something baked into
+		// model_template()/migration_template() above, so a Content
+		// Type's fields show up in the Field Editor exactly like any
+		// other field, freely editable (label, Character Limit, even
+		// Required itself, etc.) from that point on -- only Type itself,
+		// not what it seeded, is fixed forever.
 		if ( self::TYPE_CONTENT_TYPE === $type ) {
-			$title_field = Model_Fields::add( $class_name, 'title', 'text', __( 'Title', 'gateway' ) );
+			$title_field = Model_Fields::add( $class_name, 'title', 'text', __( 'Title', 'gateway' ), null, null, true );
 
 			if ( is_wp_error( $title_field ) ) {
 				// The model/table already exist and are perfectly usable

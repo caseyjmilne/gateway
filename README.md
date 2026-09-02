@@ -4207,15 +4207,31 @@ asked first.
 - **Content Type** -- the same blank table, PLUS two real fields added
   immediately afterward via genuine `Model_Fields::add()` calls (real ADD
   COLUMN migrations, not something baked into `model_template()` itself):
-  a `title` **Text** field, and a `permalink` **Permalink** field
-  tracking it in Auto mode (`settings.source_field => 'title'`) -- the
-  two things this plugin's own single-page permalink support (see
-  "Permalink fields" above) needs before a record can have a real URL at
-  all. Root and Template Page are deliberately left unset -- those are
-  genuine per-site choices (which URL prefix, which template page) with
-  no sensible default, configured afterward on the model's own
-  Permalinks tab, unlike "does this kind of model want a title and a
-  slug at all," which Type answers once, up front.
+  a `title` **Text** field (**Required by default** -- see below), and a
+  `permalink` **Permalink** field tracking it in Auto mode
+  (`settings.source_field => 'title'`) -- the two things this plugin's
+  own single-page permalink support (see "Permalink fields" above) needs
+  before a record can have a real URL at all. Root and Template Page are
+  deliberately left unset -- those are genuine per-site choices (which
+  URL prefix, which template page) with no sensible default, configured
+  afterward on the model's own Permalinks tab, unlike "does this kind of
+  model want a title and a slug at all," which Type answers once, up
+  front.
+
+  **Title is seeded Required, not merely present -- per a direct
+  request** ("when we make content type, title must be set to required
+  by default because we need the permalinks made"): a blank Title on a
+  record leaves Auto-mode slug computation with nothing to slugify at
+  all, so a Content Type record could otherwise be saved with a real
+  Permalink field on the model yet no actual permalink ever computed for
+  that one record -- defeating the entire reason this field exists.
+  `Model_Fields::add( $class_name, 'title', 'text', __( 'Title', 'gateway' ), null, null, true )`
+  -- the trailing `true` is `$required` (the ONE thing that changed;
+  every other seeded value stays the same). Still freely editable
+  afterward like every other property of these two starter fields (a
+  site owner can switch Title back to optional from its own Validation
+  tab if they genuinely want to) -- Type itself is what's fixed forever,
+  never what it seeded.
 
 Stored the same way Plural Title is -- `gateway_model_types`, class name
 => `TYPE_*` value, via `Model_Builder::get_model_type()`/`set_model_type()`/

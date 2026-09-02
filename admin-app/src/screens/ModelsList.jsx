@@ -22,7 +22,7 @@ const MODEL_TYPES = [
 		value: 'content_type',
 		label: 'Content Type',
 		description:
-			'Comes with a Title field and a Permalink field tracking it, ready for records that each need their own page.',
+			'Comes with a required Title field and a Permalink field tracking it, ready for records that each need their own page.',
 	},
 	{
 		value: 'data_model',
