@@ -117,4 +117,53 @@ class Image_Renderer {
 		// rather than a hand-built tag.
 		return (string) wp_get_attachment_image( $attachment_id, $size, false, $extra_attrs );
 	}
+
+	/**
+	 * Resolves gateway/card-field-image's own "Link To" setting to a
+	 * real href, or '' if there's nothing to link to -- the same "one
+	 * shared class, not duplicated per-render.php logic" reasoning this
+	 * class's own docblock already gives for `render()` itself, and the
+	 * PHP counterpart of `core/image`'s own Media File/Attachment Page/
+	 * Custom URL link destinations.
+	 *
+	 * Works identically regardless of the field's own configured Return
+	 * Format, unlike `render()`'s own `$size` parameter (which 'url'
+	 * can't support at all -- see this class's own docblock): none of
+	 * these three destinations need anything from WP's own registered
+	 * -size system, only the plain, real attachment id every Return
+	 * Format resolves to underneath (`Column_Registry::resolve_collection_value()`
+	 * always returns the bare id, regardless of `return_format` -- see
+	 * gateway/card-field-image/render.php's own docblock).
+	 *
+	 * @param int    $attachment_id     A real, already-confirmed-to-exist
+	 *                                   attachment id -- by the time this
+	 *                                   is ever worth calling, `render()`
+	 *                                   above has already returned real
+	 *                                   markup for it, so this never
+	 *                                   independently re-checks existence.
+	 * @param string $link_destination  One of 'none'/'media'/'attachment'/
+	 *                                   'custom' -- anything else is
+	 *                                   treated the same as 'none'.
+	 * @param string $custom_href       The block's own configured custom
+	 *                                   URL -- only consulted when
+	 *                                   `$link_destination` is 'custom'.
+	 * @return string A real href, or '' for 'none', an unrecognized
+	 *                 destination, an empty custom URL, or a destination
+	 *                 that genuinely failed to resolve (e.g.
+	 *                 `get_permalink()` returning `false`).
+	 */
+	public static function resolve_link_href( $attachment_id, $link_destination, $custom_href = '' ) {
+		switch ( $link_destination ) {
+			case 'media':
+				$url = wp_get_attachment_url( (int) $attachment_id );
+				return $url ? (string) $url : '';
+			case 'attachment':
+				$url = get_permalink( (int) $attachment_id );
+				return $url ? (string) $url : '';
+			case 'custom':
+				return is_string( $custom_href ) ? trim( $custom_href ) : '';
+			default:
+				return '';
+		}
+	}
 }

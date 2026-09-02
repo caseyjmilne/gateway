@@ -2857,6 +2857,79 @@ same reasoning `gateway/card-field-number`'s own `numberFormat` already
 has: which size to show is a presentation choice about THIS particular
 block, not a fact about the field itself.
 
+**Rounded out toward `core/image`'s own settings, per a direct request**
+("if you can find any image settings that we don't support that core
+offers, add them to round out our image block") -- confirmed directly
+against Gutenberg's own `packages/block-library/src/image/block.json`
+for the authoritative full option set, then decided each one on its own
+merits rather than copying the whole file wholesale:
+
+- **Align, Anchor, Spacing (Margin), Border (color/width/radius), and
+  Duotone filters** are plain `block.json` `supports` declarations --
+  WordPress itself wires up the Inspector controls and generates the
+  CSS with zero PHP/JS of this plugin's own beyond declaring them.
+  `__experimentalDefaultControls` are `true` across the board (Margin,
+  and Border's own color/radius/width) rather than `core/image`'s own
+  mix -- the exact same lesson `gateway/card-field-text`'s own styling
+  section above documents learning the hard way ("text still doesn't
+  have dimensions"): a default of `false` doesn't disable a control, it
+  just hides it behind an easy-to-miss "+" toggle, which is the wrong
+  default for a feature whose whole point is being easy to reach.
+- **Aspect Ratio + Object Fit** (`aspectRatio`/`scale`, a curated list of
+  common ratios rather than a free-text CSS value, the same "known-good
+  choices over a value that's easy to get visibly wrong" reasoning
+  `size` already uses) apply directly to the `<img>` tag itself via
+  `Image_Renderer::render()`'s existing `$extra_attrs` parameter, as a
+  plain inline `aspect-ratio`/`object-fit`/`width:100%`/`height:100%`
+  style string. This works identically across **all three** Return
+  Formats, unlike Size -- plain CSS needs nothing from WordPress's own
+  registered-image-size system, which is the only reason `'url'` can't
+  support Size at all (see above).
+- **Link Settings** (`linkDestination`: None/Media File/Attachment Page/
+  Custom URL, plus `linkTarget`/`href`) are resolved by a new
+  **`Image_Renderer::resolve_link_href()`** static method (same "one
+  shared class, not duplicated per-render.php logic" shape `render()`
+  itself already has) and, when non-empty, wrap the already-rendered
+  `<img>` in a real `<a href="...">`. "Media File" and "Attachment Page"
+  both resolve off the same raw, real attachment id `render.php` already
+  reads regardless of Return Format -- so, unlike Size again, linking
+  works identically for a `'url'`-format field too, which has no id of
+  its *own* to offer a REST consumer but still has a perfectly real one
+  underneath for this purpose.
+- **Deliberately NOT added: Shadow, and Color (text/background).**
+  `core/image` itself applies Border/Shadow to the `<img>`/placeholder
+  selectors directly (via `selectors` + `__experimentalSkipSerialization`
+  in its own `block.json`) specifically because Shadow needs the
+  wrapper's `overflow` visible (to render outside the box) while a
+  rounded Border here needs it `hidden` (to actually clip the image's
+  own square corners -- without it, a "radius" border would visually do
+  nothing at all). Replicating core's own selector-redirection scheme
+  without a real WP install to render against was judged more risk than
+  one style option is worth for this block; `overflow: hidden` was kept
+  for Border, and Shadow was left off entirely rather than shipped
+  broken. Color (text/background) has nothing to apply to on a bare
+  `<img>` either, the same reason `core/image` itself declares
+  `color: {text: false, background: false}`.
+
+The same `display: inline-block` fix `gateway/card-field-text`'s own
+styling section above documents (a plain `<span>`'s browser-default
+`inline` display silently swallows vertical Margin, and lets Border's
+new `radius` do nothing visible) was applied here too, alongside
+`overflow: hidden` for the reason above -- both via a merged `style` on
+`get_block_wrapper_attributes()`/`useBlockProps()`, not a changed tag.
+
+Verified via an extended `Image_Renderer` smoke test (the aspect-ratio/
+object-fit style string reaching the final markup for both the `url`
+and `array`/`id` branches; `resolve_link_href()`'s full matrix --
+`media`/`attachment`/`custom`/`none`/an unrecognized destination, and
+each WP-function-backed case returning `''` when the underlying
+function itself resolves falsy) alongside a clean run of the full
+existing regression suite and a successful production build. The new
+Inspector panels (Aspect Ratio, Link Settings) and every declarative
+`supports` control's real, visible effect need manual verification in a
+real block editor, the same caveat every other block-editor-only UI
+change in this plugin already carries.
+
 ### Related Fields: a hasOne/belongsTo relationship's own fields, right on this model's columns
 
 `gateway/datatable` and `gateway/card-field-text` (via `gateway/data-cards`)

@@ -1,9 +1,36 @@
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
-import { PanelBody, Notice, SelectControl } from '@wordpress/components';
+import { PanelBody, Notice, SelectControl, TextControl, ToggleControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useImageSizes } from '../../shared/use-image-sizes';
+
+// A handful of common ratios -- the same small, curated set `core/image`
+// itself offers, rather than a free-text input: a real CSS `aspect-ratio`
+// value would work too, but picking from a known-good list is simpler
+// and harder to get visibly wrong.
+const ASPECT_RATIO_OPTIONS = [
+	{ label: __( 'Original', 'gateway' ), value: '' },
+	{ label: __( 'Square – 1:1', 'gateway' ), value: '1' },
+	{ label: __( 'Standard – 4:3', 'gateway' ), value: '4/3' },
+	{ label: __( 'Portrait – 3:4', 'gateway' ), value: '3/4' },
+	{ label: __( 'Classic – 3:2', 'gateway' ), value: '3/2' },
+	{ label: __( 'Classic Portrait – 2:3', 'gateway' ), value: '2/3' },
+	{ label: __( 'Wide – 16:9', 'gateway' ), value: '16/9' },
+	{ label: __( 'Tall – 9:16', 'gateway' ), value: '9/16' },
+];
+
+const SCALE_OPTIONS = [
+	{ label: __( 'Fill (crop to fit)', 'gateway' ), value: 'cover' },
+	{ label: __( 'Fit (show the whole image)', 'gateway' ), value: 'contain' },
+];
+
+const LINK_DESTINATION_OPTIONS = [
+	{ label: __( 'None', 'gateway' ), value: 'none' },
+	{ label: __( 'Media File', 'gateway' ), value: 'media' },
+	{ label: __( 'Attachment Page', 'gateway' ), value: 'attachment' },
+	{ label: __( 'Custom URL', 'gateway' ), value: 'custom' },
+];
 
 /**
  * Structurally the same as gateway/card-field-text/gateway/card-field-number's
@@ -35,10 +62,24 @@ import { useImageSizes } from '../../shared/use-image-sizes';
  * case falls back to a plain text placeholder instead, the same
  * "preview is best-effort, the real front end is authoritative" caveat
  * gateway/card-field-text's own docblock already states explicitly.
+ *
+ * Also offers Aspect Ratio/Object Fit and Link Settings, rounding this
+ * block out toward `core/image`'s own settings per a direct request --
+ * see render.php's own docblock for the full reasoning (both work
+ * uniformly across all three Return Formats, unlike Size). Align/
+ * Anchor/Spacing(Margin)/Border/Duotone need no code here at all --
+ * plain `block.json` `supports` declarations the block editor already
+ * wires up its own Inspector controls for automatically.
  */
 export default function Edit( { attributes, setAttributes, context } ) {
-	const { fieldKey, size } = attributes;
-	const blockProps = useBlockProps( { className: 'gateway-card-field-image' } );
+	const { fieldKey, size, aspectRatio, scale, linkDestination, linkTarget, href } = attributes;
+	// `display: inline-block` + `overflow: hidden` here for the exact
+	// same reason render.php's own docblock gives for the identical
+	// style it adds server-side -- see that file's own comment.
+	const blockProps = useBlockProps( {
+		className: 'gateway-card-field-image',
+		style: { display: 'inline-block', overflow: 'hidden' },
+	} );
 
 	const sourceType = context[ 'gateway/data-cards/sourceType' ] || 'postType';
 	const collection = context[ 'gateway/data-cards/collection' ] || '';
@@ -192,6 +233,55 @@ export default function Edit( { attributes, setAttributes, context } ) {
 									'gateway'
 								) }
 							</Notice>
+						) }
+					</PanelBody>
+				) }
+				{ isFieldConfigured && (
+					<PanelBody title={ __( 'Aspect Ratio', 'gateway' ) } initialOpen={ false }>
+						<SelectControl
+							__nextHasNoMarginBottom
+							label={ __( 'Aspect Ratio', 'gateway' ) }
+							value={ aspectRatio }
+							options={ ASPECT_RATIO_OPTIONS }
+							onChange={ ( value ) => setAttributes( { aspectRatio: value } ) }
+						/>
+						{ aspectRatio && (
+							<SelectControl
+								__nextHasNoMarginBottom
+								label={ __( 'Object Fit', 'gateway' ) }
+								value={ scale }
+								options={ SCALE_OPTIONS }
+								onChange={ ( value ) => setAttributes( { scale: value } ) }
+							/>
+						) }
+					</PanelBody>
+				) }
+				{ isFieldConfigured && (
+					<PanelBody title={ __( 'Link Settings', 'gateway' ) } initialOpen={ false }>
+						<SelectControl
+							__nextHasNoMarginBottom
+							label={ __( 'Link To', 'gateway' ) }
+							value={ linkDestination }
+							options={ LINK_DESTINATION_OPTIONS }
+							onChange={ ( value ) => setAttributes( { linkDestination: value } ) }
+						/>
+						{ 'custom' === linkDestination && (
+							<TextControl
+								__nextHasNoMarginBottom
+								label={ __( 'URL', 'gateway' ) }
+								value={ href }
+								onChange={ ( value ) => setAttributes( { href: value } ) }
+							/>
+						) }
+						{ 'none' !== linkDestination && (
+							<ToggleControl
+								__nextHasNoMarginBottom
+								label={ __( 'Open in new tab', 'gateway' ) }
+								checked={ '_blank' === linkTarget }
+								onChange={ ( checked ) =>
+									setAttributes( { linkTarget: checked ? '_blank' : '' } )
+								}
+							/>
 						) }
 					</PanelBody>
 				) }

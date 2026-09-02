@@ -5,7 +5,7 @@
 	"title": "Field: Image",
 	"category": "widgets",
 	"icon": "format-image",
-	"description": "Displays one Image field's value from the current record as a real image, honoring the field's own configured Return Format (Array/URL/ID) and, where possible, a chosen Size. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
+	"description": "Displays one Image field's value from the current record as a real image, honoring the field's own configured Return Format (Array/URL/ID) and, where possible, a chosen Size, Aspect Ratio, and Link Settings. Also supports alignment, an anchor, margin, border, and duotone filters. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
 	"keywords": [ "field", "image", "photo", "picture", "media", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
@@ -23,10 +23,51 @@
 		"size": {
 			"type": "string",
 			"default": "full"
+		},
+		"aspectRatio": {
+			"type": "string",
+			"default": ""
+		},
+		"scale": {
+			"type": "string",
+			"default": "cover"
+		},
+		"linkDestination": {
+			"type": "string",
+			"default": "none"
+		},
+		"linkTarget": {
+			"type": "string",
+			"default": ""
+		},
+		"href": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"supports": {
-		"html": false
+		"html": false,
+		"align": [ "left", "center", "right", "wide", "full" ],
+		"anchor": true,
+		"filter": {
+			"duotone": true
+		},
+		"spacing": {
+			"margin": true,
+			"__experimentalDefaultControls": {
+				"margin": true
+			}
+		},
+		"__experimentalBorder": {
+			"color": true,
+			"radius": true,
+			"width": true,
+			"__experimentalDefaultControls": {
+				"color": true,
+				"radius": true,
+				"width": true
+			}
+		}
 	},
 	"editorScript": "file:./build/index.js",
 	"render": "file:./render.php"
