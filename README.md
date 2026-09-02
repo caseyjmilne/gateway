@@ -5373,6 +5373,29 @@ on the parent taking over as the actual space between input and text.
 Needs manual verification in a real browser to confirm the fix; `npm run
 build` (vite) compiled cleanly.
 
+**A second follow-up, reported directly with the exact rule pasted from
+DevTools: "`.wp-admin p label input[type=checkbox] { margin-top: -4px;
+}` we need to defeat this style for our checkboxes in record editor."**
+The `margin: 0` reset above turned out not to actually win against this
+one: CSS specificity compares (ids, classes/attrs, elements) in that
+order, and while `.gateway-admin-app .gateway-record-form-choice input`
+and wp-admin's own selector tie at 2 classes/attrs apiece, wp-admin's
+own selector matches THREE elements (`p`, `label`, `input`) against this
+one's single `input` -- the deciding tiebreaker, so wp-admin's own
+`-4px` kept winning regardless of load order. Confirmed directly: "it
+breaks alignment, if margin-top: 0 alignment is normal." Fixed with a
+new rule matching wp-admin's own selector shape element-for-element
+(`p`, then `label`, then `input`) but with one extra class of its own
+(`.gateway-record-form` alongside `.gateway-admin-app`), so it wins
+outright on specificity rather than relying on load order --
+`.gateway-admin-app .gateway-record-form p label input[type='checkbox']
+{ margin-top: 0; }`. Covers every checkbox in this form either way it
+renders -- a plain `.gateway-record-form-choice` one (Checkbox's own
+choices, and True/False with Show Toggle off) and a `.gateway-toggle`
+one (True/False with Show Toggle on) -- since both nest their own
+`input[type=checkbox]` inside a `<label>` inside this form's own `<p>`
+either way.
+
 **A real bug, reported directly: "only the drag icon should be
 draggable. Having entire row draggable is interfering with editing
 inside the inputs."** `ChoicesEditor`'s own docblock always CLAIMED to

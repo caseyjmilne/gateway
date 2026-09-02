@@ -656,6 +656,34 @@
 	margin: 0;
 }
 
+/* Reported directly: "we need to defeat this style for our checkboxes
+ * in record editor" -- `.wp-admin p label input[type=checkbox] {
+ * margin-top: -4px; }`, a real wp-admin core rule (its own selector,
+ * pasted directly from the reporter's own DevTools), still won over the
+ * plain `margin: 0` reset two rules up: specificity is compared
+ * (ids, classes/attrs, elements) in that order, and while both rules
+ * tie at 2 classes/attrs (`.gateway-admin-app`/`.gateway-record-form
+ * -choice` here vs. `.wp-admin`/`[type=checkbox]` there), wp-admin's
+ * own selector matches THREE elements (p, label, input) against this
+ * one's single `input` -- the deciding tiebreaker, so wp-admin's own
+ * `-4px` kept winning regardless of load order. Confirmed directly:
+ * "it breaks alignment, if margin-top: 0 alignment is normal." Matches
+ * wp-admin's own selector shape element-for-element (p, then label,
+ * then input) but with one extra class of our own
+ * (`.gateway-record-form` alongside `.gateway-admin-app`) so this wins
+ * outright on specificity alone, the same "match its shape, add one
+ * more class" fix `.gateway-field-editor-panel-cell`'s own comment
+ * above already used for exactly this kind of tie. Covers every
+ * checkbox in this form either way it renders -- a plain
+ * `.gateway-record-form-choice` one (Radio's own sibling Checkbox type,
+ * and True/False with Show Toggle off) and a `.gateway-toggle` one
+ * (True/False with Show Toggle on) -- since both nest their own
+ * `input[type=checkbox]` inside a `<label>` inside this form's own
+ * `<p>` either way. */
+.gateway-admin-app .gateway-record-form p label input[type='checkbox'] {
+	margin-top: 0;
+}
+
 .gateway-admin-app .gateway-record-form-input-group {
 	display: inline-flex;
 	align-items: stretch;
