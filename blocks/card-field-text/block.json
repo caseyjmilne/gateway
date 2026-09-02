@@ -43,8 +43,8 @@
 			"margin": true,
 			"padding": true,
 			"__experimentalDefaultControls": {
-				"margin": false,
-				"padding": false
+				"margin": true,
+				"padding": true
 			}
 		},
 		"typography": {

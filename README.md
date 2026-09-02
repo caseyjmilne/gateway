@@ -2643,13 +2643,22 @@ named explicitly in the request), Border (color/width/style/radius),
 and the full Typography set -- font family and weight named explicitly
 in the request, alongside line-height, style, letter-spacing, text
 -transform/-decoration/-align/-indent/-columns, writing mode, and
-"fit text." Two things deliberately DON'T mirror `core/paragraph`
+"fit text." Three things deliberately DON'T mirror `core/paragraph`
 exactly: `className` support is left at its normal default (`true`)
 rather than copied as `core/paragraph`'s own unusual `false` -- an
 "Additional CSS Class" field is exactly the kind of hook a design would
 want, working directly against the whole point of this change to
-disable it; and `splitting`/`__unstablePasteTextInline`/`interactivity`/
-the `textIndent`-specific sibling `selectors` rule are all genuinely
+disable it; `spacing`'s own `__experimentalDefaultControls` are `true`
+for BOTH Margin and Padding, not `core/paragraph`'s own `false` for
+both -- a real bug, reported directly ("text still doesn't have
+dimensions (padding and margin)"): `false` here doesn't disable the
+controls, it just tucks them behind a small, easy-to-miss "+" toggle in
+the Styles panel's own Dimensions section, exactly the extra friction
+"as easy as possible to style" was asking to remove in the first place
+(fine for `core/paragraph`'s own many power users already used to that
+UI convention, not fine as this block's own default); and
+`splitting`/`__unstablePasteTextInline`/`interactivity`/the
+`textIndent`-specific sibling `selectors` rule are all genuinely
 rich-text-editing concerns with nothing to apply to here (this block has
 no directly-typed/pasted content at all -- its value always comes from
 the record via `fieldKey`).
