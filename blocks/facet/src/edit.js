@@ -41,6 +41,18 @@ export default function Edit( { attributes, setAttributes, context } ) {
 		acc[ column.key ] = column.label;
 		return acc;
 	}, {} );
+	// gateway/card-facet's own eligibility signal for UiTypeControl's
+	// `allowedTypes` -- a real, previously-missing gap here: without it,
+	// this block could offer "Select"/"Checkboxes" for a field whose own
+	// `facetType` is `['input']` only (TextArea, `id`, ...), producing a
+	// front end control Facet_Query::get_facet_options() was never meant
+	// to back. Column_Registry::get_columns()/-_for_collection() already
+	// compute this the same way for both blocks; the only thing missing
+	// was actually reading it here.
+	const facetTypesByKey = availableColumns.reduce( ( acc, column ) => {
+		acc[ column.key ] = column.facetType;
+		return acc;
+	}, {} );
 
 	const matchedFacet = parentFacets.find(
 		( facet ) => facet.key === facetKey
@@ -78,6 +90,7 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					/>
 					<UiTypeControl
 						value={ uiType }
+						allowedTypes={ facetTypesByKey[ facetKey ] }
 						onChange={ ( value ) =>
 							setAttributes( { uiType: value } )
 						}

@@ -2131,9 +2131,11 @@ Every column `Column_Registry::get_columns()` returns now also carries:
 Says whether a field is suitable for use as a facet at all, and with
 which UI types -- a Select of every distinct `post_content` value is
 nonsense, and a taxonomy has no free-text compare mode `Facet_Query`
-implements. Used by both Facets panels' own field pickers, and by
-`gateway/card-facet`'s own `UiTypeControl` usage to trim which UI types
-make sense for the chosen field.
+implements. Used by both Facets panels' own field pickers, and by both
+`gateway/facet`'s and `gateway/card-facet`'s own `UiTypeControl` usage to
+trim which UI types make sense for the chosen field (`gateway/facet` was
+missing this for a while -- see "Two Facet blocks, one set of settings"
+below for how that was found and closed).
 
 - **Thumbnail** (`get_thumbnail_column()`): never filterable -- already
   excluded from the Facets panel before this; now explicit.
@@ -2147,11 +2149,15 @@ make sense for the chosen field.
   get `['input']` (free text; a Select of every distinct title would be
   unusable); `post_status`/`post_author` get `['select', 'checkboxes']`
   (small, enumerable sets); `post_date`/`post_modified`/`menu_order`/
-  `comment_count` aren't filterable at all -- meaningful filtering on
-  those wants a real range/comparison UI neither `gateway/facet` nor
-  `gateway/card-facet` implements (their live compare vocabulary is
-  `contains`/`equals` only), so offering them would be a confusing dead
-  end, not a real choice.
+  `comment_count` aren't filterable at all -- both blocks' own live
+  Compare control has since gained the full `>`/`>=`/`<`/`<=`/`!=`/
+  `LIKE`/`NOT LIKE`/`=` vocabulary (see "Full comparison-operator
+  support" below), so this exclusion is no longer about a missing
+  operator; it's that a plain text "Input" control asking a visitor to
+  type a raw date string, or a Select/Checkboxes of every distinct
+  `menu_order`/`comment_count` integer in use, is still a confusing UI
+  for these specific columns, not a real date-picker/range control this
+  plugin builds. Revisit if that changes.
 
   One real, if narrow, behavior change for the *existing* table: a facet
   on one of those four newly-excluded core fields can no longer be newly
@@ -2254,13 +2260,16 @@ site owner toward.
 
 `gateway/card-facet` itself is `gateway/facet/render.php` and `edit.js`
 minus the "is it a displayed column" half of every check (no counterpart
-exists for cards) -- `FacetKeyControl` (help text genericized) and
-`UiTypeControl` (gains an optional `allowedTypes` prop, trimmed here to
-the selected field's own `facetType`) are reused as-is from their new
-`shared/controls/` home. `CompareControl` is reused too, but with the
-one deliberate difference described below: unlike `gateway/facet`,
-`gateway/card-facet` doesn't pass it a narrower `options` list, so it
-offers the full comparison vocabulary. Its own front end (`view.js`)
+exists for cards) -- `FacetKeyControl`, `UiTypeControl` (gains an
+optional `allowedTypes` prop, trimmed here to the selected field's own
+`facetType`), and `CompareControl` are all reused as-is from their new
+`shared/controls/` home. At the time, `gateway/facet` didn't pass
+`allowedTypes` at all (see "Two Facet blocks, one set of settings"
+below for why that was a real gap, since closed) and passed
+`CompareControl` a narrower `options` list (Contains/Equals only --
+since lifted too, see "Full comparison-operator support" below); both
+controls now behave identically for both blocks. Its own front end
+(`view.js`)
 doesn't build a request payload itself: `shared/cards.js`'s
 `fetchCardsPage()` already gathers every currently-active card-facet
 under the same grid on *every* fetch (`collectActiveFacets()` -- searches
@@ -2826,6 +2835,85 @@ only an unnecessarily restrictive front-end control.
   "9") instead of numerically -- choosing one of those four operators for
   a facet is itself a declaration that the value should be compared as a
   number.
+
+### Two Facet blocks, one set of settings
+
+Asked directly: "double check are there 2 different Facet Blocks, one
+for cards and one for Data Table? Is that by design... my instinct is
+we'd like to have 1 that works for both because otherwise the settings
+may vary over time. Compare the blocks if 2 exist, check for deviation
+in the settings."
+
+Confirmed: yes, two blocks -- `gateway/facet` (Data Table) and
+`gateway/card-facet` (Data Cards), and yes, by design, documented
+directly above (`gateway/card-facet` itself is `gateway/facet`'s own
+`render.php`/`edit.js` "minus the 'is it a displayed column' half").
+**Genuinely merging them into one block isn't the right fix, though**:
+their front ends drive fundamentally different mechanisms that can't
+share one `view.js` -- `gateway/facet` filters an already-loaded
+DataTable entirely client-side (`column().search()` /
+`$.fn.dataTable.ext.search`), while `gateway/card-facet` triggers a REST
+refetch of the grid (`shared/cards.js`'s `fetchCardsPage()`). One block
+branching internally on which parent it's in would just be today's two
+`render.php`/`view.js` pairs glued together with an if-statement, not a
+real simplification. The right fix for "settings may vary over time" is
+what this codebase already mostly does -- both blocks' EDITOR-side
+configuration is built from the exact same `shared/controls/*`
+components (`FacetKeyControl`, `UiTypeControl`, `CompareControl`) fed by
+the exact same `Column_Registry`-derived data (`isFilterable`,
+`facetType`) -- so a genuine settings difference can only ever come from
+one block's `edit.js` calling a shared control differently than the
+other's, not from the control itself.
+
+**A real, direct comparison of every file in both blocks (`block.json`,
+`edit.js`, `render.php`, `view.js`, `save.js`, `index.js`, `style.scss`)
+turned up exactly one such gap, not a deliberate design difference:**
+`gateway/facet`'s own `edit.js` never passed `UiTypeControl`'s
+`allowedTypes` prop at all, so it silently offered "Select"/"Checkboxes"
+for a field whose own `facetType` is `['input']` only (a TextArea, or
+`id`) -- a combination `gateway/card-facet` already correctly refuses to
+offer, but `gateway/facet` didn't. Both blocks already fetch the exact
+same `Column_Registry`-derived `facetType` off the exact same
+`useAvailableColumns()` hook; the only thing missing was actually reading
+it in `gateway/facet`'s own `edit.js`. Fixed by adding the same
+`facetTypesByKey` reduce `gateway/card-facet`'s own `edit.js` already
+has, and passing `allowedTypes={ facetTypesByKey[ facetKey ] }` the same
+way. `shared/controls/ui-type-control.js`'s own docblock (which
+previously documented this AS a deliberate difference) is corrected too.
+
+**Specifically checked and confirmed NOT a gap, despite the "I know the
+card facet has good comparison options" instinct that prompted this
+comparison:** the live Compare vocabulary. Both blocks' `CompareControl`
+usage already passes no `options` override, so both already offer the
+identical full `=`/`!=`/`>`/`>=`/`<`/`<=`/`LIKE`/`NOT LIKE` vocabulary
+(`gateway/facet`'s own version of this fix landed earlier -- see "Full
+comparison-operator support" above, and `blocks/facet/src/view.js`'s own
+`registerCustomCompareFilter()`/`compareValues()`, which genuinely
+implement every one of those operators client-side, not just describe
+them in a comment). Two stale README paragraphs still claimed otherwise
+(one saying only `gateway/card-facet` trims `UiTypeControl`, one saying
+neither block's live compare goes beyond Contains/Equals) -- both
+predated that earlier fix and were simply never updated; corrected
+directly above rather than left to mislead a future reader, exactly the
+kind of drift this whole comparison was worried about.
+
+Every other difference between the two blocks (`block.json`'s
+`parent`/`ancestor` and `usesContext` -- `gateway/facet` alone needs
+`columns` context, for its "displayed column" gate; `render.php`'s
+"must be a displayed column" check, unique to `gateway/facet`; every
+class name, string, and docblock naming one block or the other) is
+structural, tracks a real difference between the two data sources, and
+was already reviewed and intentional -- not settings drift.
+
+Verified with `php -l` (no PHP touched) and a successful production
+build; this is a pure editor-side React prop-wiring fix with no
+behavior to smoke-test standalone (the same `UiTypeControl`/
+`CompareControl` components are already exercised implicitly by every
+other test/verification this Facets feature has ever had). The actual
+Inspector behavior -- a TextArea-backed `gateway/facet` no longer
+offering Select/Checkboxes -- needs manual verification in a real block
+editor, the same caveat every other editor-only UI change in this
+plugin carries.
 
 ### Editor preview: real records, not just posts
 
