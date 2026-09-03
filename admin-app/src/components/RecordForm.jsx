@@ -211,13 +211,21 @@ import PageLinkPicker from './PageLinkPicker.jsx';
  * Limit's "Leave blank for no limit.", etc., all sit under their own
  * control too), for any field type. `settings.placeholder`/`step`
  * only ever have anything to show for the one plain `<input>` fallback
- * branch at the bottom (nothing else -- textarea, select, a relate
- * autocomplete, ...) -- currently recognizes them at all -- with one
- * exception: `step` also applies to the dedicated Range branch (see its
- * own `settings.min_value`/`max_value` paragraph below), since Range is
- * the other type `presentation_fields()` grants it to but the only one
- * of the two that doesn't fall into the plain `<input>` fallback at all
- * (it renders its own dedicated `<input type="range">` instead).
+ * branch at the bottom (nothing else -- select, a relate autocomplete,
+ * ...) -- currently recognizes them at all -- with two exceptions:
+ * `step` also applies to the dedicated Range branch (see its own
+ * `settings.min_value`/`max_value` paragraph below), since Range is the
+ * other type `presentation_fields()` grants it to but the only one of
+ * the two that doesn't fall into the plain `<input>` fallback at all
+ * (it renders its own dedicated `<input type="range">` instead); and
+ * `settings.placeholder` also applies to the dedicated `textarea`
+ * branch, alongside its own `settings.rows` (`<textarea rows="...">`,
+ * falling back to a fixed default of 4 when blank) -- reported
+ * directly, "textarea is missing 3 settings: Rows Placeholder New
+ * Lines" -- see `Text_Area_Field_Type::presentation_fields()`'s own
+ * docblock for why the third, `new_lines`, is a front-end RENDERING
+ * concern instead (`gateway/card-field-text`'s own render.php), never
+ * something this editing form itself reads or shows.
  * `settings.prepend`/`append` are similar: the plain `<input>` fallback
  * and the dedicated Range branch both wrap their own control in a small
  * inline group (`.gateway-record-form-input-group`, each addon a
@@ -773,7 +781,8 @@ export default function RecordForm( {
 							<textarea
 								id={ inputId }
 								className="regular-text"
-								rows={ 4 }
+								rows={ field.settings?.rows || 4 }
+								placeholder={ field.settings?.placeholder }
 								maxLength={ field.settings?.character_limit || undefined }
 								value={ values[ field.name ] }
 								onChange={ handleChange( field.name ) }

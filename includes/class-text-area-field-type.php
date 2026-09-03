@@ -95,9 +95,37 @@ class Text_Area_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * Reported directly: "textarea is missing 3 settings: Rows
+	 * Placeholder New Lines... options to automatically add paragraphs
+	 * or <br>." `placeholder` is the same shared key/behavior Text/
+	 * Number/Email/Password/URL already recognize (a plain `<input>`'s
+	 * own `placeholder` attribute -- `RecordForm`'s own `<textarea>`
+	 * reads it the identical way). `rows` (`settings.rows`, a positive
+	 * whole number -- `Model_Fields::sanitize_settings()`'s own
+	 * "positive whole number or dropped" treatment, same as
+	 * `character_limit`) sets that same `<textarea>`'s own `rows`
+	 * attribute, falling back to the existing fixed default (4) when
+	 * blank. `new_lines` (`settings.new_lines`, one of `''`/`'br'`/
+	 * `'wpautop'` -- ACF's own three exact values for this same setting)
+	 * is the genuinely different one: unlike the other two, it isn't a
+	 * `RecordForm` editing concern at all -- editing always shows the
+	 * raw, unmodified text exactly as typed -- it controls how
+	 * `gateway/card-field-text`'s own render.php displays an ALREADY
+	 * -SAVED value on the front end: `''` (the default, preserving this
+	 * type's own original behavior for every already-existing field)
+	 * leaves the value as plain, escaped text; `'br'`/`'wpautop'` run it
+	 * through `nl2br()`/`wpautop()` (after escaping) and print the
+	 * result as real, trusted HTML instead, the same way
+	 * `WYSIWYG_Field_Type::is_html_renderable()`'s own `true` already
+	 * gets that render.php's "print raw, trusted HTML" branch -- see
+	 * `Column_Registry::get_columns_for_collection()`'s own `newLines`
+	 * key for exactly how a specific FIELD's own setting (not this
+	 * TYPE's own static `is_html_renderable()`, which stays `false`)
+	 * ends up deciding that per field instance.
 	 */
 	public static function presentation_fields() {
-		return array( 'instructions' );
+		return array( 'instructions', 'placeholder', 'rows', 'new_lines' );
 	}
 
 	/**

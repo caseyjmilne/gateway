@@ -34,6 +34,19 @@
  * -- see that interface method's own docblock for why this needed a
  * second flag rather than reusing `isTextRenderable` itself.
  *
+ * Also honors a Text Area field's own New Lines setting -- reported
+ * directly, "options to automatically add paragraphs or <br>."
+ * `$column['newLines']` (`Column_Registry::get_columns_for_collection()`,
+ * that field's own `settings.new_lines`) is a genuinely different kind
+ * of flag from `isHtmlRenderable` above: a per-FIELD setting, not a
+ * per-TYPE one (`Text_Area_Field_Type::is_html_renderable()` itself
+ * always stays `false`, since most Text Area fields have no New Lines
+ * configured and should render exactly as they always have). When set
+ * to `'br'`/`'wpautop'`, this escapes the raw value FIRST (it's plain,
+ * admin-typed text, never markup, unlike WYSIWYG's own value) and only
+ * THEN runs it through `nl2br()`/`wpautop()`, printing the result as
+ * real HTML the same way the `isHtmlRenderable` branch already does.
+ *
  * `block.json`'s own `supports` now mirrors `core/paragraph`'s (Color,
  * Spacing/Padding+Margin, Border, and the full Typography set --
  * font family/weight/style/decoration/transform/letter-spacing included,
@@ -135,6 +148,7 @@ $wrapper_attributes = get_block_wrapper_attributes( array(
 	'class' => 'gateway-card-field-text',
 	'style' => 'display:inline-block;',
 ) );
+$new_lines = $column['newLines'] ?? '';
 ?>
 <span <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php
 if ( ! empty( $column['isHtmlRenderable'] ) ) {
@@ -148,6 +162,25 @@ if ( ! empty( $column['isHtmlRenderable'] ) ) {
 	// verbatim so its own `<p>`/`<br>` actually break lines instead of
 	// showing as literal, escaped text.
 	echo (string) $value; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted HTML, see comment above.
+} elseif ( in_array( $new_lines, array( 'br', 'wpautop' ), true ) ) {
+	// Text_Area_Field_Type's own New Lines setting -- reported directly:
+	// "options to automatically add paragraphs or <br>." Unlike
+	// WYSIWYG's own always-trusted-HTML value above, this field's own
+	// raw stored text is plain, admin-typed text with real newlines,
+	// never markup -- `esc_html()` FIRST neutralizes anything that
+	// happens to look like a tag, THEN `nl2br()`/`wpautop()` (WordPress
+	// core's own function, the same one applied to a Post's own
+	// content) turns the now-safe text's newlines into real `<br>`/`<p>`
+	// tags. This is a per-FIELD decision (`$column['newLines']`, this
+	// field's own `settings.new_lines`), not a per-TYPE one --
+	// Text_Area_Field_Type::is_html_renderable() itself stays `false`
+	// always, since most Text Area fields have no New Lines setting
+	// configured at all and should keep rendering as plain text exactly
+	// as before this setting existed.
+	$escaped = esc_html( (string) $value );
+	echo 'wpautop' === $new_lines
+		? wpautop( $escaped ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already esc_html()'d above, wpautop() only adds <p>/<br>.
+		: nl2br( $escaped ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already esc_html()'d above, nl2br() only adds <br>.
 } else {
 	echo esc_html( (string) $value );
 }

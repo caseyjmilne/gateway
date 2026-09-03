@@ -5902,6 +5902,89 @@ itself otherwise) -- the same "single pill, one border, correct corner
 wherever the group actually ends" shape regardless of whether a field
 has a Prepend, an Append, both, or neither.
 
+### Text Area's own Presentation settings: Placeholder / Rows / New Lines
+
+Reported directly: "textarea is missing 3 settings: Rows Placeholder
+New Lines. Missing Missing Missing options to automatically add
+paragraphs or `<br>`."
+
+**Placeholder** needed no new machinery at all -- it's the SAME shared
+`placeholder` key Text/Number/Email/Password/URL's own Presentation
+settings already recognize (`PRESENTATION_FIELD_META`'s own generic
+text-input branch); `Text_Area_Field_Type::presentation_fields()`
+simply didn't list it before, and `RecordForm`'s own `<textarea>`
+didn't read it even though the setting could technically be saved.
+Fixed on both ends: `presentation_fields()` now returns `array(
+'instructions', 'placeholder', 'rows', 'new_lines' )`, and the
+`<textarea>` now passes `field.settings?.placeholder` through as its
+own real `placeholder` attribute.
+
+**Rows** (`settings.rows`) is new -- a plain number input in
+`FieldEditor.jsx`'s Presentation tab, sets that same `<textarea>`'s own
+`rows` attribute, falling back to the existing fixed default (4) when
+left blank. `Model_Fields::sanitize_settings()` gives it the exact same
+"a positive whole number, or dropped" treatment `character_limit`/
+`template_page_id` already get -- `0`, a negative value, or anything
+non-numeric is discarded rather than stored as something RecordForm
+would have to guard against rendering an invalid `rows` value from.
+
+**New Lines** (`settings.new_lines`, one of `''`/`'br'`/`'wpautop'` --
+ACF's own exact three values for this same setting) is the genuinely
+different one of the three: **it isn't a `RecordForm` editing concern
+at all.** Editing a Text Area field always shows the raw, unmodified
+text exactly as typed, with real newlines, regardless of this setting
+-- the SAVED value itself is never rewritten by it. What it actually
+controls is how an ALREADY-SAVED value renders on the FRONT END, in
+`gateway/card-field-text`'s own render.php (the same block that already
+doubles as WYSIWYG's own display) -- `''` (No Formatting, the default,
+preserving every already-existing Text Area field's own original
+behavior) leaves the value as plain, escaped text; `'br'` (Automatically
+add `<br>`) or `'wpautop'` (Automatically add paragraphs) instead
+`esc_html()` the raw value FIRST (it's plain, admin-typed text, never
+markup, unlike WYSIWYG's own trusted HTML) and only THEN run it through
+WordPress core's own `nl2br()`/`wpautop()`, printing the result as real,
+trusted HTML the exact same way `Field_Type::is_html_renderable()`'s
+own `true` already does for WYSIWYG.
+
+**A per-FIELD setting, not a per-TYPE flag -- `Text_Area_Field_Type::
+is_html_renderable()` itself stays `false`, always.** Most Text Area
+fields have no New Lines setting configured at all and should keep
+rendering exactly as they always have; only a specific field's own
+`settings.new_lines` should ever switch it into real-HTML rendering,
+which a static, per-TYPE method has no way to express. Solved by
+threading the setting through per FIELD instead, alongside the
+already-established `returnFormat` precedent: `Column_Registry::
+get_columns_for_collection()`/`get_related_columns_for_collection()`
+both expose a new `newLines` key (`$field['settings']['new_lines'] ??
+''`, harmless to compute unconditionally for every OTHER type the same
+way `returnFormat` already is), and `card-field-text`'s own render.php
+reads `$column['newLines']` directly rather than any static, per-type
+flag to decide whether to escape-and-format a Text Area value.
+Deliberately scoped to `card-field-text` only, not the Data Table's own
+row/cell rendering -- injecting paragraph breaks into a table CELL is a
+different, narrower-context question this request didn't ask about.
+
+Verified end-to-end with a standalone PHP smoke test (`presentation_fields()`
+exposing all three; `sanitize_settings()`'s own numeric-or-dropped
+`rows` and fixed-enum-or-dropped `new_lines` (including an explicit `''`
+submission collapsing to "no key stored," identical to never configuring
+it at all); `Column_Registry`'s own `newLines` exposure for both a
+model's own Text Area field and a related one; render.php's own
+escape-then-format decision mirrored against real `Column_Registry`
+output -- confirming a literal `<script>` tag never survives either
+formatting mode, and that "No Formatting"/an absent setting behave
+identically; a real record round-tripped through `create_record()`/
+`get_record()`, confirming the RAW stored value keeps its own real
+newlines completely untouched, New Lines never applied at the
+storage/GET layer) alongside the full existing regression suite, plus
+an interactive Playwright pass (against a temporary, uncommitted
+harness) confirming `FieldEditor`'s own Placeholder/Rows/New Lines
+inputs show their configured values, New Lines offers exactly the three
+expected options in ACF's own order, changing it autosaves correctly,
+and `RecordForm`'s own `<textarea>` picks up the configured `rows`/
+`placeholder` while still showing the raw, untouched existing value.
+`admin-app` rebuilt via `npm run build` (vite), which compiled cleanly.
+
 ### A real bug: settings silently never saving, for a genuinely empty field only
 
 A field's own `settings` -- whatever the sections above describe --

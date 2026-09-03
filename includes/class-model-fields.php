@@ -1016,6 +1016,12 @@ class Model_Fields {
 	 * `multiple`/`allow_archive_urls` on that same bundle need no
 	 * exception either, same as `show_toggle` above.
 	 *
+	 * `Text_Area_Field_Type`'s own `rows`/`new_lines` (both plain
+	 * `presentation_fields()` entries, not a `supports_*()` bundle of
+	 * their own) get the same numeric-or-dropped/fixed-enum-or-dropped
+	 * treatment `character_limit`/`return_format` already get above --
+	 * see this method's own inline comments on each for the details.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1330,6 +1336,31 @@ class Model_Fields {
 			// number, the same "positive whole number or dropped"
 			// treatment 'character_limit' already gets above.
 			if ( 'template_page_id' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
+				continue;
+			}
+
+			// 'rows' is Text_Area_Field_Type's own -- a <textarea>'s own
+			// `rows` attribute, meaningless as anything but a positive
+			// whole number, the same "positive whole number or dropped"
+			// treatment 'character_limit'/'template_page_id' already get
+			// above (RecordForm.jsx's own <textarea> falls back to its
+			// existing fixed default when this is absent).
+			if ( 'rows' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
+				continue;
+			}
+
+			// 'new_lines' is Text_Area_Field_Type's own -- a fixed, small
+			// vocabulary (ACF's own three exact values), same "anything
+			// outside it is dropped" treatment 'return_format' already
+			// gets above. Blank ('' -- "No Formatting") never reaches
+			// here at all: it's already caught by the generic blank
+			// check above, which is exactly the outcome this setting
+			// wants for it (an absent key and an explicit '' both mean
+			// "don't reformat," read identically by
+			// Column_Registry::get_columns_for_collection()'s own
+			// `?? ''` fallback), so only the two REAL formatting modes
+			// need checking here.
+			if ( 'new_lines' === $key && ! in_array( $value, array( 'br', 'wpautop' ), true ) ) {
 				continue;
 			}
 

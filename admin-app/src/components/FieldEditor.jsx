@@ -53,7 +53,39 @@ const PRESENTATION_FIELD_META = {
 	// loop below merges the live list in at render time instead of it
 	// living here.
 	preview_size: { label: 'Preview Size', type: 'select' },
+	// Text_Area_Field_Type's own -- reported directly: "textarea is
+	// missing 3 settings: Rows Placeholder New Lines" (Placeholder
+	// itself needs no entry of its own here, already covered by the
+	// shared `placeholder` key above). `rows` sets RecordForm's own
+	// `<textarea>` height, falling back to the existing fixed default
+	// (4) when blank. `new_lines` is a fixed, small vocabulary (`''`/
+	// `'br'`/`'wpautop'`, ACF's own exact values) -- its own options
+	// come from `NEW_LINES_OPTIONS` below, the same "static list, merged
+	// in at render time" treatment `preview_size` gets from
+	// `imageSizes`, just a fixed constant here instead of a live fetch
+	// (there's nothing site-specific about it). This is the ONE setting
+	// on this whole component that isn't a RecordForm editing concern at
+	// all -- it only ever affects how an already-saved value renders on
+	// the front end (`gateway/card-field-text`'s own render.php) -- see
+	// `Text_Area_Field_Type::presentation_fields()`'s own docblock.
+	rows: { label: 'Rows', type: 'number', hint: 'Leave blank for the default.' },
+	new_lines: {
+		label: 'New Lines',
+		type: 'select',
+		hint: 'Controls how the saved value’s own line breaks render on the front end. Never affects editing here.',
+	},
 };
+
+// Text_Area_Field_Type's own New Lines options -- ACF's own exact three
+// values/labels for this setting. A plain module-level constant, not
+// fetched (unlike `imageSizes`) -- there's nothing site-specific about
+// it, the same "static list" treatment `POST_STATUS_OPTIONS` already
+// gets for the same reason.
+const NEW_LINES_OPTIONS = [
+	{ key: '', label: 'No Formatting' },
+	{ key: 'br', label: 'Automatically add <br>' },
+	{ key: 'wpautop', label: 'Automatically add paragraphs' },
+];
 
 // A defensive normalizer for `field.settings` -- belt-and-suspenders
 // alongside `Gateway\\Model_Fields::for_rest_response()` on the PHP
@@ -2142,18 +2174,25 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 											className="regular-text"
 											{ ...register( `settings.${ key }` ) }
 										>
-											{ /* `imageSizes` -- the only `select`-type Presentation
-											 * setting today -- starts empty until useImageSizes()'s
+											{ /* `imageSizes` starts empty until useImageSizes()'s
 											 * own fetch resolves; an empty <select> is a harmless,
 											 * momentary state rather than something worth a loading
-											 * message of its own. */ }
-											{ ( 'preview_size' === key ? imageSizes : [] ).map(
-												( option ) => (
-													<option key={ option.key } value={ option.key }>
-														{ option.label }
-													</option>
-												)
-											) }
+											 * message of its own. `NEW_LINES_OPTIONS` (Text Area's
+											 * own New Lines setting) needs no such fetch/loading
+											 * state at all -- a fixed, small, module-level
+											 * constant, same shape either way ({key,label}) so both
+											 * merge into this one shared render loop. */ }
+											{ (
+												'preview_size' === key
+													? imageSizes
+													: 'new_lines' === key
+													? NEW_LINES_OPTIONS
+													: []
+											).map( ( option ) => (
+												<option key={ option.key } value={ option.key }>
+													{ option.label }
+												</option>
+											) ) }
 										</select>
 									) : (
 										<input

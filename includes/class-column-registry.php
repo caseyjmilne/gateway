@@ -327,6 +327,17 @@ class Column_Registry {
 			// whether a Size setting makes sense at all -- see that
 			// block's own render.php/edit.js for the full "why").
 			$return_format       = $field['settings']['return_format'] ?? 'array';
+			// Text_Area_Field_Type's own `settings.new_lines` (`''`/`'br'`/
+			// `'wpautop'`) -- meaningless for any other type, but harmless
+			// to compute unconditionally, same reasoning `returnFormat`
+			// just above already gives. This is what actually lets a
+			// SPECIFIC field's own setting (not this TYPE's own static
+			// `is_html_renderable()`, which stays `false` for every Text
+			// Area field regardless) decide, per field instance, whether
+			// gateway/card-field-text's own render.php prints its value as
+			// real HTML (`nl2br()`/`wpautop()` applied) or plain escaped
+			// text -- see that type's own presentation_fields() docblock.
+			$new_lines           = $field['settings']['new_lines'] ?? '';
 
 			$facet_type = array();
 
@@ -364,6 +375,7 @@ class Column_Registry {
 				'isNumeric'        => $is_numeric,
 				'isImage'          => $is_image,
 				'returnFormat'     => $return_format,
+				'newLines'         => $new_lines,
 			);
 		}
 
@@ -462,6 +474,10 @@ class Column_Registry {
 					'isNumeric'           => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
 					'isImage'             => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
 					'returnFormat'        => $related_field['settings']['return_format'] ?? 'array',
+					// Same reasoning as get_columns_for_collection()'s own
+					// identical `newLines` key above, just for a related
+					// Text Area field instead of one of this model's own.
+					'newLines'            => $related_field['settings']['new_lines'] ?? '',
 					'relationship_method' => $relationship['method_name'],
 				);
 			}
