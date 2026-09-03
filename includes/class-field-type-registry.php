@@ -202,7 +202,7 @@ class Field_Type_Registry extends Registry {
 	 * it. See that interface method's own docblock for why this is a
 	 * separate flag from `is_text_renderable` rather than folded into it.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_html_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,supports_boolean_settings:bool,supports_link_settings:bool,max_one_per_model:bool}>
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_html_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,supports_boolean_settings:bool,supports_link_settings:bool,supports_post_object_settings:bool,max_one_per_model:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -215,29 +215,30 @@ class Field_Type_Registry extends Registry {
 			$has_choices = is_subclass_of( $class, Choice_Field_Type::class );
 
 			$described[] = array(
-				'key'                         => $class::key(),
-				'label'                       => $class::label(),
-				'category'                    => $class::category(),
-				'input_type'                  => $class::input_type(),
-				'is_sensitive'                => $class::is_sensitive(),
-				'is_text_renderable'          => $class::is_text_renderable(),
-				'is_html_renderable'          => $class::is_html_renderable(),
-				'is_numeric'                  => $class::is_numeric(),
-				'relationship_type'           => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
-				'has_choices'                 => $has_choices,
-				'is_multiple'                 => $has_choices ? $class::is_multiple() : null,
-				'presentation_fields'         => $class::presentation_fields(),
-				'supports_default_value'      => $class::supports_default_value(),
-				'supports_character_limit'    => $class::supports_character_limit(),
-				'supports_range_limits'       => $class::supports_range_limits(),
-				'supports_media_settings'     => $class::supports_media_settings(),
-				'supports_file_settings'      => $class::supports_file_settings(),
-				'supports_embed_settings'     => $class::supports_embed_settings(),
-				'supports_user_settings'      => $class::supports_user_settings(),
-				'supports_permalink_settings' => $class::supports_permalink_settings(),
-				'supports_boolean_settings'   => $class::supports_boolean_settings(),
-				'supports_link_settings'      => $class::supports_link_settings(),
-				'max_one_per_model'           => $class::max_one_per_model(),
+				'key'                            => $class::key(),
+				'label'                          => $class::label(),
+				'category'                       => $class::category(),
+				'input_type'                     => $class::input_type(),
+				'is_sensitive'                   => $class::is_sensitive(),
+				'is_text_renderable'             => $class::is_text_renderable(),
+				'is_html_renderable'             => $class::is_html_renderable(),
+				'is_numeric'                     => $class::is_numeric(),
+				'relationship_type'              => is_subclass_of( $class, Relationship_Field_Type::class ) ? $class::relationship_type() : null,
+				'has_choices'                    => $has_choices,
+				'is_multiple'                    => $has_choices ? $class::is_multiple() : null,
+				'presentation_fields'            => $class::presentation_fields(),
+				'supports_default_value'         => $class::supports_default_value(),
+				'supports_character_limit'       => $class::supports_character_limit(),
+				'supports_range_limits'          => $class::supports_range_limits(),
+				'supports_media_settings'        => $class::supports_media_settings(),
+				'supports_file_settings'         => $class::supports_file_settings(),
+				'supports_embed_settings'        => $class::supports_embed_settings(),
+				'supports_user_settings'         => $class::supports_user_settings(),
+				'supports_permalink_settings'    => $class::supports_permalink_settings(),
+				'supports_boolean_settings'      => $class::supports_boolean_settings(),
+				'supports_link_settings'         => $class::supports_link_settings(),
+				'supports_post_object_settings'  => $class::supports_post_object_settings(),
+				'max_one_per_model'              => $class::max_one_per_model(),
 				// Whether this type has a real column of its own on the
 				// model's table at all (Field_Type::blueprint_method()
 				// returning '' is that method's own existing "no column,
@@ -247,7 +248,7 @@ class Field_Type_Registry extends Registry {
 				// there's no column to ORDER BY for a field this is false
 				// for. See Model_Columns::set()'s own docblock for the
 				// server-side enforcement of the same rule.
-				'has_column'                  => '' !== $class::blueprint_method(),
+				'has_column'                     => '' !== $class::blueprint_method(),
 			);
 		}
 

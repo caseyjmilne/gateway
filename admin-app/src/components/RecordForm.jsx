@@ -7,6 +7,7 @@ import WysiwygEditor from './WysiwygEditor.jsx';
 import OEmbedPicker from './OEmbedPicker.jsx';
 import PermalinkControl from './PermalinkControl.jsx';
 import LinkPicker from './LinkPicker.jsx';
+import PostObjectPicker from './PostObjectPicker.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -147,6 +148,31 @@ import LinkPicker from './LinkPicker.jsx';
  * classic popup, and for the one real limitation `return_format: 'url'`
  * has for an EXISTING record being edited (Title/"open in a new tab"
  * can't be recovered from a bare URL string alone).
+ *
+ * "post_object" (Post_Object_Field_Type) copies ACF's own Post Object
+ * field, per a direct request. Its own DB column is always a plain array
+ * of WP post ids, EVEN when `settings.multiple` is off (see that type's
+ * own docblock for why) -- but form state/`initialValues` never see that
+ * raw array directly either: `initialValues` passes an EXISTING record's
+ * own value straight through unchanged, same as Image/File/User above --
+ * a bare id, the full `{id, title, permalink, post_type, status}` object,
+ * or an array of either, depending on this field's own configured
+ * `return_format`/`multiple` (`Records_REST_Controller::
+ * enrich_post_object_fields()`/`resolve_post_object_value()` are what
+ * shape it that way, unwrapping the underlying array to a single value
+ * when `multiple` is off). Renders as a `PostObjectPicker` -- a close
+ * cousin of `RelateAutocomplete`, just searching this site's own
+ * WordPress posts instead of one Gateway model's own records (see that
+ * component's own docblock) -- which normalizes whatever shape it's
+ * handed for DISPLAY only, into `{id, label}` chips, without ever
+ * touching form state itself until a chip is actually picked or removed.
+ * `handleSubmit()` is what actually reduces all of that back down to a
+ * bare array of ids, unconditionally (regardless of `multiple`, matching
+ * how the field is always stored) -- accepting every shape `values[field.name]`
+ * might still be in, touched or not: `null`/a bare id/the full object/an
+ * array of either, the same tolerant one-time normalization Image/File's
+ * own reduction above already does, just always producing an array here
+ * rather than a single id-or-`null`.
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -453,7 +479,12 @@ export default function RecordForm( {
 				initial[ `${ field.name }__manual` ] = initialValues
 					? Boolean( initialValues[ `${ field.name }__manual` ] )
 					: false;
-			} else if ( 'image' === inputType || 'file' === inputType || 'user' === inputType ) {
+			} else if (
+				'image' === inputType ||
+				'file' === inputType ||
+				'user' === inputType ||
+				'post_object' === inputType
+			) {
 				// Passed through exactly as the record's own GET response
 				// gave it -- null, a bare id, a URL string, or the full
 				// enriched object, depending on this field's own
@@ -465,7 +496,10 @@ export default function RecordForm( {
 				// Field_Type::supports_user_settings()'s own docblock for
 				// why) -- only a bare id or the enriched object, both
 				// already handled generically by "passed through
-				// unchanged" either way.
+				// unchanged" either way. Post Object is the same again,
+				// just possibly an ARRAY of either shape too when
+				// `settings.multiple` is on -- PostObjectPicker.jsx's own
+				// docblock covers every shape this can arrive in.
 				initial[ field.name ] = existing;
 			} else if ( 'link' === inputType ) {
 				// The real, stored shape is always the full
@@ -599,6 +633,37 @@ export default function RecordForm( {
 						: 'number' === typeof current
 						? current
 						: null;
+			} else if ( 'post_object' === inputType ) {
+				// Storage is always an array of ids regardless of
+				// `settings.multiple` -- see Post_Object_Field_Type's own
+				// docblock for why. Form state here can be almost anything:
+				// untouched, it's still whatever shape the record's own GET
+				// response gave it (a bare id, the full {id, title,
+				// permalink, post_type, status} object, or an array of
+				// either, depending on return_format/multiple --
+				// PostObjectPicker.jsx never rewrites form state on its
+				// own, only in response to an actual pick/remove); once
+				// touched, PostObjectPicker.jsx's own onChange always
+				// writes the {id, label} chip shape RelateAutocomplete.jsx
+				// already uses (single object, or an array of them). This
+				// reduction accepts every one of those shapes uniformly --
+				// wrap a lone (non-array) entry into a one-item array, pull
+				// `.id` out of anything object-shaped, drop anything that
+				// still isn't a real positive id afterward -- same
+				// tolerant normalization Post_Object_Field_Type::cast()
+				// itself does server-side.
+				const current = values[ field.name ];
+				const entries = Array.isArray( current )
+					? current
+					: current
+					? [ current ]
+					: [];
+				payload[ field.name ] = entries
+					.map( ( entry ) =>
+						entry && 'object' === typeof entry ? entry.id : entry
+					)
+					.map( ( id ) => Number( id ) )
+					.filter( ( id ) => Number.isInteger( id ) && id > 0 );
 			} else {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
@@ -909,6 +974,13 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'post_object' === inputType && (
+							<PostObjectPicker
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ handleRelateChange( field.name ) }
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -925,6 +997,7 @@ export default function RecordForm( {
 							'user' !== inputType &&
 							'permalink' !== inputType &&
 							'link' !== inputType &&
+							'post_object' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

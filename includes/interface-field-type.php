@@ -684,6 +684,51 @@ interface Field_Type {
 	public static function supports_link_settings();
 
 	/**
+	 * Whether this type recognizes Post_Object_Field_Type's own settings
+	 * bundle -- per a direct request: "we need a Post Object field type
+	 * (same as ACF equivalent). It needs (in General Tab) the settings:
+	 * Filter by Post Type, Filter by Post Status, Filter by Taxonomy...
+	 * Other settings: Return Format, Select Multiple, Required,
+	 * Instructions." (Allow Null, ACF's own extra setting the request
+	 * also listed, is deliberately NOT part of this bundle -- see
+	 * `Post_Object_Field_Type`'s own docblock for why it doesn't apply
+	 * here.) Five keys, all on **General**:
+	 *
+	 * - `filter_post_types` / `filter_post_statuses` / `filter_taxonomies`
+	 *   -- each an array of strings (a post type slug, a post status
+	 *   key, a taxonomy slug), narrowing what `PostObjectPicker.jsx`'s
+	 *   own live search offers -- empty (the default) means "no filter,
+	 *   every public post type/the common statuses/no taxonomy
+	 *   restriction." Sanitized element-by-element the same way
+	 *   Checkbox_Field_Type's own multi-value default is (see
+	 *   `Model_Fields::sanitize_settings()`'s own docblock) -- an array
+	 *   value, not a string, so it needs the same exception from the
+	 *   generic `(string)` cast every scalar setting here goes through.
+	 * - `return_format` -- the same key (and the same shared enum check)
+	 *   Image/File/User/Link's own bundles already share, just two more
+	 *   values added to it: `'object'` (the default -- a resolved
+	 *   `{id, title, permalink, post_type, status}` per post, ACF's own
+	 *   "Post Object" format) or `'id'` (a bare post id per post).
+	 * - `multiple` -- a boolean switch (the same generic sanitize
+	 *   already gives `show_toggle`/True-False's own `default` this
+	 *   exact treatment: a submitted `true` becomes `"1"`, kept; `false`
+	 *   becomes `""`, dropped). Unlike Buttons/Select/Radio vs. Checkbox
+	 *   (single vs. multiple as entirely SEPARATE types), ACF's own Post
+	 *   Object is one type with this one setting toggling between them
+	 *   -- see that class's own docblock for why the underlying storage
+	 *   stays a plain array either way regardless of this setting
+	 *   (`Field_Type::blueprint_method()` can't vary per-field, only per
+	 *   TYPE), with `multiple` only ever affecting how many of that
+	 *   array's own items a REST response resolves back out.
+	 *
+	 * `true` only for `Post_Object_Field_Type` today; `false` for every
+	 * other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function supports_post_object_settings();
+
+	/**
 	 * Whether a model can ever have more than one field of this type at
 	 * once -- `true` only for `Permalink_Field_Type` today, per the
 	 * user's own explicit request: a model's own single-record URL

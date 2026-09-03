@@ -7531,6 +7531,218 @@ the Edit modal on the full-object record -- no console/page errors, all
 three list rows and the edit summary render correctly. `admin-app`
 rebuilt via `npm run build` (vite), which compiled cleanly.
 
+### Post Object fields (`Post_Object_Field_Type`) -- ACF's own Post Object field, copied directly
+
+Reported directly: "we need a Post Object field type (same as ACF
+equivalent). It needs (in General Tab) the settings: Filter by Post
+Type Filter by Post Status Filter by Taxonomy. Each of these is an
+autocomplete searchable of the relevant data. User can select multiple,
+there needs to be a way to remove them a delete button. Other settings:
+Return Format Select Multiple Required Allow Null Instructions. I'm not
+sure what Allow Null is or why we need it, but ACF has that option. I'm
+not sure how null and just empty are different."
+
+Picks one or more of this site's own WordPress posts -- any registered
+post type, not just a Gateway model's own records -- the same "a real
+WordPress entity this plugin doesn't own the schema for" reasoning
+`User_Field_Type`'s own docblock already gives for a bare WP user id.
+**Category: `Relational`**, alongside Link/User/Relate to One/Relate to
+Many -- what a Post Object actually points at is another piece of
+content on this site, even though, like Link and User, it deliberately
+does NOT implement `Relationship_Field_Type`: there's no
+`Model_Relationships` binding here, since a WP post isn't one of this
+plugin's own Gateway models.
+
+**Storage: always a plain array of post ids, even with Select Multiple
+off.** `Field_Type::blueprint_method()`/`eloquent_cast()` are per-TYPE
+(fixed, with no parameters), not per-field-instance, so they can't vary
+based on one field's own `multiple` setting the way Buttons/Select/Radio
+vs. Checkbox get to (four separate TYPES, not one type with a switch).
+So the DB column (`blueprint_method()` `'text'`, `eloquent_cast()`
+`'array'` -- the exact same "structured value in a text column" shape
+Checkbox's own array-of-choices and Link's own `{url, title, target}`
+already use) is always a JSON array, whatever Select Multiple says;
+`multiple` only ever changes how many of that array's own items
+`Records_REST_Controller::enrich_post_object_fields()` hands back on a
+GET (the single one at index 0, or `null` if none, when off; the whole,
+possibly-empty array when on) and how `PostObjectPicker.jsx` renders
+(one chip max vs. several). `Post_Object_Field_Type::cast()` itself
+always normalizes to a de-duplicated, order-preserving array of positive
+ints regardless -- tolerating a bare scalar (wrapped into a one-item
+array) the same generous way Checkbox's own `cast()` already does, never
+validating against the field's own configured filters or whether an id
+still names a real post (stateless, no DB access -- the same "don't lose
+data based on stale assumptions" precedent Checkbox's own docblock
+already sets, since a post later trashed/untrashed, or a filter setting
+changed after the fact, should never silently corrupt what was actually
+selected).
+
+**Filter by Post Type / Filter by Post Status / Filter by Taxonomy** are
+three new settings (`supports_post_object_settings()`, a new interface
+method), each a plain array of strings, narrowing what
+`PostObjectPicker.jsx`'s own search offers. Every one of the three is
+empty by default, meaning "no restriction" -- resolved server-side, in
+`Post_REST_Controller::search_posts()`, to: every PUBLIC post type
+except `attachment` (Post Type), `publish` only (Post Status), no
+taxonomy restriction at all (Taxonomy). Being ARRAYS, not single scalar
+strings, these needed their own special case in
+`Model_Fields::sanitize_settings()` -- the exact same "array, not a
+string" exception Checkbox's own multi-value default already gets,
+for the exact same reason: the generic `sanitize_text_field( (string)
+... )` cast every other setting here gets would otherwise collapse a
+real array down to the literal string `"Array"`. **Filter by Taxonomy**
+restricts to posts having a term in ANY of the selected TAXONOMIES, not
+any specific term within one -- implemented via a `WP_Query` `tax_query`
+with `'relation' => 'OR'` and each taxonomy using `'operator' =>
+'EXISTS'` (a post either has some term in that taxonomy or it doesn't;
+which term is never checked) -- deliberately this coarse-grained,
+matching what "an autocomplete searchable of the relevant data" actually
+asked for: the relevant data being searched FOR Filter by Taxonomy is
+the site's own list of registered taxonomies themselves, not their terms.
+
+Each of the three is rendered in `FieldEditor.jsx` by a new, reusable
+`FilterMultiSelect.jsx` component -- chips with their own "×" remove
+button plus a small search-and-pick dropdown, per "there needs to be a
+way to remove them a delete button" -- but, unlike
+`RelateAutocomplete.jsx`'s own per-keystroke SERVER search, filtering a
+small, already-fetched, CLIENT-side option list instead: there's no
+"page" of post types or taxonomies on a real site large enough to need a
+live server round trip for it. Post Types/Taxonomies come from two new,
+tiny `api.js` functions (`fetchPostTypes()`/`fetchTaxonomies()`, wrapped
+by `usePostTypes.js`/`useTaxonomies.js`) hitting WordPress's own core
+`GET wp/v2/types`/`GET wp/v2/taxonomies` routes DIRECTLY -- the same
+"hit `wp/v2` directly for site-wide WP metadata, not this plugin's own
+namespace" pattern `LinkPicker.jsx`'s own `searchLinkableContent()`
+already established -- excluding `attachment` from the Post Type list
+the same way the server's own unrestricted default already does. Post
+Statuses has no equivalent core REST route to fetch from at all, so its
+own five options (Published/Draft/Pending Review/Private/Scheduled) are
+a small, hardcoded, client-side list covering WordPress's own built-in
+statuses.
+
+**Return Format** reuses the exact same shared `return_format` key --
+and the same `Model_Fields::sanitize_settings()` enum check -- Image/
+File/User/Link's own settings bundles already share, extended with two
+NEW values just for this type: `'object'` (the default -- ACF's own
+"Post Object" format, resolving to `{id, title, permalink, post_type,
+status}` per post) and `'id'` (a bare post id per post). No `'url'`
+option here, unlike Image/File -- unlike an attachment, a Post Object's
+own `'object'` shape already carries its own `permalink`, so a
+separate bare-URL format would only throw the rest of that shape away
+for no real gain. `Records_REST_Controller::resolve_post_object_value()`/
+`enrich_post_object_fields()` apply this (and the single/multiple
+unwrapping described above) on every GET, the exact same way
+`resolve_image_value()`/`resolve_user_value()` already do for their own
+types, just with an id-to-post `get_post()` lookup per item instead of
+an id-to-attachment/id-to-user one -- a since-deleted post's own id is
+silently dropped from the resolved result rather than erroring, the same
+tolerant handling `resolve_link_value()`'s own malformed-value case
+already has.
+
+**A dedicated Gateway REST endpoint, `Post_REST_Controller`, not a
+direct client-side call against `wp/v2` the way `LinkPicker.jsx`'s own
+`searchLinkableContent()` calls `wp/v2/pages`/`wp/v2/posts` directly.**
+Link never filters by taxonomy at all, so hitting `wp/v2` directly works
+fine there; Post Object's own Filter by Taxonomy needs a real
+`tax_query`, and each CUSTOM taxonomy's own REST query parameter name
+(`category`/`post_tag`/a custom `rest_base`) isn't something the client
+can reliably guess across arbitrary post types -- a genuine server-side
+`WP_Query`, which `Post_REST_Controller::search_posts()` provides
+(`GET /gateway/v1/posts/search`, `WP_Query`-based, `q`/`post_types`/
+`post_statuses`/`taxonomies`/`exclude` params, all comma-joined, mirroring
+`User_REST_Controller`'s own shape exactly), is what actually makes an
+arbitrary-taxonomy filter possible at all. A second route,
+`GET /gateway/v1/posts/<id>`, resolves one post by id for
+`PostObjectPicker.jsx`'s own preview when `return_format` is `'id'` --
+the same "nothing else to build a preview from" gap
+`Media_REST_Controller::get_media()`/`User_REST_Controller::get_user()`
+already fill for their own types. Both routes gated by the same
+`manage_options` permission check every other admin-only Gateway REST
+route already uses.
+
+**Deliberately no "Allow Null" setting at all, despite ACF having
+one** -- reported directly, alongside the original request: "I'm not
+sure what Allow Null is or why we need it... I'm not sure how null and
+just empty are different." ACF's own Post Object (like its own Select)
+renders as a native `<select>`, which -- unless a blank option is
+explicitly injected -- can NEVER truly hold no value at all: the browser
+always keeps SOME option selected, so ACF's own "Allow Null" exists
+purely to inject that blank option and let the field genuinely be empty.
+`PostObjectPicker.jsx` is never a native `<select>` in the first place
+-- it's the same search-box-plus-removable-chips widget
+`RelateAutocomplete.jsx` already uses for Relate to One/Relate to Many,
+which is ALREADY capable of holding nothing at all (no chip selected = an
+empty array/`null`) with no setting of its own needed, the same way
+Relate to One already can. **Required** is what actually decides whether
+a genuinely empty selection is accepted when a record is saved; there's
+no separate "can this technically be empty" question left over for
+Allow Null to answer.
+
+**`RecordForm`/`PostObjectPicker.jsx`.** A close cousin of
+`RelateAutocomplete.jsx` -- the same chips-plus-search widget, just
+searching this site's own WordPress posts (`searchPosts()`, `api.js`)
+instead of one Gateway model's own records, and narrowed by this field's
+own three Filter settings. Form state/`onChange` use the exact same
+`{id, label}` (single)/`[{id, label}, ...]` (multiple) chip shape
+`RelateAutocomplete`'s own `value`/`onChange` already use; `RecordForm`'s
+own `handleSubmit()` reduces that back down to a bare ARRAY of ids at
+submit time, unconditionally regardless of `multiple` (matching how the
+field is always stored) -- accepting every shape `values[field.name]`
+might still be in, touched or not (`null`, a bare id, the full object, or
+an array of either), the same tolerant one-time normalization Image/
+File's own reduction already does for their own richer form state, just
+always producing an array here rather than a single id-or-`null`. A bare
+-id value (`return_format: 'id'`) has nothing to build a label/chip from,
+so `PostObjectPicker.jsx` resolves it via `fetchPostOption()`
+(`GET /gateway/v1/posts/<id>`) purely for display, cached locally by id
+-- the same "return_format 'id' has nothing else to build a preview
+from" gap `ImagePicker.jsx`'s own bare-id branch already fills for its
+own type, without ever rewriting form state itself to hold that richer
+shape.
+
+**A `post_object` branch in `RecordsCrud.jsx`'s own `displayValue()`,
+added up front this time** -- every OTHER structured-value type
+(Relate to One/Many, Image, File, User, Link, WYSIWYG, the Choice types)
+already has its own dedicated branch there, each rendering something
+real from its own shape rather than ever falling through to the generic
+`record[field.name] ?? ''` branch at the bottom, which is exactly what
+crashed this screen with React error #31 ("Objects are not valid as a
+React child") the one time Link's own branch was missing at ship time
+(see the Link fields section above). Post Object's own branch handles
+every shape `enrich_post_object_fields()` can hand back -- a bare post
+id, the full `{id, title, permalink, post_type, status}` object, or (with
+Select Multiple on) an array of either -- rendering comma-joined title
+links (falling back to plain, non-linked text for a bare id, which has
+no permalink to link to) the same "clickable when there's a real URL,
+plain text otherwise" split Link's own branch already makes; `null`/an
+empty array renders blank.
+
+Verified end-to-end with a standalone PHP smoke test
+(`Post_Object_Field_Type`'s own capability flags; `cast()`'s own
+de-duplicating/order-preserving/positive-int-only normalization,
+including a negative number correctly flipping positive via `absint()`
+rather than being dropped; `Model_Fields::sanitize_settings()`'s full
+bundle, including the three array-valued filter settings' own special
+case and the extended `return_format` enum accepting the new `'object'`
+value; `resolve_post_object_value()`'s both shapes plus a since-deleted
+post silently dropped; a real record created/fetched/re-fetched through
+`Records_REST_Controller`, confirming the single/multiple unwrapping
+actually happens on read while the underlying stored array stays
+untouched) run alongside the full existing regression suite in both
+default and `-d zend.assertions=1 -d assert.exception=1` modes, plus an
+interactive Playwright pass (against a temporary, uncommitted harness)
+driving the real `FieldEditor`/`RecordForm`/`RecordsCrud` components in a
+real browser: the Return Format select offering exactly "Post Object"/
+"Post ID"; all three Filter widgets adding and removing chips correctly;
+`PostObjectPicker` resolving a bare-id initial value to a real title,
+live-searching, selecting a second post in Select Multiple mode, and
+submitting the correct bare-array-of-ids payload (including an
+empty-array payload once every chip is removed, never `null`); and
+`RecordsCrud`'s own list rendering all three value shapes -- an object
+with a real permalink link, a bare id, and `null` -- in the same table
+with no crash. `admin-app` rebuilt via `npm run build` (vite), which
+compiled cleanly.
+
 ### Columns (`Model_Columns`) -- configurable, sortable Records-table columns
 
 The problem this solves: `RecordsCrud.jsx` used to render every one of a

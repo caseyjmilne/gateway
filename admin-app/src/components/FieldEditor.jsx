@@ -5,11 +5,29 @@ import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import useImageSizes from '../hooks/useImageSizes.js';
+import usePostTypes from '../hooks/usePostTypes.js';
+import useTaxonomies from '../hooks/useTaxonomies.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 import TypeSelect from './TypeSelect.jsx';
+import FilterMultiSelect from './FilterMultiSelect.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
+
+// Post_Object_Field_Type's own "Filter by Post Status" option list --
+// hardcoded here rather than fetched, unlike Filter by Post Type/
+// Taxonomy (usePostTypes.js/useTaxonomies.js) -- no WP core REST route
+// exposes the set of registered statuses generically the way
+// `wp/v2/types`/`wp/v2/taxonomies` do for post types/taxonomies. These
+// five are WordPress's own built-in statuses, covering what the vast
+// majority of sites and post types actually use.
+const POST_STATUS_OPTIONS = [
+	{ value: 'publish', label: 'Published' },
+	{ value: 'draft', label: 'Draft' },
+	{ value: 'pending', label: 'Pending Review' },
+	{ value: 'private', label: 'Private' },
+	{ value: 'future', label: 'Scheduled' },
+];
 
 // The admin app's own fixed catalog of "Presentation" settings -- see
 // Gateway\Field_Type::presentation_fields()'s own docblock for why this
@@ -313,11 +331,31 @@ const slugifyFieldName = ( value ) =>
  * (`PermalinkEditor.jsx`, on `ModelDetail`) for the URL root and template
  * page, which aren't per-field settings at all (Root is validated for
  * cross-model uniqueness, so it belongs with the rest of that
- * model-level configuration, not buried in one field's own panel). The
- * Type picker (`TypeSelect.jsx`) also greys out "Permalink" once this
- * model already has one on some OTHER field (`disabledTypeKeys`, computed
- * from `Field_Type::max_one_per_model()` -- see that component's own
- * docblock) -- a client-side nicety on top of the same rejection
+ * model-level configuration, not buried in one field's own panel);
+ * Post Object's own General tab (`supports_post_object_settings`) is a
+ * seventh shape, copying ACF's own Post Object field per a direct
+ * request -- also no Default Value, the SAME shared Return Format
+ * `<select>`/`settings.return_format` field again (this type's own two
+ * options, Post Object/Post ID, are what `Records_REST_Controller::
+ * resolve_post_object_value()` actually returns), plus three
+ * `FilterMultiSelect.jsx` widgets (Filter by Post Type/Post Status/
+ * Taxonomy -- `settings.filter_post_types`/`filter_post_statuses`/
+ * `filter_taxonomies`, each a plain array of slugs, empty meaning "no
+ * restriction" -- narrowing what `PostObjectPicker.jsx`'s own search
+ * offers, via `Post_REST_Controller::search_posts()`) and a Select
+ * Multiple toggle (`settings.multiple`, a plain boolean -- how many of
+ * the field's own always-array storage `PostObjectPicker.jsx` renders/
+ * lets you pick, and whether `Records_REST_Controller::
+ * enrich_post_object_fields()` unwraps that array down to a single
+ * value on read). Deliberately no "Allow Null" setting at all --
+ * reported directly alongside the original request ("I'm not sure what
+ * Allow Null is or why we need it... I'm not sure how null and just
+ * empty are different") -- see `Post_Object_Field_Type`'s own docblock
+ * for the full reasoning. The Type picker (`TypeSelect.jsx`) also greys
+ * out "Permalink" once this model already has one on some OTHER field
+ * (`disabledTypeKeys`, computed from `Field_Type::max_one_per_model()` --
+ * see that component's own docblock) -- a client-side nicety on top of
+ * the same rejection
  * `Model_Fields::add()`/`update()` already enforce server-side; plus --
  * further below, never a tab of its own -- a ChoicesEditor for the
  * field's own orderable choice list, Gateway\\Model_Field_Choices on the
@@ -438,6 +476,8 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const fieldTypes = useFieldTypes();
 	const relationshipTypes = useRelationshipTypes();
 	const imageSizes = useImageSizes();
+	const postTypes = usePostTypes();
+	const taxonomies = useTaxonomies();
 	const setFields = onFieldsChange;
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
@@ -583,6 +623,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const supportsLinkSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_link_settings );
 
+	const supportsPostObjectSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_post_object_settings );
+
 	const isTextRenderableFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
 
@@ -605,6 +648,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const editSupportsPermalinkSettings = supportsPermalinkSettingsFor( editType );
 	const editSupportsBooleanSettings = supportsBooleanSettingsFor( editType );
 	const editSupportsLinkSettings = supportsLinkSettingsFor( editType );
+	const editSupportsPostObjectSettings = supportsPostObjectSettingsFor( editType );
 	const editIsMultiple = isMultipleFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
@@ -700,10 +744,20 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const messageTabHasContent = Boolean(
 		editSettings.message && String( editSettings.message ).trim()
 	);
+	// Post_Object_Field_Type's own three Filter by ... settings, plus
+	// Select Multiple -- each checked by length/truthiness the same way
+	// Checkbox's own array-valued default is above, since all three
+	// filters are arrays too.
+	const postObjectFiltersTabHasContent =
+		Boolean( editSettings.filter_post_types?.length ) ||
+		Boolean( editSettings.filter_post_statuses?.length ) ||
+		Boolean( editSettings.filter_taxonomies?.length ) ||
+		Boolean( editSettings.multiple );
 	const generalTabHasContent =
 		choicesTabHasContent ||
 		defaultValueTabHasContent ||
 		permalinkSourceFieldTabHasContent ||
+		postObjectFiltersTabHasContent ||
 		messageTabHasContent;
 	// Validation's own dot covers everything that can live there:
 	// Required, a configured Character Limit, and a configured Minimum/
@@ -1544,12 +1598,12 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 							</label>
 						)
 					) }
-					{ ( editSupportsMediaSettings || editSupportsFileSettings || editSupportsUserSettings ) && (
+					{ ( editSupportsMediaSettings || editSupportsFileSettings || editSupportsUserSettings || editSupportsPostObjectSettings ) && (
 						<label>
 							<span>Return Format</span>
 							<select
 								className="regular-text"
-								defaultValue="array"
+								defaultValue={ editSupportsPostObjectSettings ? 'object' : 'array' }
 								{ ...register( 'settings.return_format' ) }
 							>
 								{ editSupportsFileSettings ? (
@@ -1566,6 +1620,21 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 									<>
 										<option value="array">User Array</option>
 										<option value="id">User ID</option>
+									</>
+								) : editSupportsPostObjectSettings ? (
+									// 'object' (not 'array') and 'id' -- the
+									// same two values Model_Fields::
+									// sanitize_settings()'s own shared enum
+									// adds specifically for this type. No
+									// "Post URL" option -- unlike an
+									// attachment, a Post Object's whole
+									// {id, title, permalink, post_type, status}
+									// shape already carries its own permalink,
+									// so a bare-URL format would only throw
+									// the rest of that away for no real gain.
+									<>
+										<option value="object">Post Object</option>
+										<option value="id">Post ID</option>
 									</>
 								) : (
 									<>
@@ -1701,6 +1770,91 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								configured on the Permalinks tab.
 							</span>
 						</div>
+					) }
+					{ /* Post_Object_Field_Type's own three Filter by ...
+					   * settings, per a direct request: "Filter by Post
+					   * Type Filter by Post Status Filter by Taxonomy.
+					   * Each of these is an autocomplete searchable of
+					   * the relevant data. User can select multiple,
+					   * there needs to be a way to remove them a delete
+					   * button." FilterMultiSelect.jsx is that widget --
+					   * see its own docblock. Each is `settings.filter_post_types`/
+					   * `filter_post_statuses`/`filter_taxonomies`, a
+					   * plain array of slugs -- Model_Fields::
+					   * sanitize_settings()'s own array-valued special
+					   * case for these three keys. Left unset (empty
+					   * array), each means "no restriction" -- the same
+					   * default Post_REST_Controller::search_posts()'s
+					   * own docblock already documents server-side. */ }
+					{ editSupportsPostObjectSettings && (
+						<>
+							<div className="gateway-field-editor-form-field">
+								<span>Filter by Post Type</span>
+								<Controller
+									control={ control }
+									name="settings.filter_post_types"
+									render={ ( { field } ) => (
+										<FilterMultiSelect
+											options={ postTypes }
+											value={ field.value }
+											onChange={ field.onChange }
+											placeholder="Search post types…"
+										/>
+									) }
+								/>
+								<span className="description">
+									Leave blank to allow every public post
+									type.
+								</span>
+							</div>
+							<div className="gateway-field-editor-form-field">
+								<span>Filter by Post Status</span>
+								<Controller
+									control={ control }
+									name="settings.filter_post_statuses"
+									render={ ( { field } ) => (
+										<FilterMultiSelect
+											options={ POST_STATUS_OPTIONS }
+											value={ field.value }
+											onChange={ field.onChange }
+											placeholder="Search statuses…"
+										/>
+									) }
+								/>
+								<span className="description">
+									Leave blank to only offer Published
+									posts.
+								</span>
+							</div>
+							<div className="gateway-field-editor-form-field">
+								<span>Filter by Taxonomy</span>
+								<Controller
+									control={ control }
+									name="settings.filter_taxonomies"
+									render={ ( { field } ) => (
+										<FilterMultiSelect
+											options={ taxonomies }
+											value={ field.value }
+											onChange={ field.onChange }
+											placeholder="Search taxonomies…"
+										/>
+									) }
+								/>
+								<span className="description">
+									Restricts to posts having a term in ANY
+									of the selected taxonomies. Leave blank
+									for no taxonomy restriction.
+								</span>
+							</div>
+							<label className="gateway-toggle">
+								<input
+									type="checkbox"
+									{ ...register( 'settings.multiple' ) }
+								/>
+								<span className="gateway-toggle-slider" aria-hidden="true" />
+								<span>Select Multiple</span>
+							</label>
+						</>
 					) }
 				</div>
 

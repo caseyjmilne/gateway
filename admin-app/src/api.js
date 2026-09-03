@@ -207,3 +207,110 @@ export async function searchLinkableContent( search = '' ) {
 		.sort( ( a, b ) => new Date( b.date ) - new Date( a.date ) )
 		.slice( 0, 20 );
 }
+
+/**
+ * This site's own registered post types, via `GET /wp-json/wp/v2/types`
+ * -- `usePostTypes.js`'s own fetch, what `FieldEditor.jsx`'s own "Filter
+ * by Post Type" setting builds its option list from. Core's own route
+ * returns an OBJECT keyed by slug (`{ post: {...}, page: {...}, ... }`),
+ * not an array -- `Object.values()` here is what turns that into the
+ * plain `{value, label}` array shape every option-list component in this
+ * app already expects. `'attachment'` is excluded -- a media item was
+ * never a sensible "Post Object" to filter FOR, the same reasoning
+ * `Post_REST_Controller::search_posts()`'s own unrestricted default
+ * already excludes it server-side.
+ *
+ * @return {Promise<Array<{value: string, label: string}>>}
+ */
+export async function fetchPostTypes() {
+	const response = await fetch(
+		`${ config.wpApiUrl }wp/v2/types?context=edit&_fields=slug,name`,
+		{ headers: { 'X-WP-Nonce': config.nonce } }
+	);
+
+	if ( ! response.ok ) {
+		throw new Error( `Could not load post types (${ response.status }).` );
+	}
+
+	const types = await response.json();
+	return Object.values( types )
+		.filter( ( type ) => 'attachment' !== type.slug )
+		.map( ( type ) => ( { value: type.slug, label: type.name } ) );
+}
+
+/**
+ * This site's own registered taxonomies, via `GET /wp-json/wp/v2/taxonomies`
+ * -- `useTaxonomies.js`'s own fetch, what `FieldEditor.jsx`'s own
+ * "Filter by Taxonomy" setting builds its option list from. Same
+ * object-keyed-by-slug shape `fetchPostTypes()` above already converts.
+ *
+ * @return {Promise<Array<{value: string, label: string}>>}
+ */
+export async function fetchTaxonomies() {
+	const response = await fetch(
+		`${ config.wpApiUrl }wp/v2/taxonomies?context=edit&_fields=slug,name`,
+		{ headers: { 'X-WP-Nonce': config.nonce } }
+	);
+
+	if ( ! response.ok ) {
+		throw new Error( `Could not load taxonomies (${ response.status }).` );
+	}
+
+	const taxonomies = await response.json();
+	return Object.values( taxonomies ).map( ( taxonomy ) => ( {
+		value: taxonomy.slug,
+		label: taxonomy.name,
+	} ) );
+}
+
+/**
+ * `PostObjectPicker.jsx`'s own live search -- `GET /gateway/v1/posts/search`,
+ * this plugin's own route (not `wp/v2` directly, unlike `searchLinkableContent()`
+ * above -- see `Post_REST_Controller`'s own docblock for why an arbitrary
+ * taxonomy filter needs a real server-side `WP_Query`, not something a
+ * client-side call against core's own per-post-type routes could
+ * replicate generically). `filterSettings` is the field's own
+ * `settings` object -- `filter_post_types`/`filter_post_statuses`/
+ * `filter_taxonomies`, each already a plain array or absent -- joined
+ * into comma-separated params here, exactly what `Post_REST_Controller::split_param()`
+ * expects back apart.
+ *
+ * @param {object}   filterSettings   The field's own `settings`.
+ * @param {string}   query            Live search text.
+ * @param {number[]} excludeIds       Already-selected post ids to leave out.
+ * @return {Promise<Array<{id: number, label: string, type: string}>>}
+ */
+export async function searchPosts( filterSettings, query, excludeIds ) {
+	const params = new URLSearchParams();
+
+	if ( query ) {
+		params.set( 'q', query );
+	}
+	if ( filterSettings?.filter_post_types?.length ) {
+		params.set( 'post_types', filterSettings.filter_post_types.join( ',' ) );
+	}
+	if ( filterSettings?.filter_post_statuses?.length ) {
+		params.set( 'post_statuses', filterSettings.filter_post_statuses.join( ',' ) );
+	}
+	if ( filterSettings?.filter_taxonomies?.length ) {
+		params.set( 'taxonomies', filterSettings.filter_taxonomies.join( ',' ) );
+	}
+	if ( excludeIds?.length ) {
+		params.set( 'exclude', excludeIds.join( ',' ) );
+	}
+
+	return apiFetch( `/posts/search?${ params.toString() }` );
+}
+
+/**
+ * `PostObjectPicker.jsx`'s own preview for a bare post id (`return_format`
+ * `'id'`, the same gap `Media_REST_Controller::get_media()`/
+ * `User_REST_Controller::get_user()` already fill for their own types) --
+ * `GET /gateway/v1/posts/<id>`.
+ *
+ * @param {number} id WP post id.
+ * @return {Promise<{id: number, label: string, type: string}>}
+ */
+export async function fetchPostOption( id ) {
+	return apiFetch( `/posts/${ id }` );
+}

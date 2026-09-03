@@ -482,6 +482,46 @@ export default function RecordsCrud() {
 			);
 		}
 
+		// A Post Object field's own value is enriched the same way Image/
+		// File/User's own is (Records_REST_Controller::enrich_post_object_fields()) --
+		// a bare post id, the full `{id, title, permalink, post_type,
+		// status}` object, or (when `settings.multiple` is on) an ARRAY of
+		// either -- see Post_Object_Field_Type's own docblock. Every one of
+		// those shapes must be handled explicitly here, same reasoning as
+		// every other structured-value branch above: falling through to
+		// the generic `?? ''` branch below with an object (or array of
+		// them) still in hand is exactly the "Objects are not valid as a
+		// React child" crash Link's own branch above already guards
+		// against. Rendered as comma-joined title links (falling back to
+		// plain, non-linked text when a bare id has no permalink to link
+		// to) -- same "clickable when there's a real URL, plain text
+		// otherwise" split Link's own branch already makes.
+		if ( 'post_object' === inputType ) {
+			const raw = record[ field.name ];
+			const items = Array.isArray( raw ) ? raw : raw ? [ raw ] : [];
+
+			if ( 0 === items.length ) {
+				return '';
+			}
+
+			return items.map( ( item, index ) => (
+				<span key={ 'object' === typeof item ? item.id : item }>
+					{ index > 0 && ', ' }
+					{ 'object' === typeof item ? (
+						item.permalink ? (
+							<a href={ item.permalink } target="_blank" rel="noreferrer">
+								{ item.title || `#${ item.id }` }
+							</a>
+						) : (
+							item.title || `#${ item.id }`
+						)
+					) : (
+						`Post #${ item }`
+					) }
+				</span>
+			) );
+		}
+
 		// select/radio/buttons/checkboxes -- the record's own stored value
 		// (or, for checkboxes, values) is always a raw `choice.value`
 		// (Choice_Field_Type::cast() never sees `label` at all -- see

@@ -1001,6 +1001,13 @@ class Model_Fields {
 	 * generic string sanitizing below already does the right thing for
 	 * both keys, `show_toggle` included despite being a boolean switch.
 	 *
+	 * `Post_Object_Field_Type`'s own `filter_post_types`/
+	 * `filter_post_statuses`/`filter_taxonomies` (`supports_post_object_settings()`)
+	 * get the SAME array exception Checkbox's own default does, for the
+	 * same reason -- each is an array of strings, not a single one;
+	 * `multiple` on that same bundle needs no exception at all, same as
+	 * `show_toggle` above.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1137,6 +1144,25 @@ class Model_Fields {
 			$recognized_keys[] = 'return_format';
 		}
 
+		if ( $type_class::supports_post_object_settings() ) {
+			// Post_Object_Field_Type's own -- see that interface method's
+			// own docblock for what each key means. 'return_format' is
+			// the same shared key/enum below, just with two more values
+			// added to it ('object'/'id') for this type specifically.
+			// 'multiple' is a boolean switch, handled generically the
+			// same free way True_False_Field_Type's own 'default'/
+			// 'show_toggle' already are. 'filter_post_types'/
+			// 'filter_post_statuses'/'filter_taxonomies' are each an
+			// array (not a scalar string), so they're handled in their
+			// OWN special case below, alongside Checkbox's own
+			// multi-value default.
+			$recognized_keys[] = 'return_format';
+			$recognized_keys[] = 'multiple';
+			$recognized_keys[] = 'filter_post_types';
+			$recognized_keys[] = 'filter_post_statuses';
+			$recognized_keys[] = 'filter_taxonomies';
+		}
+
 		$sanitized = array();
 
 		foreach ( $recognized_keys as $key ) {
@@ -1174,6 +1200,39 @@ class Model_Fields {
 
 				if ( ! empty( $sanitized_defaults ) ) {
 					$sanitized[ $key ] = array_values( array_unique( $sanitized_defaults ) );
+				}
+
+				continue;
+			}
+
+			// Post_Object_Field_Type's own Filter by Post Type/Post
+			// Status/Taxonomy -- each an array of strings (a post type
+			// slug, a status key, a taxonomy slug), narrowing
+			// PostObjectPicker.jsx's own search rather than a single
+			// scalar setting -- the exact same "array, not a string"
+			// exception Checkbox's own multi-value default gets above,
+			// for the exact same reason (the generic `(string)` cast
+			// below would otherwise collapse a real array into the
+			// literal string "Array"). An empty result (nothing
+			// selected, or every submitted entry sanitized down to
+			// blank) is dropped entirely, same as an empty string
+			// setting already is -- "no filter configured" is the
+			// absence of the key, not an empty array sitting in
+			// `settings` forever.
+			if ( in_array( $key, array( 'filter_post_types', 'filter_post_statuses', 'filter_taxonomies' ), true ) ) {
+				$raw_items       = is_array( $raw_settings[ $key ] ) ? $raw_settings[ $key ] : array( $raw_settings[ $key ] );
+				$sanitized_items = array();
+
+				foreach ( $raw_items as $raw_item ) {
+					$item = sanitize_text_field( trim( (string) $raw_item ) );
+
+					if ( '' !== $item ) {
+						$sanitized_items[] = $item;
+					}
+				}
+
+				if ( ! empty( $sanitized_items ) ) {
+					$sanitized[ $key ] = array_values( array_unique( $sanitized_items ) );
 				}
 
 				continue;
@@ -1227,11 +1286,16 @@ class Model_Fields {
 			}
 
 			// 'return_format' is Image_Field_Type's/File_Field_Type's own
-			// General-tab select -- a fixed, small vocabulary, unlike
-			// every other key here; anything outside it is dropped
-			// rather than stored as junk RecordForm's own <select> would
-			// never have actually offered.
-			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id' ), true ) ) {
+			// General-tab select (plus User/Link/Post Object's own
+			// narrower reuses of the exact same key) -- a fixed, small
+			// vocabulary, unlike every other key here; anything outside
+			// it is dropped rather than stored as junk RecordForm's own
+			// <select> would never have actually offered. 'object' is
+			// Post_Object_Field_Type's own addition to this shared enum
+			// (ACF's own "Post Object" format, resolved back to a real
+			// {id, title, permalink, post_type, status} per post) --
+			// every other type here simply never offers it.
+			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id', 'object' ), true ) ) {
 				continue;
 			}
 

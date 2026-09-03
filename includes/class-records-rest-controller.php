@@ -975,11 +975,12 @@ class Records_REST_Controller {
 	 * @return array[] Each record's own toArray(), enriched.
 	 */
 	private static function enrich_records( $class_name, \Illuminate\Database\Eloquent\Collection $records ) {
-		$relate_fields = array();
-		$image_fields  = array();
-		$file_fields   = array();
-		$user_fields   = array();
-		$link_fields   = array();
+		$relate_fields      = array();
+		$image_fields       = array();
+		$file_fields        = array();
+		$user_fields        = array();
+		$link_fields        = array();
+		$post_object_fields = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
@@ -1003,6 +1004,10 @@ class Records_REST_Controller {
 			if ( $type_class && $type_class::supports_link_settings() ) {
 				$link_fields[] = $field;
 			}
+
+			if ( $type_class && $type_class::supports_post_object_settings() ) {
+				$post_object_fields[] = $field;
+			}
 		}
 
 		// At most one -- Field_Type::max_one_per_model() is what
@@ -1013,9 +1018,9 @@ class Records_REST_Controller {
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) && empty( $link_fields ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) && empty( $link_fields ) && empty( $post_object_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $link_fields, $permalink_field ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $permalink_field ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -1031,6 +1036,7 @@ class Records_REST_Controller {
 					self::enrich_file_fields( $array, $file_fields );
 					self::enrich_user_fields( $array, $user_fields );
 					self::enrich_link_fields( $array, $link_fields );
+					self::enrich_post_object_fields( $array, $post_object_fields );
 					self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 					return $array;
@@ -1055,7 +1061,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $link_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -1100,6 +1106,7 @@ class Records_REST_Controller {
 				self::enrich_file_fields( $array, $file_fields );
 				self::enrich_user_fields( $array, $user_fields );
 				self::enrich_link_fields( $array, $link_fields );
+				self::enrich_post_object_fields( $array, $post_object_fields );
 				self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 				return $array;
@@ -1450,6 +1457,90 @@ class Records_REST_Controller {
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Post_Object_Field_Type's own close sibling of `enrich_image_fields()`/
+	 * `enrich_file_fields()`/`enrich_user_fields()`/`enrich_link_fields()`
+	 * above -- replaces the raw stored array of post ids (in `$array`, by
+	 * reference) with the shape `return_format` asks for AND, when
+	 * `settings.multiple` isn't set, unwraps that down to a single value
+	 * (or `null`) -- see `Post_Object_Field_Type`'s own docblock for why
+	 * the underlying storage stays a plain array either way regardless of
+	 * `multiple`, with only this enrichment step actually caring about it.
+	 *
+	 * @param array $array              A record's own toArray(), modified in place.
+	 * @param array $post_object_fields Every field on this model with
+	 *                                    `supports_post_object_settings()`
+	 *                                    true (this method's own caller
+	 *                                    already resolved this once per
+	 *                                    `enrich_records()` call, not per
+	 *                                    record).
+	 */
+	private static function enrich_post_object_fields( array &$array, array $post_object_fields ) {
+		foreach ( $post_object_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$return_format = $field['settings']['return_format'] ?? 'object';
+			$multiple      = ! empty( $field['settings']['multiple'] );
+			$resolved      = self::resolve_post_object_value( $array[ $field['name'] ], $return_format );
+
+			$array[ $field['name'] ] = $multiple ? $resolved : ( $resolved[0] ?? null );
+		}
+	}
+
+	/**
+	 * @param array|null $value         The raw, already-cast column value
+	 *                                    (`Post_Object_Field_Type::cast()`'s
+	 *                                    own array of post ids).
+	 * @param string     $return_format One of 'object'/'id' (anything
+	 *                                    else, including missing/invalid,
+	 *                                    is treated as 'object' -- the
+	 *                                    same "invalid falls back to the
+	 *                                    rich shape, not an error"
+	 *                                    convention every other
+	 *                                    return_format already has).
+	 * @return array A plain, re-indexed array -- one entry per id that
+	 *                still names a real post (a since-deleted post's own
+	 *                id is silently dropped, the same "don't invent data
+	 *                for something that isn't there" reasoning
+	 *                `resolve_image_value()`'s own since-deleted
+	 *                attachment guard already gives) -- each entry either
+	 *                a bare post id ('id') or
+	 *                `{id, title, permalink, post_type, status}` ('object',
+	 *                the default).
+	 */
+	public static function resolve_post_object_value( $value, $return_format ) {
+		if ( ! is_array( $value ) ) {
+			return array();
+		}
+
+		$resolved = array();
+
+		foreach ( $value as $post_id ) {
+			$post = get_post( (int) $post_id );
+
+			if ( ! $post ) {
+				continue;
+			}
+
+			if ( 'id' === $return_format ) {
+				$resolved[] = (int) $post_id;
+				continue;
+			}
+
+			$resolved[] = array(
+				'id'        => (int) $post_id,
+				'title'     => get_the_title( $post ),
+				'permalink' => get_permalink( $post ),
+				'post_type' => $post->post_type,
+				'status'    => $post->post_status,
+			);
+		}
+
+		return $resolved;
 	}
 
 	/**
