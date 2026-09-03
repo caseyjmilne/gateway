@@ -202,7 +202,7 @@ class Field_Type_Registry extends Registry {
 	 * it. See that interface method's own docblock for why this is a
 	 * separate flag from `is_text_renderable` rather than folded into it.
 	 *
-	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_html_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,supports_boolean_settings:bool,supports_link_settings:bool,supports_post_object_settings:bool,max_one_per_model:bool}>
+	 * @return array<int,array{key:string,label:string,category:string,input_type:string,is_sensitive:bool,is_text_renderable:bool,is_html_renderable:bool,is_numeric:bool,relationship_type:?string,has_choices:bool,is_multiple:?bool,presentation_fields:string[],supports_default_value:bool,supports_character_limit:bool,supports_range_limits:bool,supports_media_settings:bool,supports_file_settings:bool,supports_embed_settings:bool,supports_user_settings:bool,supports_permalink_settings:bool,supports_boolean_settings:bool,supports_link_settings:bool,supports_post_object_settings:bool,supports_page_link_settings:bool,max_one_per_model:bool}>
 	 */
 	public static function describe_all() {
 		$described = array();
@@ -238,6 +238,7 @@ class Field_Type_Registry extends Registry {
 				'supports_boolean_settings'      => $class::supports_boolean_settings(),
 				'supports_link_settings'         => $class::supports_link_settings(),
 				'supports_post_object_settings'  => $class::supports_post_object_settings(),
+				'supports_page_link_settings'    => $class::supports_page_link_settings(),
 				'max_one_per_model'              => $class::max_one_per_model(),
 				// Whether this type has a real column of its own on the
 				// model's table at all (Field_Type::blueprint_method()

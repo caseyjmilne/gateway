@@ -216,6 +216,13 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function supports_page_link_settings() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function max_one_per_model() {
 		return false;
 	}

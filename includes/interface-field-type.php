@@ -729,6 +729,46 @@ interface Field_Type {
 	public static function supports_post_object_settings();
 
 	/**
+	 * Whether this type recognizes Page_Link_Field_Type's own settings
+	 * bundle -- per a direct request: "we need a Page Link similar to ACF
+	 * page link with following options supported: Page Link page_link
+	 * Filter by Post Type Filter by Post Status Filter by Taxonomy Allow
+	 * Archive URL's Select Multiple Required Instructions. The resulting
+	 * UI is a searchable select." Five keys, all on **General** -- the
+	 * first four are the EXACT SAME `filter_post_types`/
+	 * `filter_post_statuses`/`filter_taxonomies`/`multiple` keys
+	 * `supports_post_object_settings()` above already defines (same
+	 * meaning, same sanitizing, same array-valued special case in
+	 * `Model_Fields::sanitize_settings()` -- see that interface method's
+	 * own docblock for all four, not repeated here), plus one new one:
+	 *
+	 * - `allow_archive_urls` -- a boolean switch (same generic
+	 *   sanitize-to-`"1"`-or-dropped treatment `multiple`/`show_toggle`
+	 *   already get), ACF's own "Allow Archive URLs." When on,
+	 *   `PageLinkPicker.jsx`'s own search additionally offers each
+	 *   currently-allowed post type's own ARCHIVE URL (`get_post_type_archive_link()`)
+	 *   as a pickable option, grouped under its own "Archives" heading --
+	 *   see `Page_Link_Field_Type`'s own docblock for why this is the one
+	 *   real, meaningful difference from Post Object rather than just a
+	 *   copy of it with a different return shape: an archive URL has no
+	 *   underlying POST at all, so unlike Post Object (which always
+	 *   stores a post id), this type has to store the resolved URL
+	 *   string itself to be able to represent one.
+	 *
+	 * No `return_format` here at all, unlike Post Object -- ACF's own
+	 * Page Link field has no such setting either; the value is always
+	 * just the URL (or array of them), never an id or richer object,
+	 * since (again) an archive URL has no post id to alternatively
+	 * return.
+	 *
+	 * `true` only for `Page_Link_Field_Type` today; `false` for every
+	 * other built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function supports_page_link_settings();
+
+	/**
 	 * Whether a model can ever have more than one field of this type at
 	 * once -- `true` only for `Permalink_Field_Type` today, per the
 	 * user's own explicit request: a model's own single-record URL

@@ -8,6 +8,7 @@ import OEmbedPicker from './OEmbedPicker.jsx';
 import PermalinkControl from './PermalinkControl.jsx';
 import LinkPicker from './LinkPicker.jsx';
 import PostObjectPicker from './PostObjectPicker.jsx';
+import PageLinkPicker from './PageLinkPicker.jsx';
 
 /**
  * A form with one input per model field, used both for "Add New" and for
@@ -173,6 +174,28 @@ import PostObjectPicker from './PostObjectPicker.jsx';
  * array of either, the same tolerant one-time normalization Image/File's
  * own reduction above already does, just always producing an array here
  * rather than a single id-or-`null`.
+ *
+ * "page_link" (Page_Link_Field_Type) copies ACF's own Page Link field,
+ * per a later, separate request. Its own DB column is likewise always a
+ * plain array -- of URL strings this time, not post ids, EVEN when
+ * `settings.multiple` is off (same per-TYPE-not-per-field reasoning Post
+ * Object's own docblock already gives) -- but SIMPLER than Post Object
+ * in one real way: there's no `return_format` for this type at all, so
+ * an EXISTING record's own value is always JUST a bare URL string (or
+ * array of them, or `null`), never a richer object -- `initialValues`
+ * still passes it straight through unchanged, same as every other
+ * structured type above. Renders as a `PageLinkPicker` -- Post Object's
+ * own close cousin, searching this site's own WordPress posts (or, when
+ * `settings.allow_archive_urls` is on, a post type's own archive link
+ * too) and grouping its own results (see that component's own
+ * docblock) -- which normalizes whatever shape it's handed for DISPLAY
+ * only, into `{value, label, group}` chips, without ever touching form
+ * state itself until a chip is actually picked or removed.
+ * `handleSubmit()` reduces all of that back down to a bare array of
+ * URLs, unconditionally (regardless of `multiple`) -- accepting every
+ * shape `values[field.name]` might still be in, touched or not: `null`/
+ * a bare URL string/the `{value, label, group}` chip object/an array of
+ * either.
  *
  * `field.settings` (Gateway\\Field_Type::presentation_fields(), threaded
  * straight through by Model_Fields::all()/the fields REST route, same as
@@ -483,7 +506,8 @@ export default function RecordForm( {
 				'image' === inputType ||
 				'file' === inputType ||
 				'user' === inputType ||
-				'post_object' === inputType
+				'post_object' === inputType ||
+				'page_link' === inputType
 			) {
 				// Passed through exactly as the record's own GET response
 				// gave it -- null, a bare id, a URL string, or the full
@@ -499,7 +523,11 @@ export default function RecordForm( {
 				// unchanged" either way. Post Object is the same again,
 				// just possibly an ARRAY of either shape too when
 				// `settings.multiple` is on -- PostObjectPicker.jsx's own
-				// docblock covers every shape this can arrive in.
+				// docblock covers every shape this can arrive in. Page
+				// Link is the simplest of the lot -- always just a bare
+				// URL string, an array of them, or `null`, never a
+				// richer object (there's no return_format for it at all)
+				// -- see Page_Link_Field_Type's own docblock for why.
 				initial[ field.name ] = existing;
 			} else if ( 'link' === inputType ) {
 				// The real, stored shape is always the full
@@ -664,6 +692,35 @@ export default function RecordForm( {
 					)
 					.map( ( id ) => Number( id ) )
 					.filter( ( id ) => Number.isInteger( id ) && id > 0 );
+			} else if ( 'page_link' === inputType ) {
+				// Storage is always an array of URLs regardless of
+				// `settings.multiple` -- the exact same "always an array"
+				// reasoning Post Object's own reduction just above already
+				// gives, for the exact same reason (Field_Type::
+				// blueprint_method()/eloquent_cast() can't vary per-field).
+				// Form state is EITHER a bare URL string/array of them
+				// (untouched -- Page Link's own GET response is never
+				// richer than that, unlike Post Object -- see
+				// Page_Link_Field_Type's own docblock) OR the
+				// {value, label, group} chip shape PageLinkPicker.jsx's
+				// own onChange writes once something is actually picked.
+				// Wrap a lone entry into a one-item array, pull `.value`
+				// out of anything object-shaped, drop anything that isn't
+				// a real non-blank string afterward.
+				const current = values[ field.name ];
+				const entries = Array.isArray( current )
+					? current
+					: current
+					? [ current ]
+					: [];
+				payload[ field.name ] = entries
+					.map( ( entry ) =>
+						entry && 'object' === typeof entry
+							? entry.value
+							: entry
+					)
+					.map( ( url ) => String( url || '' ).trim() )
+					.filter( ( url ) => '' !== url );
 			} else {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
@@ -981,6 +1038,13 @@ export default function RecordForm( {
 								onChange={ handleRelateChange( field.name ) }
 							/>
 						) }
+						{ 'page_link' === inputType && (
+							<PageLinkPicker
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ handleRelateChange( field.name ) }
+							/>
+						) }
 						{ 'textarea' !== inputType &&
 							'range' !== inputType &&
 							'relate_one' !== inputType &&
@@ -998,6 +1062,7 @@ export default function RecordForm( {
 							'permalink' !== inputType &&
 							'link' !== inputType &&
 							'post_object' !== inputType &&
+							'page_link' !== inputType &&
 							( field.settings?.prepend || field.settings?.append ? (
 								<span className="gateway-record-form-input-group">
 									{ field.settings.prepend && (

@@ -111,6 +111,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-checkbox-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-true-false-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-link-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-post-object-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-page-link-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-post-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-registry.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-field-type-rest-controller.php';
@@ -183,6 +184,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\True_False_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Link_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Post_Object_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Page_Link_Field_Type::class );
 	do_action( 'gateway_register_field_types' );
 
 	// Pick up every model/migration class living in wp-content/gateway --

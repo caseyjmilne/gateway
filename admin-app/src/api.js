@@ -317,3 +317,54 @@ export async function searchPosts( filterSettings, query, excludeIds ) {
 export async function fetchPostOption( id ) {
 	return apiFetch( `/posts/${ id }` );
 }
+
+/**
+ * `PageLinkPicker.jsx`'s own live search -- `GET /gateway/v1/page-links/search`,
+ * `Page_Link_Field_Type`'s own close sibling of `searchPosts()` above --
+ * same four filter params, but `excludeUrls` (already-selected URLs, not
+ * ids -- this field stores URLs, see that type's own docblock) and one
+ * more: `filterSettings.allow_archive_urls`, sent through as `'1'`/`'0'`
+ * so `Post_REST_Controller::search_page_links()` knows whether to also
+ * offer each allowed post type's own archive URL.
+ *
+ * @param {object}   filterSettings The field's own `settings`.
+ * @param {string}   query          Live search text.
+ * @param {string[]} excludeUrls    Already-selected URLs to leave out.
+ * @return {Promise<Array<{value: string, label: string, group: string|null}>>}
+ */
+export async function searchPageLinks( filterSettings, query, excludeUrls ) {
+	const params = new URLSearchParams();
+
+	if ( query ) {
+		params.set( 'q', query );
+	}
+	if ( filterSettings?.filter_post_types?.length ) {
+		params.set( 'post_types', filterSettings.filter_post_types.join( ',' ) );
+	}
+	if ( filterSettings?.filter_post_statuses?.length ) {
+		params.set( 'post_statuses', filterSettings.filter_post_statuses.join( ',' ) );
+	}
+	if ( filterSettings?.filter_taxonomies?.length ) {
+		params.set( 'taxonomies', filterSettings.filter_taxonomies.join( ',' ) );
+	}
+	if ( excludeUrls?.length ) {
+		params.set( 'exclude', excludeUrls.join( ',' ) );
+	}
+	if ( filterSettings?.allow_archive_urls ) {
+		params.set( 'allow_archive_urls', '1' );
+	}
+
+	return apiFetch( `/page-links/search?${ params.toString() }` );
+}
+
+/**
+ * `PageLinkPicker.jsx`'s own preview for an already-stored URL -- there's
+ * no id to look up BY here at all (unlike `fetchPostOption()` above),
+ * only the URL itself -- `GET /gateway/v1/page-links/resolve`.
+ *
+ * @param {string} url The already-stored URL.
+ * @return {Promise<{value: string, label: string, group: string|null}>}
+ */
+export async function resolvePageLink( url ) {
+	return apiFetch( `/page-links/resolve?url=${ encodeURIComponent( url ) }` );
+}

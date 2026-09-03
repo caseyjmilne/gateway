@@ -76,6 +76,40 @@
  *   Page, Media, on a stock install), not a restriction on what an
  *   UNCONFIGURED field searches by default.
  *
+ * - `GET /gateway/v1/page-links/search?q=&post_types=&post_statuses=&taxonomies=&exclude=&allow_archive_urls=` --
+ *   `Page_Link_Field_Type`'s own close sibling of `search_posts()`
+ *   above, for `PageLinkPicker.jsx`'s own live search -- same four
+ *   filter params, same defaults, but returns `{value, label, group}`
+ *   triples keyed by URL (`value`, the post's own permalink) rather
+ *   than post id, since this field stores URLs, not ids (see
+ *   `Page_Link_Field_Type`'s own docblock for why). `group` is what
+ *   `PageLinkPicker.jsx` renders as a small heading over each cluster of
+ *   results, copying ACF's own Page Link UI exactly -- the searched
+ *   post's own post type label (e.g. "Post", "Page"). `exclude` here is
+ *   comma-joined already-selected URLs, not ids. When `allow_archive_urls`
+ *   is a truthy string (`'1'`/`'true'`), each currently-allowed post
+ *   type's own archive URL (`get_post_type_archive_link()`) that
+ *   actually has one is ALSO included, ahead of the real posts, all
+ *   grouped under a shared "Archives" heading -- ACF's own "Allow
+ *   Archive URLs" setting, replicated: an archive has no underlying
+ *   post at all, so it's added directly here rather than coming out of
+ *   the `WP_Query` below.
+ *
+ * - `GET /gateway/v1/page-links/resolve?url=` -- resolves an
+ *   already-stored URL back to a `{value, label, group}` triple for
+ *   `PageLinkPicker.jsx`'s own preview of an existing record's value
+ *   (there is no id to look up BY here, only the URL itself, unlike
+ *   `get_post_option()` above) -- tries `url_to_postid()` first (a real
+ *   post's own permalink); failing that, checks whether the URL matches
+ *   any currently-public post type's own archive link, returning it
+ *   under the "Archives" group if so; failing THAT too (an external
+ *   URL, or a since-deleted post/disabled archive), still returns
+ *   something rather than erroring -- the URL itself as both `value`
+ *   and `label`, `group` `null` -- the same "tolerate staleness
+ *   gracefully" precedent `Post_Object_Field_Type::cast()`'s own
+ *   docblock already sets, rather than leaving the picker showing
+ *   nothing for a genuinely-set value.
+ *
  * @package Gateway
  */
 
@@ -176,6 +210,26 @@ class Post_REST_Controller {
 			array(
 				'methods'             => \WP_REST_Server::READABLE,
 				'callback'            => array( __CLASS__, 'list_taxonomies' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/page-links/search',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'search_page_links' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/page-links/resolve',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'resolve_page_link' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
 			)
 		);
@@ -378,13 +432,194 @@ class Post_REST_Controller {
 	}
 
 	/**
-	 * A comma-joined request param (post_types/post_statuses/taxonomies)
-	 * into a trimmed, non-empty array of slugs -- `null`/`''` (the param
-	 * simply wasn't sent, or a field's own Filter by ... setting isn't
-	 * configured at all) becomes `[]`, this method's own callers'
-	 * shared signal for "no restriction."
+	 * `PageLinkPicker.jsx`'s own live search -- see this class's own
+	 * docblock for the full request/response shape. Archive entries (when
+	 * `allow_archive_urls` is truthy) are added FIRST, ahead of real
+	 * posts -- matching ACF's own Page Link UI, which shows the
+	 * "Archives" group before any post-type group in its own results.
 	 *
-	 * @param string|null $raw Comma-joined slugs, or null.
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response
+	 */
+	public static function search_page_links( \WP_REST_Request $request ) {
+		$query_text         = trim( (string) $request->get_param( 'q' ) );
+		$post_types         = self::split_param( $request->get_param( 'post_types' ) );
+		$post_statuses      = self::split_param( $request->get_param( 'post_statuses' ) );
+		$taxonomies         = self::split_param( $request->get_param( 'taxonomies' ) );
+		$exclude_urls       = self::split_param( $request->get_param( 'exclude' ) );
+		$allow_archive_urls = in_array( (string) $request->get_param( 'allow_archive_urls' ), array( '1', 'true' ), true );
+
+		// No Filter by Post Type configured -- the exact same "every
+		// public post type except attachment/WordPress's own internals"
+		// default search_posts() above already uses.
+		if ( empty( $post_types ) ) {
+			$post_types = array_values(
+				array_diff(
+					get_post_types( array( 'public' => true ) ),
+					array_merge( array( 'attachment' ), self::INTERNAL_POST_TYPES )
+				)
+			);
+		}
+
+		$results = array();
+
+		if ( $allow_archive_urls ) {
+			foreach ( $post_types as $post_type ) {
+				$archive_link = get_post_type_archive_link( $post_type );
+
+				// Not every post type has an archive at all (a custom
+				// post type registered with `has_archive => false`, e.g.)
+				// -- silently skipped, same as a taxonomy with no terms
+				// simply contributing nothing to a tax_query.
+				if ( ! $archive_link ) {
+					continue;
+				}
+
+				if ( '' !== $query_text && false === stripos( $archive_link, $query_text ) ) {
+					continue;
+				}
+
+				if ( in_array( $archive_link, $exclude_urls, true ) ) {
+					continue;
+				}
+
+				$results[] = array(
+					'value' => $archive_link,
+					'label' => $archive_link,
+					'group' => __( 'Archives', 'gateway' ),
+				);
+			}
+		}
+
+		$args = array(
+			'post_type'      => $post_types,
+			'post_status'    => empty( $post_statuses ) ? array( 'publish' ) : $post_statuses,
+			'posts_per_page' => self::SEARCH_LIMIT,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+			'no_found_rows'  => true,
+		);
+
+		if ( '' !== $query_text ) {
+			$args['s'] = $query_text;
+		}
+
+		if ( ! empty( $taxonomies ) ) {
+			// Same "ANY term in ANY of these taxonomies, OR'd" reasoning
+			// search_posts()'s own identical block above already gives.
+			$args['tax_query'] = array( 'relation' => 'OR' ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+
+			foreach ( $taxonomies as $taxonomy ) {
+				$args['tax_query'][] = array(
+					'taxonomy' => $taxonomy,
+					'operator' => 'EXISTS',
+				);
+			}
+		}
+
+		$query = new \WP_Query( $args );
+
+		foreach ( $query->posts as $post ) {
+			$permalink = get_permalink( $post );
+
+			// `post__not_in` (by id) doesn't apply here -- `exclude` is a
+			// list of URLs, not ids -- so an already-selected post is
+			// filtered back out AFTER the query instead, over this
+			// small, already-limited result set.
+			if ( ! $permalink || in_array( $permalink, $exclude_urls, true ) ) {
+				continue;
+			}
+
+			$post_type_object = get_post_type_object( $post->post_type );
+
+			$results[] = array(
+				'value' => $permalink,
+				'label' => get_the_title( $post ) ?: sprintf( '(#%d)', $post->ID ), // phpcs:ignore WordPress.PHP.DisallowShortTernary.Found
+				'group' => $post_type_object ? $post_type_object->label : $post->post_type,
+			);
+		}
+
+		return rest_ensure_response( $results );
+	}
+
+	/**
+	 * `PageLinkPicker.jsx`'s own preview for an already-stored URL -- see
+	 * this class's own docblock for the full three-way fallback (a real
+	 * post, then a post type's own archive, then the bare URL itself).
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function resolve_page_link( \WP_REST_Request $request ) {
+		$url = trim( (string) $request->get_param( 'url' ) );
+
+		if ( '' === $url ) {
+			return new \WP_Error(
+				'gateway_page_link_missing_url',
+				__( 'A url parameter is required.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$post_id = url_to_postid( $url );
+
+		if ( $post_id ) {
+			$post             = get_post( $post_id );
+			$post_type_object = get_post_type_object( $post->post_type );
+
+			return rest_ensure_response(
+				array(
+					'value' => $url,
+					'label' => get_the_title( $post ) ?: sprintf( '(#%d)', $post_id ), // phpcs:ignore WordPress.PHP.DisallowShortTernary.Found
+					'group' => $post_type_object ? $post_type_object->label : $post->post_type,
+				)
+			);
+		}
+
+		// Not a real post -- maybe a post type's own archive link.
+		// `untrailingslashit()` on both sides -- WordPress's own rewrite
+		// rules aren't always consistent about a trailing slash, and this
+		// comparison shouldn't be either the one place that cares.
+		foreach ( get_post_types( array( 'public' => true ) ) as $post_type ) {
+			if ( in_array( $post_type, self::INTERNAL_POST_TYPES, true ) ) {
+				continue;
+			}
+
+			$archive_link = get_post_type_archive_link( $post_type );
+
+			if ( $archive_link && untrailingslashit( $archive_link ) === untrailingslashit( $url ) ) {
+				return rest_ensure_response(
+					array(
+						'value' => $url,
+						'label' => $url,
+						'group' => __( 'Archives', 'gateway' ),
+					)
+				);
+			}
+		}
+
+		// An external URL, or a since-deleted post/disabled archive --
+		// still show SOMETHING rather than leave the picker blank for a
+		// genuinely-set value; see this class's own docblock.
+		return rest_ensure_response(
+			array(
+				'value' => $url,
+				'label' => $url,
+				'group' => null,
+			)
+		);
+	}
+
+	/**
+	 * A comma-joined request param (post_types/post_statuses/taxonomies,
+	 * or -- for `search_page_links()`'s own `exclude` -- a list of URLs
+	 * instead of slugs, sanitized the same generic way) into a trimmed,
+	 * non-empty array -- `null`/`''` (the param simply wasn't sent, or a
+	 * field's own Filter by ... setting isn't configured at all) becomes
+	 * `[]`, this method's own callers' shared signal for "no
+	 * restriction"/"nothing to exclude."
+	 *
+	 * @param string|null $raw Comma-joined slugs or URLs, or null.
 	 * @return string[]
 	 */
 	private static function split_param( $raw ) {

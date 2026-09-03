@@ -1008,6 +1008,14 @@ class Model_Fields {
 	 * `multiple` on that same bundle needs no exception at all, same as
 	 * `show_toggle` above.
 	 *
+	 * `Page_Link_Field_Type`'s own `filter_post_types`/`filter_post_statuses`/
+	 * `filter_taxonomies` (`supports_page_link_settings()`) are the SAME
+	 * three keys, sharing the SAME array exception by key name (this
+	 * special case matches by key, not by which type's own `supports_*`
+	 * flag put the key into `$recognized_keys` in the first place) --
+	 * `multiple`/`allow_archive_urls` on that same bundle need no
+	 * exception either, same as `show_toggle` above.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1158,6 +1166,24 @@ class Model_Fields {
 			// multi-value default.
 			$recognized_keys[] = 'return_format';
 			$recognized_keys[] = 'multiple';
+			$recognized_keys[] = 'filter_post_types';
+			$recognized_keys[] = 'filter_post_statuses';
+			$recognized_keys[] = 'filter_taxonomies';
+		}
+
+		if ( $type_class::supports_page_link_settings() ) {
+			// Page_Link_Field_Type's own -- see that interface method's
+			// own docblock for what each key means. 'filter_post_types'/
+			// 'filter_post_statuses'/'filter_taxonomies'/'multiple' are
+			// the EXACT SAME keys Post_Object_Field_Type's own bundle
+			// above already defines (same array-valued special case
+			// below for the first three, same free generic handling for
+			// 'multiple') -- no `return_format` here at all, unlike Post
+			// Object, but one new key of its own: 'allow_archive_urls',
+			// a boolean switch handled the same free generic way
+			// 'multiple' already is.
+			$recognized_keys[] = 'multiple';
+			$recognized_keys[] = 'allow_archive_urls';
 			$recognized_keys[] = 'filter_post_types';
 			$recognized_keys[] = 'filter_post_statuses';
 			$recognized_keys[] = 'filter_taxonomies';

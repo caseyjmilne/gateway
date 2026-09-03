@@ -286,6 +286,19 @@ class Post_Object_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * Post Object's own bundle already covers everything this type
+	 * needs (Filter by ..., Select Multiple) -- Page Link's own
+	 * `allow_archive_urls` doesn't apply here, since Post Object always
+	 * stores a real post id and an archive URL has no post behind it at
+	 * all.
+	 */
+	public static function supports_page_link_settings() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 */
 	public static function max_one_per_model() {
 		return false;

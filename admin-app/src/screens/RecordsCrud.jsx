@@ -522,6 +522,33 @@ export default function RecordsCrud() {
 			) );
 		}
 
+		// A Page Link field's own value is enriched by
+		// Records_REST_Controller::enrich_page_link_fields() -- always
+		// just a bare URL string, or (when `settings.multiple` is on) an
+		// ARRAY of them -- see Page_Link_Field_Type's own docblock for
+		// why this one never has the richer object shape Post Object's
+		// own branch above has to handle. Simpler as a result: every
+		// entry is already a real, clickable URL, so this always renders
+		// a link, never plain text the way Post Object's own bare-id
+		// fallback does.
+		if ( 'page_link' === inputType ) {
+			const raw = record[ field.name ];
+			const urls = Array.isArray( raw ) ? raw : raw ? [ raw ] : [];
+
+			if ( 0 === urls.length ) {
+				return '';
+			}
+
+			return urls.map( ( url, index ) => (
+				<span key={ url }>
+					{ index > 0 && ', ' }
+					<a href={ url } target="_blank" rel="noreferrer">
+						{ url }
+					</a>
+				</span>
+			) );
+		}
+
 		// select/radio/buttons/checkboxes -- the record's own stored value
 		// (or, for checkboxes, values) is always a raw `choice.value`
 		// (Choice_Field_Type::cast() never sees `label` at all -- see

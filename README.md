@@ -7809,6 +7809,146 @@ with a real permalink link, a bare id, and `null` -- in the same table
 with no crash. `admin-app` rebuilt via `npm run build` (vite), which
 compiled cleanly.
 
+### Page Link fields (`Page_Link_Field_Type`) -- ACF's own Page Link field, copied directly
+
+Reported directly, as a later, separate request: "we need a Page Link
+similar to ACF page link with following options supported: Page Link
+page_link Filter by Post Type Filter by Post Status Filter by Taxonomy
+Allow Archive URL's Select Multiple Required Instructions. The
+resulting UI is a searchable select and the items are organized as
+shown in the screenshot. I'm not sure what show archives means exactly
+but see if you can replicate that capability" -- accompanied by a
+screenshot of ACF's own real Page Link field: a closed box showing the
+current value, opening into a live search over a scrollable list
+GROUPED by heading ("Archives" first, then "Post").
+
+`Page_Link_Field_Type`'s own close sibling of `Post_Object_Field_Type`
+-- same "Filter by Post Type/Post Status/Taxonomy" trio (reusing the
+EXACT same three `FilterMultiSelect.jsx` widgets, settings keys, and
+`Model_Fields::sanitize_settings()` array-valued special case Post
+Object's own bundle already established -- see that type's own section
+above), same "Select Multiple" switch, same "every registered post
+type, not just Gateway models" scope. **One real, meaningful
+difference keeps this a genuinely separate type rather than a copy of
+Post Object with different labels: this field stores a URL, never a
+post id.** ACF's own Page Link field returns a URL (or array of them)
+for exactly this reason -- "Allow Archive URLs" lets a site owner pick
+a post TYPE's own ARCHIVE URL as a value, and an archive has no
+underlying post behind it at all to have an id for. Post Object's own
+array-of-ids storage genuinely can't represent that; a plain array of
+URL strings represents a real post's own permalink and a post type's
+own archive link identically, with no special casing needed once
+stored. **No Return Format setting at all**, unlike Post Object -- ACF's
+own Page Link has no such setting either, and there's nothing to choose
+a format FOR: the value is always just the URL (or array of URLs).
+
+**Storage**, same "always an array, even with Select Multiple off"
+reasoning Post Object's own section above already gives (`Field_Type::
+blueprint_method()`/`eloquent_cast()` can't vary per-field, only per
+TYPE) -- a plain array of URL strings either way, `multiple` only
+changing how many of them `Records_REST_Controller::enrich_page_link_fields()`
+hands back on read. `cast()` normalizes to a de-duplicated,
+order-preserving array of real URLs, each run through `esc_url_raw()`
+(the same WordPress core function `Link_Field_Type::cast()`'s own `url`
+already goes through, stripping a stray `javascript:` scheme, e.g.).
+`enrich_page_link_fields()` itself is genuinely simpler than Post
+Object's own enrichment: there's no `return_format`/DB lookup to
+resolve the value through at all -- the stored URL IS the value a GET
+response gives back, unchanged; the only enrichment needed is the same
+single/multiple unwrapping.
+
+**Allow Archive URL's** (`settings.allow_archive_urls`, ACF's own
+setting name, apostrophe included) -- reported directly: "I'm not sure
+what show archives means exactly but see if you can replicate that
+capability." When on, `PageLinkPicker.jsx`'s own search additionally
+offers each currently-allowed post type's own archive URL
+(`get_post_type_archive_link()`) that actually has one, grouped under
+its own "Archives" heading, ahead of real posts -- matching ACF's own
+screenshot exactly. A post type registered with `has_archive => false`
+(Page, on a stock install) simply contributes nothing here, the same
+"silently skipped" treatment an empty taxonomy already gets in a
+`tax_query`.
+
+**A dedicated Gateway REST endpoint, reusing `Post_REST_Controller`
+rather than a new class** -- `GET /gateway/v1/page-links/search`
+(`Post_Object_Field_Type`'s own `search_posts()`'s close sibling, same
+four filter params, same defaults) returns `{value, label, group}`
+triples keyed by URL (the post's own permalink) instead of post id,
+`group` being the searched post's own post type label (what
+`PageLinkPicker.jsx` renders as a small heading over each cluster of
+results) -- archive entries, when requested, are added first, each
+under a shared "Archives" group. `GET /gateway/v1/page-links/resolve`
+resolves an already-stored URL back to that same `{value, label,
+group}` shape for the picker's own preview of an existing record's
+value (there's no id to look up BY here, only the URL) -- tries
+`url_to_postid()` first (a real post's own permalink); failing that,
+checks whether the URL matches any currently-public post type's own
+archive link; failing that too (an external URL, or a since-deleted
+post/disabled archive), still returns something rather than erroring --
+the URL itself as both `value` and `label`, `group` `null` -- the same
+"tolerate staleness gracefully" precedent `Post_Object_Field_Type::cast()`'s
+own docblock already sets.
+
+**Deliberately no "Allow Null" setting either**, for the exact same
+reason `Post_Object_Field_Type`'s own section above already gives:
+`PageLinkPicker.jsx` is never a native `<select>` that can't genuinely
+hold nothing -- it's a search-box-plus-removable-chips widget already
+capable of an empty selection with no extra setting needed. Required is
+what actually decides whether an empty selection is accepted when a
+record is saved.
+
+**`RecordForm`/`PageLinkPicker.jsx`.** `PostObjectPicker.jsx`'s own
+close cousin -- same chips-plus-search shape and `{value, label}`-chip
+form-state convention -- but results are GROUPED (a small heading over
+each cluster, re-grouped CLIENT-side by `group` rather than trusted to
+already arrive contiguous, since a multi-post-type search sorts every
+result by title globally on the server, which can interleave different
+groups' own items). An EXISTING record's own value is always JUST a
+bare URL string (or array of them, or `null`) -- simpler than Post
+Object's own three-way shape, since there's no `return_format` to give
+it a richer one -- resolved via `resolvePageLink()` purely for display,
+cached locally by URL. `handleSubmit()` reduces whatever's in form state
+back down to a bare array of URLs, unconditionally regardless of
+`multiple`, accepting every shape it might still be in: `null`, a bare
+URL string, the `{value, label, group}` chip object, or an array of
+either.
+
+**A `page_link` branch in `RecordsCrud.jsx`'s own `displayValue()`,
+added up front** -- same "every structured-value type needs its own
+branch, or it crashes with React error #31" discipline every other
+branch already follows (see the Link fields section above for the bug
+that established this convention). Genuinely simpler than Post Object's
+own branch: every value here is already a real, clickable URL, so this
+always renders a link -- comma-joined when `settings.multiple` is on --
+never plain text the way Post Object's own bare-id fallback does.
+
+Verified end-to-end with a standalone PHP smoke test (`Page_Link_Field_Type`'s
+own capability flags; `cast()`'s own de-duplicating/order-preserving/
+sanitized-URL normalization, including a `javascript:` URL rejected
+down to nothing rather than inserting a placeholder;
+`Model_Fields::sanitize_settings()`'s full bundle confirming NO
+`return_format` survives at all for this type; `resolve_page_link()`'s
+three-way fallback -- a real post, a post type's own archive link, and
+an unresolvable external URL, plus a missing `url` param rejected with
+a real `WP_Error`; `search_page_links()`'s own post-type/status/query
+filtering plus Allow Archive URLs adding the archive entry first; a
+real record created/fetched/re-fetched through `Records_REST_Controller`,
+confirming the single/multiple unwrapping happens on read with the
+underlying stored array passed through unchanged) run alongside the
+full existing regression suite, plus an interactive Playwright pass
+(against a temporary, uncommitted harness) driving the real
+`FieldEditor`/`RecordForm`/`RecordsCrud` components in a real browser:
+confirming NO Return Format select renders for this type at all; all
+three Filter widgets plus Select Multiple plus Allow Archive URL's all
+present; `PageLinkPicker` resolving a bare-URL initial value to a real
+title, live-searching with results genuinely grouped ("Archives" ahead
+of "Post"), selecting a second URL in Select Multiple mode, and
+submitting the correct bare-array-of-URLs payload (including an
+empty-array payload once every chip is removed); and `RecordsCrud`'s
+own list rendering all three value shapes -- an array of URLs, a single
+URL, and `null` -- as real clickable links with no crash. `admin-app`
+rebuilt via `npm run build` (vite), which compiled cleanly.
+
 ### Columns (`Model_Columns`) -- configurable, sortable Records-table columns
 
 The problem this solves: `RecordsCrud.jsx` used to render every one of a

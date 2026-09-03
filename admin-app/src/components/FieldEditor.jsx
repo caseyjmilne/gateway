@@ -351,7 +351,23 @@ const slugifyFieldName = ( value ) =>
  * reported directly alongside the original request ("I'm not sure what
  * Allow Null is or why we need it... I'm not sure how null and just
  * empty are different") -- see `Post_Object_Field_Type`'s own docblock
- * for the full reasoning. The Type picker (`TypeSelect.jsx`) also greys
+ * for the full reasoning. Page Link's own General tab
+ * (`supports_page_link_settings`) is an eighth shape, copying ACF's own
+ * Page Link field per a later, separate request -- the EXACT SAME three
+ * `FilterMultiSelect.jsx` widgets and Select Multiple toggle Post
+ * Object's own bundle above already renders (one shared render block,
+ * gated on either flag -- there's nothing type-specific left to branch
+ * on for those four), but NO Return Format `<select>` at all (this type
+ * has no such setting -- see `Page_Link_Field_Type`'s own docblock for
+ * why: the value is always just a URL, or array of them, never a richer
+ * object or bare id), plus one setting of its own: an "Allow Archive
+ * URL's" toggle (`settings.allow_archive_urls`, ACF's own setting name,
+ * apostrophe included) -- reported directly, "I'm not sure what show
+ * archives means exactly but see if you can replicate that capability" --
+ * when on, `PageLinkPicker.jsx`'s own search additionally offers each
+ * allowed post type's own archive URL, grouped under its own "Archives"
+ * heading (`Post_REST_Controller::search_page_links()`). The Type
+ * picker (`TypeSelect.jsx`) also greys
  * out "Permalink" once this model already has one on some OTHER field
  * (`disabledTypeKeys`, computed from `Field_Type::max_one_per_model()` --
  * see that component's own docblock) -- a client-side nicety on top of
@@ -626,6 +642,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const supportsPostObjectSettingsFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_post_object_settings );
 
+	const supportsPageLinkSettingsFor = ( typeKey ) =>
+		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.supports_page_link_settings );
+
 	const isTextRenderableFor = ( typeKey ) =>
 		Boolean( fieldTypes.find( ( type ) => type.key === typeKey )?.is_text_renderable );
 
@@ -649,6 +668,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const editSupportsBooleanSettings = supportsBooleanSettingsFor( editType );
 	const editSupportsLinkSettings = supportsLinkSettingsFor( editType );
 	const editSupportsPostObjectSettings = supportsPostObjectSettingsFor( editType );
+	const editSupportsPageLinkSettings = supportsPageLinkSettingsFor( editType );
 	const editIsMultiple = isMultipleFor( editType );
 	const matchingRelationships = editRelationshipType
 		? relationships.filter(
@@ -747,12 +767,15 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	// Post_Object_Field_Type's own three Filter by ... settings, plus
 	// Select Multiple -- each checked by length/truthiness the same way
 	// Checkbox's own array-valued default is above, since all three
-	// filters are arrays too.
+	// filters are arrays too. Page_Link_Field_Type shares this same
+	// bundle (see the General tab's own render block for why), plus its
+	// own Allow Archive URL's.
 	const postObjectFiltersTabHasContent =
 		Boolean( editSettings.filter_post_types?.length ) ||
 		Boolean( editSettings.filter_post_statuses?.length ) ||
 		Boolean( editSettings.filter_taxonomies?.length ) ||
-		Boolean( editSettings.multiple );
+		Boolean( editSettings.multiple ) ||
+		Boolean( editSettings.allow_archive_urls );
 	const generalTabHasContent =
 		choicesTabHasContent ||
 		defaultValueTabHasContent ||
@@ -1785,8 +1808,18 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 					   * case for these three keys. Left unset (empty
 					   * array), each means "no restriction" -- the same
 					   * default Post_REST_Controller::search_posts()'s
-					   * own docblock already documents server-side. */ }
-					{ editSupportsPostObjectSettings && (
+					   * own docblock already documents server-side.
+					   * Page_Link_Field_Type's own bundle
+					   * (`supports_page_link_settings`) shares this EXACT
+					   * same block -- a later, separate request ("we need
+					   * a Page Link similar to ACF page link... Filter by
+					   * Post Type Filter by Post Status Filter by
+					   * Taxonomy... Select Multiple") asked for the
+					   * identical trio plus Select Multiple again, so
+					   * there's nothing type-specific left to branch on
+					   * here -- only the extra Allow Archive URL's toggle
+					   * below is Page Link's own. */ }
+					{ ( editSupportsPostObjectSettings || editSupportsPageLinkSettings ) && (
 						<>
 							<div className="gateway-field-editor-form-field">
 								<span>Filter by Post Type</span>
@@ -1854,6 +1887,27 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								<span className="gateway-toggle-slider" aria-hidden="true" />
 								<span>Select Multiple</span>
 							</label>
+							{ /* Page_Link_Field_Type's own extra setting, per
+							   * a direct request: "Allow Archive URL's...
+							   * I'm not sure what show archives means
+							   * exactly but see if you can replicate that
+							   * capability." ACF's own "Allow Archive URLs"
+							   * -- when on, PageLinkPicker.jsx's own search
+							   * also offers each allowed post type's own
+							   * archive URL (Post_REST_Controller::
+							   * search_page_links()), grouped under its own
+							   * "Archives" heading, the same way ACF's own
+							   * screenshot shows. */ }
+							{ editSupportsPageLinkSettings && (
+								<label className="gateway-toggle">
+									<input
+										type="checkbox"
+										{ ...register( 'settings.allow_archive_urls' ) }
+									/>
+									<span className="gateway-toggle-slider" aria-hidden="true" />
+									<span>Allow Archive URL&rsquo;s</span>
+								</label>
+							) }
 						</>
 					) }
 				</div>

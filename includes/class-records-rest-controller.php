@@ -981,6 +981,7 @@ class Records_REST_Controller {
 		$user_fields        = array();
 		$link_fields        = array();
 		$post_object_fields = array();
+		$page_link_fields   = array();
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			if ( null !== $field['relationship_method'] ) {
@@ -1008,6 +1009,10 @@ class Records_REST_Controller {
 			if ( $type_class && $type_class::supports_post_object_settings() ) {
 				$post_object_fields[] = $field;
 			}
+
+			if ( $type_class && $type_class::supports_page_link_settings() ) {
+				$page_link_fields[] = $field;
+			}
 		}
 
 		// At most one -- Field_Type::max_one_per_model() is what
@@ -1018,9 +1023,9 @@ class Records_REST_Controller {
 		$related_columns = Column_Registry::get_related_columns_for_collection( $class_name );
 		$display_field   = self::resolve_display_field( $class_name );
 
-		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) && empty( $link_fields ) && empty( $post_object_fields ) ) || $records->isEmpty() ) {
+		if ( ( empty( $relate_fields ) && empty( $related_columns ) && empty( $image_fields ) && empty( $file_fields ) && empty( $user_fields ) && empty( $link_fields ) && empty( $post_object_fields ) && empty( $page_link_fields ) ) || $records->isEmpty() ) {
 			return $records->map(
-				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $permalink_field ) {
+				function ( $record ) use ( $display_field, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $page_link_fields, $permalink_field ) {
 					$array = $record->toArray();
 
 					// Never overwrite a real field a site owner happens to
@@ -1037,6 +1042,7 @@ class Records_REST_Controller {
 					self::enrich_user_fields( $array, $user_fields );
 					self::enrich_link_fields( $array, $link_fields );
 					self::enrich_post_object_fields( $array, $post_object_fields );
+					self::enrich_page_link_fields( $array, $page_link_fields );
 					self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 					return $array;
@@ -1061,7 +1067,7 @@ class Records_REST_Controller {
 		$display_fields_by_class = array();
 
 		return $records->map(
-			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
+			function ( $record ) use ( $relate_fields, $related_columns, $image_fields, $file_fields, $user_fields, $link_fields, $post_object_fields, $page_link_fields, $permalink_field, $display_field, &$display_fields_by_class ) {
 				$array = $record->toArray();
 
 				// Never overwrite a real field a site owner happens to
@@ -1107,6 +1113,7 @@ class Records_REST_Controller {
 				self::enrich_user_fields( $array, $user_fields );
 				self::enrich_link_fields( $array, $link_fields );
 				self::enrich_post_object_fields( $array, $post_object_fields );
+				self::enrich_page_link_fields( $array, $page_link_fields );
 				self::normalize_permalink_manual_flag( $array, $permalink_field );
 
 				return $array;
@@ -1541,6 +1548,41 @@ class Records_REST_Controller {
 		}
 
 		return $resolved;
+	}
+
+	/**
+	 * `Page_Link_Field_Type`'s own close sibling of
+	 * `enrich_post_object_fields()` above -- but genuinely simpler: the
+	 * raw stored value is already a plain array of URL strings, and
+	 * (unlike Post Object) there's no `return_format`/DB lookup to
+	 * resolve it through at all -- the URL stored IS the value a GET
+	 * response gives back, unchanged, for exactly the same reason
+	 * `Page_Link_Field_Type`'s own docblock gives for why it has no
+	 * `return_format` setting in the first place: an archive URL has no
+	 * post behind it to look anything up from. The ONLY enrichment this
+	 * needs is the same single/multiple unwrapping
+	 * `enrich_post_object_fields()` already does, when
+	 * `settings.multiple` isn't set.
+	 *
+	 * @param array $array            A record's own toArray(), modified in place.
+	 * @param array $page_link_fields Every field on this model with
+	 *                                  `supports_page_link_settings()`
+	 *                                  true (this method's own caller
+	 *                                  already resolved this once per
+	 *                                  `enrich_records()` call, not per
+	 *                                  record).
+	 */
+	private static function enrich_page_link_fields( array &$array, array $page_link_fields ) {
+		foreach ( $page_link_fields as $field ) {
+			if ( ! array_key_exists( $field['name'], $array ) ) {
+				continue;
+			}
+
+			$multiple = ! empty( $field['settings']['multiple'] );
+			$urls     = is_array( $array[ $field['name'] ] ) ? $array[ $field['name'] ] : array();
+
+			$array[ $field['name'] ] = $multiple ? $urls : ( $urls[0] ?? null );
+		}
 	}
 
 	/**
