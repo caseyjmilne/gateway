@@ -45,28 +45,35 @@
  * - `GET /gateway/v1/post-types` / `GET /gateway/v1/taxonomies` -- the
  *   option lists `FieldEditor.jsx`'s own Filter by Post Type/Taxonomy
  *   widgets (`FilterMultiSelect.jsx`, via `usePostTypes.js`/
- *   `useTaxonomies.js`) build from. A real bug, reported directly: "post
- *   types should be public only in this case Post, Page, Media instead
- *   we are getting also system CPT's" -- these two routes used to be a
- *   DIRECT client-side call against WordPress core's own
- *   `wp/v2/types`/`wp/v2/taxonomies`, but those list every post
- *   type/taxonomy with `show_in_rest` true, which includes WordPress's
- *   own INTERNAL editor-only types (`wp_block`, `wp_template`,
- *   `wp_template_part`, `wp_global_styles`, `wp_navigation`,
- *   `wp_font_family`/`wp_font_face`, and their taxonomy equivalents like
- *   `wp_theme`/`wp_template_part_area`/`wp_pattern_category`) alongside
- *   genuinely public content types -- `show_in_rest` and `public` are
- *   two entirely different registration flags, and `wp/v2/types`/
- *   `wp/v2/taxonomies` only ever filter by the former. These two routes
- *   instead go straight through `get_post_types( array( 'public' => true
- *   ) )`/`get_taxonomies( array( 'public' => true ) )` -- the exact same
- *   real WordPress core filter `search_posts()`'s own unrestricted
- *   default above already uses -- which is what genuinely excludes every
- *   one of those internal types. Unlike that default, `'attachment'` is
- *   deliberately NOT excluded here -- this is the OPTIONS list for what
- *   Filter by Post Type can be configured to, and Media is one of the
- *   three real, sensible choices a site owner can pick (Post, Page,
- *   Media, on a stock install), not a restriction on what an
+ *   `useTaxonomies.js`) build from. A real bug, reported directly TWICE:
+ *   "post types should be public only in this case Post, Page, Media
+ *   instead we are getting also system CPT's" -- and, after switching
+ *   from a direct `wp/v2/types`/`wp/v2/taxonomies` client-side call
+ *   (which only ever filters by `show_in_rest`, a wholly different
+ *   registration flag from `public`) to
+ *   `get_post_types( array( 'public' => true ) )`/`get_taxonomies( array(
+ *   'public' => true ) )` -- the exact real WordPress core filter
+ *   `search_posts()`'s own unrestricted default already used -- STILL
+ *   true, per the exact follow-up list of what was still showing
+ *   (Navigation Menu Items/Patterns/Templates/Template Parts/Global
+ *   Styles/Navigation Menus/Font Families/Font Faces): several of
+ *   WordPress's own block-editor/Site-Editor-internal types are, despite
+ *   never being real site content, ACTUALLY REGISTERED with
+ *   `'public' => true` in current WordPress core (an admin-facing UI in
+ *   that narrow technical sense, not "public content"), so the `public`
+ *   filter alone was never going to exclude them either. `INTERNAL_POST_TYPES`/
+ *   `INTERNAL_TAXONOMIES` below name every one of them explicitly, by
+ *   slug -- the only reliable way to exclude a fixed, known set of
+ *   WordPress's own internals regardless of whatever their own `public`
+ *   registration happens to be -- applied to `list_post_types()`/
+ *   `list_taxonomies()` below AND folded into `search_posts()`'s own
+ *   unrestricted default above, so an unconfigured Post Object field's
+ *   actual search can't surface a Template/Pattern/etc. either. Unlike
+ *   that default (which also excludes `'attachment'`), `'attachment'`
+ *   is deliberately NOT in either list here -- this is the OPTIONS list
+ *   for what Filter by Post Type can be configured TO, and Media is one
+ *   of the three real, sensible choices a site owner can pick (Post,
+ *   Page, Media, on a stock install), not a restriction on what an
  *   UNCONFIGURED field searches by default.
  *
  * @package Gateway
@@ -80,6 +87,44 @@ class Post_REST_Controller {
 
 	const NAMESPACE_   = 'gateway/v1';
 	const SEARCH_LIMIT = 20;
+
+	/**
+	 * WordPress's own internal, block-editor/Site-Editor-only post
+	 * types -- never a genuine piece of site content, so excluded
+	 * EVERYWHERE this class offers a post type, regardless of their own
+	 * `public` registration value (see this class's own docblock for why
+	 * `public => true` alone isn't enough). `nav_menu_item` is here too
+	 * even though it predates the block editor -- a single menu item is
+	 * never a sensible "Post Object" to pick either.
+	 *
+	 * @var string[]
+	 */
+	const INTERNAL_POST_TYPES = array(
+		'nav_menu_item',
+		'wp_block',
+		'wp_template',
+		'wp_template_part',
+		'wp_global_styles',
+		'wp_navigation',
+		'wp_font_family',
+		'wp_font_face',
+	);
+
+	/**
+	 * The taxonomy equivalent of `INTERNAL_POST_TYPES` above -- WordPress's
+	 * own internal taxonomies backing the block editor/Site Editor/nav
+	 * menus, never something a site owner would want to filter real
+	 * content BY.
+	 *
+	 * @var string[]
+	 */
+	const INTERNAL_TAXONOMIES = array(
+		'nav_menu',
+		'wp_theme',
+		'wp_template_part_area',
+		'wp_pattern_category',
+		'link_category',
+	);
 
 	/**
 	 * Hook route registration into WordPress.
@@ -169,11 +214,17 @@ class Post_REST_Controller {
 
 		// No Filter by Post Type configured -- every PUBLIC post type
 		// except 'attachment' (a media item was never a sensible "Post
-		// Object" to pick), the same "no restriction configured" default
-		// every other Filter by ... setting on this field gets.
+		// Object" to pick) and WordPress's own internal block-editor
+		// types (INTERNAL_POST_TYPES -- see this class's own docblock for
+		// why `public => true` alone doesn't already exclude them), the
+		// same "no restriction configured" default every other Filter
+		// by ... setting on this field gets.
 		if ( empty( $post_types ) ) {
 			$post_types = array_values(
-				array_diff( get_post_types( array( 'public' => true ) ), array( 'attachment' ) )
+				array_diff(
+					get_post_types( array( 'public' => true ) ),
+					array_merge( array( 'attachment' ), self::INTERNAL_POST_TYPES )
+				)
 			);
 		}
 
@@ -261,13 +312,14 @@ class Post_REST_Controller {
 	 * `get_post_types( array( 'public' => true ), 'objects' )`, the same
 	 * real WordPress core filter `search_posts()`'s own unrestricted
 	 * default above already uses, NOT `wp/v2/types`'s own
-	 * `show_in_rest`-based listing (see this class's own docblock for why
-	 * those two are different, and the real bug that came from confusing
-	 * them). Sorted by label -- `get_post_types()` itself returns them in
-	 * REGISTRATION order, which is meaningless to a site owner scanning
-	 * an options list. `'attachment'` is deliberately included (as
-	 * "Media") -- this is the OPTIONS list, not the unrestricted search
-	 * default, and Media is a real, sensible choice here.
+	 * `show_in_rest`-based listing -- further excluding `INTERNAL_POST_TYPES`
+	 * (see this class's own docblock for why `public => true` alone,
+	 * confirmed on a real site, still wasn't enough). Sorted by label --
+	 * `get_post_types()` itself returns them in REGISTRATION order, which
+	 * is meaningless to a site owner scanning an options list.
+	 * `'attachment'` is deliberately included (as "Media") -- this is the
+	 * OPTIONS list, not the unrestricted search default, and Media is a
+	 * real, sensible choice here.
 	 *
 	 * @return \WP_REST_Response
 	 */
@@ -276,6 +328,10 @@ class Post_REST_Controller {
 		$options    = array();
 
 		foreach ( $post_types as $post_type ) {
+			if ( in_array( $post_type->name, self::INTERNAL_POST_TYPES, true ) ) {
+				continue;
+			}
+
 			$options[] = array(
 				'value' => $post_type->name,
 				'label' => $post_type->label,
@@ -292,9 +348,10 @@ class Post_REST_Controller {
 	/**
 	 * `FieldEditor.jsx`'s own Filter by Taxonomy option list -- the exact
 	 * same "`public` => true, via real WordPress core functions, not
-	 * `wp/v2`'s own `show_in_rest`-based listing" reasoning
-	 * `list_post_types()` just above already gives, just
-	 * `get_taxonomies()` instead of `get_post_types()`.
+	 * `wp/v2`'s own `show_in_rest`-based listing, further excluding a
+	 * known internal list" reasoning `list_post_types()` just above
+	 * already gives, just `get_taxonomies()`/`INTERNAL_TAXONOMIES`
+	 * instead of `get_post_types()`/`INTERNAL_POST_TYPES`.
 	 *
 	 * @return \WP_REST_Response
 	 */
@@ -303,6 +360,10 @@ class Post_REST_Controller {
 		$options    = array();
 
 		foreach ( $taxonomies as $taxonomy ) {
+			if ( in_array( $taxonomy->name, self::INTERNAL_TAXONOMIES, true ) ) {
+				continue;
+			}
+
 			$options[] = array(
 				'value' => $taxonomy->name,
 				'label' => $taxonomy->label,

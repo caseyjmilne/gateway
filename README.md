@@ -7637,28 +7637,54 @@ CPT's."** `wp/v2/types`/`wp/v2/taxonomies` only ever filter by
 so WordPress's own internal, editor-only types (`wp_block`,
 `wp_template`, `wp_template_part`, `wp_global_styles`, `wp_navigation`,
 `wp_font_family`/`wp_font_face`, and taxonomy equivalents like
-`wp_theme`/`wp_template_part_area`/`wp_pattern_category`) all have
-`show_in_rest: true` (the block editor needs a REST route for them) but
-`public: false`, so they appeared right alongside genuine content types.
+`wp_theme`/`wp_template_part_area`/`wp_pattern_category`) all appeared
+right alongside genuine content types.
 
-Fixed at the root by moving both lookups server-side, into two new
-`Post_REST_Controller` routes (`GET /gateway/v1/post-types`/
-`GET /gateway/v1/taxonomies`) that go through real WordPress core
-functions instead of `wp/v2`'s own listings --
-`get_post_types( array( 'public' => true ), 'objects' )`/
-`get_taxonomies( array( 'public' => true ), 'objects' )`, the exact same
-`public` filter `search_posts()`'s own unrestricted default already
-uses -- sorted by label rather than `get_post_types()`'s own meaningless
-registration order. `'attachment'` ("Media") is deliberately still
-INCLUDED here, unlike that unrestricted search default which excludes
-it: this is the OPTIONS list for what Filter by Post Type can be
-configured TO (Post, Page, Media, on a stock install, exactly as
-reported), not a restriction on what an unconfigured field searches by
-default -- picking "Media" as an explicit Filter by Post Type is a
-perfectly sensible choice a site owner might actually want.
+Moved both lookups server-side, into two new `Post_REST_Controller`
+routes (`GET /gateway/v1/post-types`/`GET /gateway/v1/taxonomies`) going
+through real WordPress core functions instead of `wp/v2`'s own
+listings -- first attempt: `get_post_types( array( 'public' => true ),
+'objects' )`/`get_taxonomies( array( 'public' => true ), 'objects' )`,
+the same `public` filter `search_posts()`'s own unrestricted default
+already uses. **Still not enough, per an exact follow-up report naming
+what was STILL showing** (Navigation Menu Items/Patterns/Templates/
+Template Parts/Global Styles/Navigation Menus/Font Families/Font
+Faces): contrary to what their own name might suggest, several of
+WordPress's own block-editor/Site-Editor-internal types are actually
+registered with `'public' => true` in current WordPress core (an
+admin-facing UI in that narrow technical sense, not "public content"),
+so the `public` filter alone was never going to exclude them either.
+Fixed for real with `Post_REST_Controller::INTERNAL_POST_TYPES`/
+`INTERNAL_TAXONOMIES` -- two small, explicit, BY-SLUG exclusion lists
+(`nav_menu_item`/`wp_block`/`wp_template`/`wp_template_part`/
+`wp_global_styles`/`wp_navigation`/`wp_font_family`/`wp_font_face`, and
+their taxonomy equivalents `nav_menu`/`wp_theme`/
+`wp_template_part_area`/`wp_pattern_category`/`link_category`) that
+exclude every one of them regardless of whatever their own `public`
+registration happens to be -- the only reliable way to exclude a fixed,
+known set of WordPress internals once a registration FLAG turned out
+not to be trustworthy for this. Applied in `list_post_types()`/
+`list_taxonomies()` AND folded into `search_posts()`'s own unrestricted
+default (alongside its existing `'attachment'` exclusion), so an
+unconfigured Post Object field's actual search can't surface a
+Template/Pattern/etc. either, not just the options list.
+
+Both routes are still sorted by label rather than `get_post_types()`'s
+own meaningless registration order. `'attachment'` ("Media") is
+deliberately still INCLUDED in the options lists, unlike the
+unrestricted search default which excludes it (alongside
+`INTERNAL_POST_TYPES` now): this is the OPTIONS list for what Filter by
+Post Type can be configured TO (Post, Page, Media, on a stock install,
+exactly as reported), not a restriction on what an unconfigured field
+searches by default -- picking "Media" as an explicit Filter by Post
+Type is a perfectly sensible choice a site owner might actually want.
 `fetchPostTypes()`/`fetchTaxonomies()` now simply call these two new
 Gateway routes via `apiFetch()`, same as every other Gateway-namespaced
-lookup in `api.js`.
+lookup in `api.js`. Verified with a standalone PHP smoke test giving
+every `INTERNAL_POST_TYPES`/`INTERNAL_TAXONOMIES` entry `'public' =>
+true` explicitly (matching what was actually found on a live site) and
+confirming the blocklist excludes every one of them anyway, alongside a
+real custom post type surviving untouched.
 
 **Return Format** reuses the exact same shared `return_format` key --
 and the same `Model_Fields::sanitize_settings()` enum check -- Image/
