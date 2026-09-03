@@ -220,11 +220,28 @@ export async function searchLinkableContent( search = '' ) {
  * `Post_REST_Controller::search_posts()`'s own unrestricted default
  * already excludes it server-side.
  *
+ * Deliberately no `context=edit`/`_fields` params, unlike `fetchWpPages()`/
+ * `searchLinkableContent()` above -- a real bug, reported directly
+ * ("post types and taxonomies return no matches, the list is empty"):
+ * WordPress's own `_fields` filtering (`_rest_filter_response_fields()`)
+ * only recurses into a NUMERICALLY-indexed collection (`wp_is_numeric_array()`) --
+ * `/wp/v2/pages`/`/wp/v2/posts` (what those two functions filter) are
+ * exactly that, but `/wp/v2/types`'s own response is keyed by STRING
+ * slug instead, so `_fields` mistook the whole response for a single
+ * item and filtered ITS OWN top-level keys ('post', 'page', ...) against
+ * `slug,name` -- neither of which matches a post type's own name, so
+ * every entry was silently stripped down to `{}`, and `Object.values()`
+ * below saw nothing at all. `context=edit` (no longer needed either,
+ * once `_fields` was the real culprit) is dropped too -- `slug`/`name`
+ * are both already exposed at the default, fully public `view` context,
+ * the same context `fetchWpPages()`/`searchLinkableContent()` already
+ * use with no capability of their own required.
+ *
  * @return {Promise<Array<{value: string, label: string}>>}
  */
 export async function fetchPostTypes() {
 	const response = await fetch(
-		`${ config.wpApiUrl }wp/v2/types?context=edit&_fields=slug,name`,
+		`${ config.wpApiUrl }wp/v2/types`,
 		{ headers: { 'X-WP-Nonce': config.nonce } }
 	);
 
@@ -242,13 +259,15 @@ export async function fetchPostTypes() {
  * This site's own registered taxonomies, via `GET /wp-json/wp/v2/taxonomies`
  * -- `useTaxonomies.js`'s own fetch, what `FieldEditor.jsx`'s own
  * "Filter by Taxonomy" setting builds its option list from. Same
- * object-keyed-by-slug shape `fetchPostTypes()` above already converts.
+ * object-keyed-by-slug shape `fetchPostTypes()` above already converts,
+ * and the same real `_fields`-on-a-string-keyed-response bug -- see that
+ * function's own docblock -- so no `context=edit`/`_fields` here either.
  *
  * @return {Promise<Array<{value: string, label: string}>>}
  */
 export async function fetchTaxonomies() {
 	const response = await fetch(
-		`${ config.wpApiUrl }wp/v2/taxonomies?context=edit&_fields=slug,name`,
+		`${ config.wpApiUrl }wp/v2/taxonomies`,
 		{ headers: { 'X-WP-Nonce': config.nonce } }
 	);
 
