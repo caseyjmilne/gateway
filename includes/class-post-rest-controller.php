@@ -42,6 +42,33 @@
  *   build a preview from" gap `Media_REST_Controller::get_media()`/
  *   `User_REST_Controller::get_user()` already fill for their own types).
  *
+ * - `GET /gateway/v1/post-types` / `GET /gateway/v1/taxonomies` -- the
+ *   option lists `FieldEditor.jsx`'s own Filter by Post Type/Taxonomy
+ *   widgets (`FilterMultiSelect.jsx`, via `usePostTypes.js`/
+ *   `useTaxonomies.js`) build from. A real bug, reported directly: "post
+ *   types should be public only in this case Post, Page, Media instead
+ *   we are getting also system CPT's" -- these two routes used to be a
+ *   DIRECT client-side call against WordPress core's own
+ *   `wp/v2/types`/`wp/v2/taxonomies`, but those list every post
+ *   type/taxonomy with `show_in_rest` true, which includes WordPress's
+ *   own INTERNAL editor-only types (`wp_block`, `wp_template`,
+ *   `wp_template_part`, `wp_global_styles`, `wp_navigation`,
+ *   `wp_font_family`/`wp_font_face`, and their taxonomy equivalents like
+ *   `wp_theme`/`wp_template_part_area`/`wp_pattern_category`) alongside
+ *   genuinely public content types -- `show_in_rest` and `public` are
+ *   two entirely different registration flags, and `wp/v2/types`/
+ *   `wp/v2/taxonomies` only ever filter by the former. These two routes
+ *   instead go straight through `get_post_types( array( 'public' => true
+ *   ) )`/`get_taxonomies( array( 'public' => true ) )` -- the exact same
+ *   real WordPress core filter `search_posts()`'s own unrestricted
+ *   default above already uses -- which is what genuinely excludes every
+ *   one of those internal types. Unlike that default, `'attachment'` is
+ *   deliberately NOT excluded here -- this is the OPTIONS list for what
+ *   Filter by Post Type can be configured to, and Media is one of the
+ *   three real, sensible choices a site owner can pick (Post, Page,
+ *   Media, on a stock install), not a restriction on what an
+ *   UNCONFIGURED field searches by default.
+ *
  * @package Gateway
  */
 
@@ -84,6 +111,26 @@ class Post_REST_Controller {
 			array(
 				'methods'             => \WP_REST_Server::READABLE,
 				'callback'            => array( __CLASS__, 'get_post_option' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/post-types',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'list_post_types' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/taxonomies',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'list_taxonomies' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
 			)
 		);
@@ -207,6 +254,66 @@ class Post_REST_Controller {
 				'type'  => $post->post_type,
 			)
 		);
+	}
+
+	/**
+	 * `FieldEditor.jsx`'s own Filter by Post Type option list --
+	 * `get_post_types( array( 'public' => true ), 'objects' )`, the same
+	 * real WordPress core filter `search_posts()`'s own unrestricted
+	 * default above already uses, NOT `wp/v2/types`'s own
+	 * `show_in_rest`-based listing (see this class's own docblock for why
+	 * those two are different, and the real bug that came from confusing
+	 * them). Sorted by label -- `get_post_types()` itself returns them in
+	 * REGISTRATION order, which is meaningless to a site owner scanning
+	 * an options list. `'attachment'` is deliberately included (as
+	 * "Media") -- this is the OPTIONS list, not the unrestricted search
+	 * default, and Media is a real, sensible choice here.
+	 *
+	 * @return \WP_REST_Response
+	 */
+	public static function list_post_types() {
+		$post_types = get_post_types( array( 'public' => true ), 'objects' );
+		$options    = array();
+
+		foreach ( $post_types as $post_type ) {
+			$options[] = array(
+				'value' => $post_type->name,
+				'label' => $post_type->label,
+			);
+		}
+
+		usort( $options, function ( $a, $b ) {
+			return strcasecmp( $a['label'], $b['label'] );
+		} );
+
+		return rest_ensure_response( $options );
+	}
+
+	/**
+	 * `FieldEditor.jsx`'s own Filter by Taxonomy option list -- the exact
+	 * same "`public` => true, via real WordPress core functions, not
+	 * `wp/v2`'s own `show_in_rest`-based listing" reasoning
+	 * `list_post_types()` just above already gives, just
+	 * `get_taxonomies()` instead of `get_post_types()`.
+	 *
+	 * @return \WP_REST_Response
+	 */
+	public static function list_taxonomies() {
+		$taxonomies = get_taxonomies( array( 'public' => true ), 'objects' );
+		$options    = array();
+
+		foreach ( $taxonomies as $taxonomy ) {
+			$options[] = array(
+				'value' => $taxonomy->name,
+				'label' => $taxonomy->label,
+			);
+		}
+
+		usort( $options, function ( $a, $b ) {
+			return strcasecmp( $a['label'], $b['label'] );
+		} );
+
+		return rest_ensure_response( $options );
 	}
 
 	/**

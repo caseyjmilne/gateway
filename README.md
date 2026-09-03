@@ -7607,18 +7607,58 @@ way to remove them a delete button" -- but, unlike
 `RelateAutocomplete.jsx`'s own per-keystroke SERVER search, filtering a
 small, already-fetched, CLIENT-side option list instead: there's no
 "page" of post types or taxonomies on a real site large enough to need a
-live server round trip for it. Post Types/Taxonomies come from two new,
-tiny `api.js` functions (`fetchPostTypes()`/`fetchTaxonomies()`, wrapped
-by `usePostTypes.js`/`useTaxonomies.js`) hitting WordPress's own core
-`GET wp/v2/types`/`GET wp/v2/taxonomies` routes DIRECTLY -- the same
-"hit `wp/v2` directly for site-wide WP metadata, not this plugin's own
-namespace" pattern `LinkPicker.jsx`'s own `searchLinkableContent()`
-already established -- excluding `attachment` from the Post Type list
-the same way the server's own unrestricted default already does. Post
-Statuses has no equivalent core REST route to fetch from at all, so its
-own five options (Published/Draft/Pending Review/Private/Scheduled) are
-a small, hardcoded, client-side list covering WordPress's own built-in
-statuses.
+live server round trip for it. Post Statuses has no core REST route to
+fetch from at all, so its own five options (Published/Draft/Pending
+Review/Private/Scheduled) are a small, hardcoded, client-side list
+covering WordPress's own built-in statuses.
+
+**Two real bugs in how Post Types/Taxonomies were originally fetched,
+both reported directly.** `fetchPostTypes()`/`fetchTaxonomies()`
+(`api.js`) originally hit WordPress core's own `GET wp/v2/types`/
+`GET wp/v2/taxonomies` DIRECTLY -- the same "hit `wp/v2` directly for
+site-wide WP metadata, not this plugin's own namespace" pattern
+`LinkPicker.jsx`'s own `searchLinkableContent()` already established --
+with `?context=edit&_fields=slug,name` to keep the response small. First
+bug: **"post types and taxonomies return no matches, the list is empty."**
+WordPress's own `_fields` filtering (`_rest_filter_response_fields()`)
+only recurses into a NUMERICALLY-indexed collection
+(`wp_is_numeric_array()`) -- fine for `wp/v2/pages`/`wp/v2/posts`
+(`fetchWpPages()`/`searchLinkableContent()`'s own `_fields` usage, both
+plain numeric lists), but `/wp/v2/types`'s own response is keyed by
+STRING slug instead (`{ post: {...}, page: {...}, ... }`), so `_fields`
+mistook the whole response for a SINGLE item and filtered ITS OWN
+top-level keys ('post', 'page', ...) against `slug,name` -- neither of
+which matches, silently stripping every entry down to `{}`. Dropping
+`_fields` (and the now-unneeded `context=edit`) fixed that, but exposed
+a second, separate bug underneath it: **"post types should be public
+only in this case Post, Page, Media instead we are getting also system
+CPT's."** `wp/v2/types`/`wp/v2/taxonomies` only ever filter by
+`show_in_rest` -- a WHOLLY DIFFERENT registration flag from `public` --
+so WordPress's own internal, editor-only types (`wp_block`,
+`wp_template`, `wp_template_part`, `wp_global_styles`, `wp_navigation`,
+`wp_font_family`/`wp_font_face`, and taxonomy equivalents like
+`wp_theme`/`wp_template_part_area`/`wp_pattern_category`) all have
+`show_in_rest: true` (the block editor needs a REST route for them) but
+`public: false`, so they appeared right alongside genuine content types.
+
+Fixed at the root by moving both lookups server-side, into two new
+`Post_REST_Controller` routes (`GET /gateway/v1/post-types`/
+`GET /gateway/v1/taxonomies`) that go through real WordPress core
+functions instead of `wp/v2`'s own listings --
+`get_post_types( array( 'public' => true ), 'objects' )`/
+`get_taxonomies( array( 'public' => true ), 'objects' )`, the exact same
+`public` filter `search_posts()`'s own unrestricted default already
+uses -- sorted by label rather than `get_post_types()`'s own meaningless
+registration order. `'attachment'` ("Media") is deliberately still
+INCLUDED here, unlike that unrestricted search default which excludes
+it: this is the OPTIONS list for what Filter by Post Type can be
+configured TO (Post, Page, Media, on a stock install, exactly as
+reported), not a restriction on what an unconfigured field searches by
+default -- picking "Media" as an explicit Filter by Post Type is a
+perfectly sensible choice a site owner might actually want.
+`fetchPostTypes()`/`fetchTaxonomies()` now simply call these two new
+Gateway routes via `apiFetch()`, same as every other Gateway-namespaced
+lookup in `api.js`.
 
 **Return Format** reuses the exact same shared `return_format` key --
 and the same `Model_Fields::sanitize_settings()` enum check -- Image/

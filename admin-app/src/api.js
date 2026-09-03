@@ -209,77 +209,61 @@ export async function searchLinkableContent( search = '' ) {
 }
 
 /**
- * This site's own registered post types, via `GET /wp-json/wp/v2/types`
- * -- `usePostTypes.js`'s own fetch, what `FieldEditor.jsx`'s own "Filter
- * by Post Type" setting builds its option list from. Core's own route
- * returns an OBJECT keyed by slug (`{ post: {...}, page: {...}, ... }`),
- * not an array -- `Object.values()` here is what turns that into the
- * plain `{value, label}` array shape every option-list component in this
- * app already expects. `'attachment'` is excluded -- a media item was
- * never a sensible "Post Object" to filter FOR, the same reasoning
- * `Post_REST_Controller::search_posts()`'s own unrestricted default
- * already excludes it server-side.
+ * This site's own PUBLIC post types, via `GET /gateway/v1/post-types` --
+ * `usePostTypes.js`'s own fetch, what `FieldEditor.jsx`'s own "Filter by
+ * Post Type" setting builds its option list from.
  *
- * Deliberately no `context=edit`/`_fields` params, unlike `fetchWpPages()`/
- * `searchLinkableContent()` above -- a real bug, reported directly
- * ("post types and taxonomies return no matches, the list is empty"):
- * WordPress's own `_fields` filtering (`_rest_filter_response_fields()`)
- * only recurses into a NUMERICALLY-indexed collection (`wp_is_numeric_array()`) --
- * `/wp/v2/pages`/`/wp/v2/posts` (what those two functions filter) are
- * exactly that, but `/wp/v2/types`'s own response is keyed by STRING
- * slug instead, so `_fields` mistook the whole response for a single
- * item and filtered ITS OWN top-level keys ('post', 'page', ...) against
- * `slug,name` -- neither of which matches a post type's own name, so
- * every entry was silently stripped down to `{}`, and `Object.values()`
- * below saw nothing at all. `context=edit` (no longer needed either,
- * once `_fields` was the real culprit) is dropped too -- `slug`/`name`
- * are both already exposed at the default, fully public `view` context,
- * the same context `fetchWpPages()`/`searchLinkableContent()` already
- * use with no capability of their own required.
+ * This used to call WordPress core's own `GET wp/v2/types` directly --
+ * two real bugs, both reported directly. First: "post types and
+ * taxonomies return no matches, the list is empty" -- WordPress's own
+ * `_fields` filtering (`_rest_filter_response_fields()`) only recurses
+ * into a NUMERICALLY-indexed collection (`wp_is_numeric_array()`), but
+ * `/wp/v2/types`'s own response is keyed by STRING slug
+ * (`{ post: {...}, page: {...}, ... }`), so `_fields=slug,name` mistook
+ * the whole response for a single item and filtered ITS OWN top-level
+ * keys ('post', 'page', ...) against `slug,name`, silently stripping
+ * every entry down to `{}`. Dropping `_fields` (and the `context=edit`
+ * it no longer needed either) fixed that -- but exposed a second,
+ * separate bug: "post types should be public only in this case Post,
+ * Page, Media instead we are getting also system CPT's." `wp/v2/types`
+ * only ever filters by `show_in_rest`, a WHOLLY DIFFERENT registration
+ * flag from `public` -- WordPress's own internal editor-only types
+ * (`wp_block`, `wp_template`, `wp_template_part`, `wp_global_styles`,
+ * `wp_navigation`, `wp_font_family`/`wp_font_face`, ...) all have
+ * `show_in_rest: true` (the editor needs a REST route for them) but
+ * `public: false`, so they showed up here right alongside genuinely
+ * public content types. `Post_REST_Controller::list_post_types()`
+ * fixes this at the root by going through real WordPress core
+ * (`get_post_types( array( 'public' => true ) )`, the exact same filter
+ * `search_posts()`'s own unrestricted default already uses) instead of
+ * `wp/v2/types`'s own listing -- `'attachment'` ("Media") is
+ * deliberately included here despite being excluded from that
+ * unrestricted default, since this is the OPTIONS list for what Filter
+ * by Post Type can be configured to, not a restriction on what an
+ * unconfigured field searches by default.
  *
  * @return {Promise<Array<{value: string, label: string}>>}
  */
 export async function fetchPostTypes() {
-	const response = await fetch(
-		`${ config.wpApiUrl }wp/v2/types`,
-		{ headers: { 'X-WP-Nonce': config.nonce } }
-	);
-
-	if ( ! response.ok ) {
-		throw new Error( `Could not load post types (${ response.status }).` );
-	}
-
-	const types = await response.json();
-	return Object.values( types )
-		.filter( ( type ) => 'attachment' !== type.slug )
-		.map( ( type ) => ( { value: type.slug, label: type.name } ) );
+	return apiFetch( '/post-types' );
 }
 
 /**
- * This site's own registered taxonomies, via `GET /wp-json/wp/v2/taxonomies`
- * -- `useTaxonomies.js`'s own fetch, what `FieldEditor.jsx`'s own
- * "Filter by Taxonomy" setting builds its option list from. Same
- * object-keyed-by-slug shape `fetchPostTypes()` above already converts,
- * and the same real `_fields`-on-a-string-keyed-response bug -- see that
- * function's own docblock -- so no `context=edit`/`_fields` here either.
+ * This site's own PUBLIC taxonomies, via `GET /gateway/v1/taxonomies` --
+ * `useTaxonomies.js`'s own fetch, what `FieldEditor.jsx`'s own "Filter
+ * by Taxonomy" setting builds its option list from. Same
+ * `wp/v2/taxonomies`-only-filters-by-`show_in_rest`-not-`public` bug
+ * `fetchPostTypes()` above already had (WordPress's own internal
+ * taxonomies like `wp_theme`/`wp_template_part_area`/
+ * `wp_pattern_category` would otherwise show up here too) -- see that
+ * function's own docblock for the full story, and
+ * `Post_REST_Controller::list_taxonomies()` for the fix
+ * (`get_taxonomies( array( 'public' => true ) )`).
  *
  * @return {Promise<Array<{value: string, label: string}>>}
  */
 export async function fetchTaxonomies() {
-	const response = await fetch(
-		`${ config.wpApiUrl }wp/v2/taxonomies`,
-		{ headers: { 'X-WP-Nonce': config.nonce } }
-	);
-
-	if ( ! response.ok ) {
-		throw new Error( `Could not load taxonomies (${ response.status }).` );
-	}
-
-	const taxonomies = await response.json();
-	return Object.values( taxonomies ).map( ( taxonomy ) => ( {
-		value: taxonomy.slug,
-		label: taxonomy.name,
-	} ) );
+	return apiFetch( '/taxonomies' );
 }
 
 /**
