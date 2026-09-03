@@ -1022,6 +1022,12 @@ class Model_Fields {
 	 * treatment `character_limit`/`return_format` already get above --
 	 * see this method's own inline comments on each for the details.
 	 *
+	 * `User_Field_Type`'s own `filter_roles` (`supports_user_settings()`)
+	 * gets the SAME array exception `filter_post_types`/etc. already do,
+	 * for the same reason; its own `multiple` needs no exception at all,
+	 * same as `show_toggle`/`Post_Object_Field_Type`'s own `multiple`
+	 * above.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1107,14 +1113,19 @@ class Model_Fields {
 		}
 
 		if ( $type_class::supports_user_settings() ) {
-			// User_Field_Type's own -- the narrowest bundle of all, just
-			// General's own Return Format, reusing the exact same
-			// 'return_format' key/enum check below Image/File's own
+			// User_Field_Type's own -- see that interface method's own
+			// docblock for what each key means. 'return_format' reuses
+			// the exact same key/enum check below Image/File's own
 			// bundles already share (FieldEditor.jsx's own <select> just
-			// never offers 'url' for this type -- see
-			// Field_Type::supports_user_settings()'s own docblock for
-			// why nothing here needs a narrower enum to match).
+			// never offers 'url' for this type). 'multiple' is a boolean
+			// switch, handled generically the same free way
+			// Post_Object_Field_Type's own 'multiple' already is.
+			// 'filter_roles' is an array (not a scalar string), so it's
+			// handled in its OWN special case below, alongside
+			// Post_Object_Field_Type's own filter_post_types/etc.
 			$recognized_keys[] = 'return_format';
+			$recognized_keys[] = 'multiple';
+			$recognized_keys[] = 'filter_roles';
 		}
 
 		if ( $type_class::supports_permalink_settings() ) {
@@ -1238,20 +1249,21 @@ class Model_Fields {
 			}
 
 			// Post_Object_Field_Type's own Filter by Post Type/Post
-			// Status/Taxonomy -- each an array of strings (a post type
-			// slug, a status key, a taxonomy slug), narrowing
-			// PostObjectPicker.jsx's own search rather than a single
-			// scalar setting -- the exact same "array, not a string"
-			// exception Checkbox's own multi-value default gets above,
-			// for the exact same reason (the generic `(string)` cast
-			// below would otherwise collapse a real array into the
-			// literal string "Array"). An empty result (nothing
-			// selected, or every submitted entry sanitized down to
-			// blank) is dropped entirely, same as an empty string
+			// Status/Taxonomy, and User_Field_Type's own Filter by Role
+			// -- each an array of strings (a post type slug, a status
+			// key, a taxonomy slug, a WP role slug), narrowing
+			// PostObjectPicker.jsx's/UserPicker.jsx's own search rather
+			// than a single scalar setting -- the exact same "array, not
+			// a string" exception Checkbox's own multi-value default
+			// gets above, for the exact same reason (the generic
+			// `(string)` cast below would otherwise collapse a real
+			// array into the literal string "Array"). An empty result
+			// (nothing selected, or every submitted entry sanitized down
+			// to blank) is dropped entirely, same as an empty string
 			// setting already is -- "no filter configured" is the
 			// absence of the key, not an empty array sitting in
 			// `settings` forever.
-			if ( in_array( $key, array( 'filter_post_types', 'filter_post_statuses', 'filter_taxonomies' ), true ) ) {
+			if ( in_array( $key, array( 'filter_post_types', 'filter_post_statuses', 'filter_taxonomies', 'filter_roles' ), true ) ) {
 				$raw_items       = is_array( $raw_settings[ $key ] ) ? $raw_settings[ $key ] : array( $raw_settings[ $key ] );
 				$sanitized_items = array();
 

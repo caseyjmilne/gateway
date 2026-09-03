@@ -390,26 +390,32 @@ export default function RecordsCrud() {
 			return `File #${ value }`;
 		}
 
-		// A User field's own value is enriched the SAME two ways
-		// UserPicker/RecordForm already handle -- just the plain name
-		// (never a link -- unlike Image/File, there's no obvious "visit
-		// this" URL for a person the way there is for an attachment) for
-		// the enriched object, or a named placeholder for a bare id
+		// A User field's own value is enriched the same way Post Object's
+		// own is (Records_REST_Controller::enrich_user_fields()) -- a
+		// bare user id, the enriched {id, name, email, avatar_url}
+		// object, or (when `settings.multiple` is on) an ARRAY of either
+		// -- see User_Field_Type's own docblock. Rendered as comma
+		// -joined names (never a link -- unlike Image/File, there's no
+		// obvious "visit this" URL for a person the way there is for an
+		// attachment), falling back to a named placeholder for a bare id
 		// (return_format 'id') -- resolving that to a real name would
 		// need a per-row fetch this list view has no reason to make,
 		// same reasoning Image's own bare-id branch above already gives.
 		if ( 'user' === inputType ) {
-			const value = record[ field.name ];
+			const raw = record[ field.name ];
+			const items = Array.isArray( raw ) ? raw : raw ? [ raw ] : [];
 
-			if ( ! value ) {
+			if ( 0 === items.length ) {
 				return '';
 			}
 
-			if ( 'object' === typeof value ) {
-				return value.name || `User #${ value.id }`;
-			}
-
-			return `User #${ value }`;
+			return items
+				.map( ( item ) =>
+					'object' === typeof item
+						? item.name || `User #${ item.id }`
+						: `User #${ item }`
+				)
+				.join( ', ' );
 		}
 
 		// A WYSIWYG field's own stored value is genuine HTML

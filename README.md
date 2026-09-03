@@ -6915,100 +6915,154 @@ link rather than falling through to the generic plain-text branch --
 the same small polish File's own filename link and Image's own
 thumbnail already have for their own list-view columns.
 
-### User fields (`User_Field_Type`) -- a bare WP user id, resolved and searched by hand rather than through `Model_Relationships`
+### User fields (`User_Field_Type`) -- one or more WP users, resolved and searched by hand rather than through `Model_Relationships`
 
-A User field picks one of this site's own registered WP users -- stored
-as that user's own `wp_users.ID` (`unsignedBigInteger()`, the exact same
-column shape `Relate_To_One_Field_Type`'s own foreign key and
-`Image_Field_Type`'s own attachment id both use). It's filed under
-`category() === 'Relational'` alongside Relate to One/Relate to Many
-(matching ACF's own grouping for its "User" field), but it deliberately
-does **not** implement `Relationship_Field_Type` -- that interface, and
-`Model_Relationships` underneath it, exist specifically for a reference
-to another GATEWAY model's own record; a WP user is a real WordPress
-entity this plugin doesn't own the schema for, the exact same
-relationship `Image_Field_Type`'s own attachment id already has to
-`wp_posts`. There's no multi-select "Users" variant (ACF's own User
-field offers one) -- picking a single user is what was asked for; the
-same field storing several ids the way Relate to Many does is a
-separate, unimplemented feature, not something this type's own shape
-tries to anticipate.
+A User field picks one or more of this site's own registered WP users.
+It's filed under `category() === 'Relational'` alongside Relate to One/
+Relate to Many (matching ACF's own grouping for its "User" field), but
+it deliberately does **not** implement `Relationship_Field_Type` -- that
+interface, and `Model_Relationships` underneath it, exist specifically
+for a reference to another GATEWAY model's own record; a WP user is a
+real WordPress entity this plugin doesn't own the schema for, the exact
+same relationship `Image_Field_Type`'s own attachment id already has to
+`wp_posts`.
 
-**`supports_user_settings()`** (new `Field_Type` interface method, `true`
-only for `User_Field_Type`) gates General's own Return Format setting --
-the SAME `settings.return_format` key, and the exact same
-`Model_Fields::sanitize_settings()` enum check, `supports_media_settings()`/
-`supports_file_settings()` already share for Image/File, just offered
-narrower: **User Array** or **User ID**, never a "User URL" (a WP user
-has no single canonical URL the way an attachment does -- `get_author_posts_url()`
-names an archive-of-posts-by, not "the URL of this user", and would be a
-confusing thing to hand back under a generic `'url'` format). Nothing
-server-side needed its own narrower enum to enforce this -- `FieldEditor.jsx`'s
-own `<select>` simply never renders a "User URL" `<option>` for this
-type, the same "validated broadly, offered narrowly" split already
-established. No Validation-tab bundle at all -- a bare user id has no
-width/height/file-size/allowed-extension to bound the way an attachment
-does.
+**This type originally shipped single-select only** -- a bare
+`wp_users.ID` in an `unsignedBigInteger()` column, no multi-select
+variant at all (ACF's own User field offers one). Reported directly,
+much later: "ensure user has these settings: Filter by Role Return
+Format Select Multiple Required Instructions. I think filter by role is
+missing for sure, maybe return format and select multiple." Filter by
+Role and Select Multiple were both genuinely missing.
 
-**`Records_REST_Controller::resolve_user_value( $user_id, $return_format )`**
-is `resolve_image_value()`/`resolve_file_value()`'s own close sibling,
-just simpler (only two shapes, never three): `'id'` returns the bare id,
-anything else (including missing/invalid, same "falls back to the rich
-shape" convention every other `return_format` already has) resolves via
-`get_userdata()` into `{id, name, email, avatar_url}` (`display_name`/
-`user_email`/`get_avatar_url()`) -- `null` if the id no longer names a
-real user (deleted since, e.g.), the same "don't invent data for
-something that isn't there" reasoning a since-deleted attachment's own
-id already gets. `enrich_user_fields()` threads this through
-`enrich_records()` exactly like `enrich_image_fields()`/`enrich_file_fields()`
-already do.
+**Storage: always a plain array of user ids, even with Select Multiple
+off** -- adding Select Multiple required this change, since a single
+`unsignedBigInteger` column can never hold more than one id. This is the
+exact same "always an array" design `Post_Object_Field_Type` already
+uses, and for the identical reason: `Field_Type::blueprint_method()`/
+`eloquent_cast()` are per-TYPE, not per-field-instance, so they can't
+vary based on one field's own `multiple` setting. `blueprint_method()`
+is now `'text'` (a JSON array in one column, via Eloquent's own
+`'array'` cast), and `cast()` now normalizes to a de-duplicated,
+order-preserving array of positive ints (tolerating a bare scalar,
+wrapped into a one-item array), identical in shape to
+`Post_Object_Field_Type::cast()`. **This was a real, deliberate
+backward-compatibility call, not an oversight**: `Model_Fields::update()`
+never migrates a field's own column on a settings-only change (this
+field's own `type` never changes, just its `settings`), so there was no
+in-place schema-upgrade path available for turning Select Multiple on
+for an already-existing field either way -- confirmed directly, before
+making the change, that no live User field data existed yet on any
+model to preserve, which is what made changing the column shape outright
+(rather than building a real migration routine) the safe, correct call
+here.
 
-**`User_REST_Controller`** (`includes/class-user-rest-controller.php`) is
-a small, admin-only pair of routes purpose-built for `UserPicker.jsx`,
-the same role `Media_REST_Controller` plays for Image/File and
-`Records_REST_Controller::search_records()` plays for Relate to One/
-Many:
-- `GET /gateway/v1/users/search?q=&exclude=` -- searches this site's own
-  users by login/email/**display name** (`get_users()`'s own default
-  `search_columns` covers the first two but not the third -- widened
-  explicitly, since a site owner overwhelmingly searches by the name
-  they see in wp-admin's own Users list, not a login/nicename that may
-  well differ from it), wrapped in `'*...*'` for a genuine "contains"
-  match. Returns `{id, label}` pairs -- the same minimal shape
-  `search_records()` already returns for a Relate field's own search.
-  `exclude` keeps the currently-selected user out of its own results.
-- `GET /gateway/v1/users/<id>` -- one user's own `{id, label}` shape,
-  found by id -- what `UserPicker.jsx` calls when a field's own
-  `return_format` is `'id'`: the record's own value is then a bare
-  integer, with nothing else to build a chip from without this.
+**`supports_user_settings()`** (`Field_Type` interface method, `true`
+only for `User_Field_Type`) now gates three keys, all General:
+- `return_format` -- unchanged: the SAME `settings.return_format` key,
+  and the exact same `Model_Fields::sanitize_settings()` enum check,
+  `supports_media_settings()`/`supports_file_settings()` already share
+  for Image/File, just offered narrower: **User Array** or **User ID**,
+  never a "User URL" (a WP user has no single canonical URL the way an
+  attachment does -- `get_author_posts_url()` names an archive-of-posts-by,
+  not "the URL of this user").
+- `multiple` -- new: a plain boolean switch (the same generic
+  sanitize-to-`"1"`-or-dropped treatment `Post_Object_Field_Type`'s own
+  `multiple` already gets) -- how many of the field's own always-array
+  storage `UserPicker.jsx` renders/lets you pick, and whether
+  `enrich_user_fields()` unwraps that array down to a single value on
+  read.
+- `filter_roles` -- new: an array of WP role slugs (`administrator`,
+  `editor`, ...), the User-field equivalent of Post Object's own
+  `filter_post_types`/etc. -- narrows `UserPicker.jsx`'s own live search
+  to users holding ANY of the selected roles. Empty (the default) means
+  "no restriction," resolved server-side to WordPress's own default
+  `get_users()` behavior (every role). An array, not a scalar string, so
+  it gets the exact same array-valued special case in
+  `Model_Fields::sanitize_settings()` the three Post Object filters
+  already share.
 
-**`admin-app/src/components/UserPicker.jsx`** is the Records-screen
-control, rendered for `input_type === 'user'` -- `RelateAutocomplete.jsx`'s
-own close cousin (search-as-you-type, an outside-click-closes dropdown,
-a removable chip once something's picked), simplified to single-select
-only and pointed at `/users/search`/`/users/<id>` instead of a Gateway
-model's own records endpoint. The one genuine difference from Image/
-File's own pickers: **`RecordForm`'s `handleSubmit()` needs NO
-special-casing for a User field at all**, unlike Image/File's own
-object-to-id reduction at submit time. `UserPicker` itself normalizes
-form state down to just the bare id, synchronously on mount, the instant
-it receives the enriched `{id, name, email, avatar_url}` shape (calling
-`onChange( value.id )` right away, the same "one-time, transparent
-normalization the person editing the record never sees" `ImagePicker.jsx`'s
-own `'url'`-shaped value already gets) -- something Image/File's own
-`'url'` format can't do this simply, since resolving a URL back to a
-real id needs an async round trip first, while a User field's enriched
-object already carries its own id needing no resolution at all. By the
-time any submit is possible, `values[field.name]` is already the same
-plain id-or-`null` shape every other field's own form state has,
-falling through `handleSubmit()`'s generic branch unchanged.
+Still no Validation-tab bundle at all -- a bare user id has no width/
+height/file-size/allowed-extension to bound the way an attachment does.
 
-`RecordsCrud`'s own list view shows the enriched object's own `name`
-(never a link -- unlike Image/File, there's no obvious "visit this" URL
-for a person), or a named `User #<id>` placeholder for a bare id
-(`return_format: 'id'`) rather than resolving it to a real name, the
-same "no extra per-row fetch this list view has no reason to make"
-reasoning Image's own bare-id branch already gives.
+**`Records_REST_Controller::resolve_user_value( $value, $return_format )`**
+is now `resolve_post_object_value()`'s own close sibling rather than
+`resolve_image_value()`/`resolve_file_value()`'s: it takes the raw,
+already-cast ARRAY of user ids and returns a plain, re-indexed array --
+one entry per id that still names a real, existing user (a since-deleted
+user's own id is silently dropped, same "don't invent data for something
+that isn't there" reasoning a since-deleted attachment's own id already
+gets) -- each entry either a bare id (`'id'`) or `{id, name, email,
+avatar_url}` (`'array'`, the default, via `get_userdata()`'s own
+`display_name`/`user_email`/`get_avatar_url()`). `enrich_user_fields()`
+calls this and then, when `settings.multiple` isn't set, unwraps the
+result down to a single value (or `null`) -- the exact same shape
+`enrich_post_object_fields()` already has, just for WP users instead of
+posts.
+
+**`User_REST_Controller`** (`includes/class-user-rest-controller.php`)
+gained a `role` param on its existing search route, plus a new route for
+Filter by Role's own option list:
+- `GET /gateway/v1/users/search?q=&exclude=&role=` -- unchanged search
+  behavior (login/email/**display name**, `'*...*'` "contains" matching,
+  `{id, label}` results), plus `role` (comma-joined role slugs, this
+  field's own `settings.filter_roles`) narrowing to `WP_User_Query`'s
+  own `role__in` -- empty means every role, the same default `get_users()`
+  already had before this setting existed. `exclude` already supported
+  comma-joined MULTIPLE already-selected ids before this change (needed
+  now that Select Multiple is real).
+- `GET /gateway/v1/users/<id>` -- unchanged: one user's own `{id, label}`
+  shape by id, for `UserPicker.jsx`'s own bare-id resolution.
+- `GET /gateway/v1/roles` (new) -- this site's own registered roles
+  (`wp_roles()`), `{value, label}` pairs sorted by label -- the exact
+  same shape/sorting `Post_REST_Controller::list_post_types()`/
+  `list_taxonomies()` already use for their own filter option lists.
+
+**`admin-app/src/components/UserPicker.jsx`** was rewritten from a
+bespoke, single-select-only component (one that normalized straight to
+a bare id on its own, `onChange( value.id )`, with no chip shape and no
+way to hold more than one selection) into `PostObjectPicker.jsx`'s own
+close cousin: the same chips-plus-search shape, a `field` prop for
+`settings.multiple`/`filter_roles`, and the same `{id, label}` chip
+convention `RelateAutocomplete.jsx` already established. An EXISTING
+record's own value is resolved the same way Post Object's own is: an
+enriched `{id, name, email, avatar_url}` object's own `name` becomes
+`label` directly, a bare id (`return_format: 'id'`) is resolved via
+`GET /gateway/v1/users/<id>` purely for display, cached locally by id --
+either way, possibly an array of them now, when `multiple` is on.
+`RecordForm`'s own `handleSubmit()` now has a real `'user'` reduction
+branch (the one genuine change from before, when none was needed at
+all) -- the exact same reduction Post Object's own gets, reducing
+whatever's in form state back down to a bare array of ids
+unconditionally.
+
+`RecordsCrud`'s own list view now renders comma-joined names for a
+multi-select User field, the same "clickable when there's a real link,
+otherwise joined plain text" pattern Post Object's own `displayValue()`
+branch already established -- still never a link (unlike Image/File,
+there's no obvious "visit this" URL for a person), still a named
+`User #<id>` placeholder for a bare id rather than resolving it to a
+real name (no extra per-row fetch this list view has reason to make).
+
+Verified end-to-end with a rewritten standalone PHP smoke test
+(capability flags including the new `blueprint_method()`/`eloquent_cast()`;
+`cast()`'s own array normalization; `sanitize_settings()`'s extended
+bundle including the new `filter_roles` array-valued special case;
+`resolve_user_value()`'s both shapes plus a since-deleted user silently
+dropped; a real record created/fetched/re-fetched through
+`Records_REST_Controller`, confirming the single/multiple unwrapping
+actually happens on read; `list_roles()`'s own sorted output) run
+alongside the full existing regression suite in both default and
+`-d zend.assertions=1 -d assert.exception=1` modes, plus an interactive
+Playwright pass driving the real `FieldEditor`/`RecordForm`/`RecordsCrud`
+components in a real browser: Filter by Role and Select Multiple both
+present without disturbing the existing Return Format select; adding
+and removing a Filter by Role chip; `UserPicker` resolving a bare-id
+initial value to a real name, live-searching, selecting a second user in
+Select Multiple mode, and submitting the correct bare-array-of-ids
+payload; and `RecordsCrud`'s own list rendering all three value shapes
+-- an array of enriched objects, a bare id, and `null` -- with no crash.
+`admin-app` rebuilt via `npm run build` (vite), which compiled cleanly.
 
 ### Permalink fields (`Permalink_Field_Type`) -- one record, one URL, built toward single-page support
 

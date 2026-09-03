@@ -7,6 +7,7 @@ import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import useImageSizes from '../hooks/useImageSizes.js';
 import usePostTypes from '../hooks/usePostTypes.js';
 import useTaxonomies from '../hooks/useTaxonomies.js';
+import useRoles from '../hooks/useRoles.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 import TypeSelect from './TypeSelect.jsx';
@@ -348,12 +349,25 @@ const slugifyFieldName = ( value ) =>
  * labelable descendants for a real `<label>` to get confused about)
  * feeding `OEmbedPicker`'s own `maxwidth`/`maxheight` request to
  * WordPress's oEmbed proxy. User's own General tab (`supports_user_settings`)
- * is a fifth shape, and the plainest of the three Return Format variants
- * -- also no Default Value, and the SAME shared `<select>`/`settings.return_format`
+ * is a fifth shape -- the SAME shared `<select>`/`settings.return_format`
  * field as Image/File, just narrowed to two options (User Array/User
  * ID, never a "User URL" -- see `Field_Type::supports_user_settings()`'s
  * own docblock for why) feeding `Records_REST_Controller::resolve_user_value()`
- * instead; Permalink's own General tab (`supports_permalink_settings`) is
+ * instead, plus (reported directly, later: "ensure user has these
+ * settings: Filter by Role Return Format Select Multiple Required
+ * Instructions") a **Filter by Role** `FilterMultiSelect.jsx` widget
+ * (`settings.filter_roles`, a plain array of WP role slugs, empty
+ * meaning "no restriction," narrowing `UserPicker.jsx`'s own search via
+ * `User_REST_Controller::search_users()`) and a **Select Multiple**
+ * toggle (`settings.multiple`, the same plain boolean Post Object's own
+ * already is) -- added well after this type first shipped
+ * single-select-only, which is why its own underlying storage had to
+ * become a plain array of user ids to support it at all, the exact same
+ * "`blueprint_method()`/`eloquent_cast()` can't vary per-field, only per
+ * TYPE" reasoning `Post_Object_Field_Type`'s own docblock already gives
+ * (confirmed directly, before making that change, that no live User
+ * field data existed yet to preserve); Permalink's own General tab
+ * (`supports_permalink_settings`) is
  * a sixth shape again -- also no Default Value, but a **Source Field**
  * `<select>` (`settings.source_field`) built from this model's OTHER
  * fields, filtered client-side to `is_text_renderable` -- the exact
@@ -526,6 +540,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const imageSizes = useImageSizes();
 	const postTypes = usePostTypes();
 	const taxonomies = useTaxonomies();
+	const roles = useRoles();
 	const setFields = onFieldsChange;
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
@@ -808,11 +823,18 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 		Boolean( editSettings.filter_taxonomies?.length ) ||
 		Boolean( editSettings.multiple ) ||
 		Boolean( editSettings.allow_archive_urls );
+	// User_Field_Type's own Filter by Role + Select Multiple -- the same
+	// "checked by length/truthiness" treatment postObjectFiltersTabHasContent
+	// above already gives its own array-valued filters.
+	const userFiltersTabHasContent =
+		Boolean( editSettings.filter_roles?.length ) ||
+		Boolean( editSettings.multiple );
 	const generalTabHasContent =
 		choicesTabHasContent ||
 		defaultValueTabHasContent ||
 		permalinkSourceFieldTabHasContent ||
 		postObjectFiltersTabHasContent ||
+		userFiltersTabHasContent ||
 		messageTabHasContent;
 	// Validation's own dot covers everything that can live there:
 	// Required, a configured Character Limit, and a configured Minimum/
@@ -1700,6 +1722,53 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								) }
 							</select>
 						</label>
+					) }
+					{ /* User_Field_Type's own Filter by Role + Select
+					   * Multiple -- reported directly: "ensure user has
+					   * these settings: Filter by Role Return Format
+					   * Select Multiple Required Instructions." Filter by
+					   * Role reuses FilterMultiSelect.jsx (Post Object's
+					   * own widget), just backed by `roles` (useRoles.js)
+					   * instead of `postTypes`/`taxonomies` --
+					   * `settings.filter_roles`, a plain array of WP role
+					   * slugs, empty meaning "no restriction" (every
+					   * role), the same `Model_Fields::sanitize_settings()`
+					   * array-valued special case Post Object's own three
+					   * filters already share. Select Multiple
+					   * (`settings.multiple`) is the SAME plain boolean
+					   * switch Post Object's own already is -- see
+					   * `User_Field_Type`'s own docblock for why its
+					   * underlying storage is always an array either
+					   * way. */ }
+					{ editSupportsUserSettings && (
+						<>
+							<div className="gateway-field-editor-form-field">
+								<span>Filter by Role</span>
+								<Controller
+									control={ control }
+									name="settings.filter_roles"
+									render={ ( { field } ) => (
+										<FilterMultiSelect
+											options={ roles }
+											value={ field.value }
+											onChange={ field.onChange }
+											placeholder="Search roles…"
+										/>
+									) }
+								/>
+								<span className="description">
+									Leave blank to allow every role.
+								</span>
+							</div>
+							<label className="gateway-toggle">
+								<input
+									type="checkbox"
+									{ ...register( 'settings.multiple' ) }
+								/>
+								<span className="gateway-toggle-slider" aria-hidden="true" />
+								<span>Select Multiple</span>
+							</label>
+						</>
 					) }
 					{ /* Radio buttons, not a `<select>` like the Return Format
 					   * block just above -- copying ACF's own Link field UI

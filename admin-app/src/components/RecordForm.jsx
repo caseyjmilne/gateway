@@ -105,19 +105,28 @@ import PageLinkPicker from './PageLinkPicker.jsx';
  * a bare id (or `null`) the same way relate_one's own `{id, label}` gets
  * reduced to just `.id`.
  *
- * "user" (User_Field_Type) is Image/File's own close cousin -- its form
- * state can likewise start out richer than the bare WP user id its own
- * DB column stores (a bare number for `return_format: 'id'`, or an
- * enriched `{id, name, email, avatar_url}` object for `'array'` --
- * never a `'url'`-shaped string; see `Field_Type::supports_user_settings()`'s
- * own docblock for why) -- but unlike Image/File, `handleSubmit()` needs
- * NO special-casing for it at all: `UserPicker` (rendered in its place
- * below) normalizes form state down to just the id itself, synchronously
- * on mount, so by the time any submit is possible `values[field.name]`
- * is already the same bare-id-or-`null` shape every other plain field
- * already has (see that component's own docblock for why it can do this
- * up front, unlike Image/File's own `'url'` case which genuinely needs
- * an async round trip first).
+ * "user" (User_Field_Type) is Post Object's own close cousin -- its own
+ * DB column is likewise always a plain array of WP user ids, EVEN when
+ * `settings.multiple` is off (see that type's own docblock for why:
+ * this type originally shipped single-select only, and adding Select
+ * Multiple, reported directly much later, meant its storage had to
+ * become an array for the same "`blueprint_method()`/`eloquent_cast()`
+ * can't vary per-field" reason Post Object's own docblock gives). An
+ * EXISTING record's own value is whatever shape `return_format`/
+ * `multiple` gave it -- a bare id or the enriched `{id, name, email,
+ * avatar_url}` object (never a `'url'`-shaped string; see
+ * `Field_Type::supports_user_settings()`'s own docblock for why), or an
+ * array of either -- `initialValues` passes it straight through
+ * unchanged, same as Post Object above. Renders as a `UserPicker` --
+ * PostObjectPicker's own close cousin now (originally a bespoke,
+ * single-select-only component that normalized straight to a bare id on
+ * its own; rewritten to the same chips-plus-search shape once Select
+ * Multiple made more than one possible value real) -- which normalizes
+ * whatever shape it's handed for DISPLAY only, into `{id, label}` chips,
+ * without touching form state until a chip is actually picked or
+ * removed. `handleSubmit()` reduces all of that back down to a bare
+ * array of ids, unconditionally, the exact same reduction Post Object's
+ * own gets.
  *
  * "permalink" (Permalink_Field_Type) is the last of the richer-than-a-
  * -plain-scalar cases, but in a different way from Image/File/User above:
@@ -528,8 +537,11 @@ export default function RecordForm( {
 				// Field_Type::supports_user_settings()'s own docblock for
 				// why) -- only a bare id or the enriched object, both
 				// already handled generically by "passed through
-				// unchanged" either way. Post Object is the same again,
-				// just possibly an ARRAY of either shape too when
+				// unchanged" either way -- and, like Post Object below,
+				// possibly an ARRAY of either shape too when settings.multiple
+				// is on (User_Field_Type's own storage is always an array
+				// either way -- see that type's own docblock). Post Object is
+				// the same again, just possibly an ARRAY of either shape too when
 				// `settings.multiple` is on -- PostObjectPicker.jsx's own
 				// docblock covers every shape this can arrive in. Page
 				// Link is the simplest of the lot -- always just a bare
@@ -688,6 +700,28 @@ export default function RecordForm( {
 				// still isn't a real positive id afterward -- same
 				// tolerant normalization Post_Object_Field_Type::cast()
 				// itself does server-side.
+				const current = values[ field.name ];
+				const entries = Array.isArray( current )
+					? current
+					: current
+					? [ current ]
+					: [];
+				payload[ field.name ] = entries
+					.map( ( entry ) =>
+						entry && 'object' === typeof entry ? entry.id : entry
+					)
+					.map( ( id ) => Number( id ) )
+					.filter( ( id ) => Number.isInteger( id ) && id > 0 );
+			} else if ( 'user' === inputType ) {
+				// The exact same reduction 'post_object' just above already
+				// does, for the exact same reason -- storage is always an
+				// array of ids regardless of `settings.multiple` (see
+				// User_Field_Type's own docblock), and UserPicker.jsx now
+				// writes the same {id, label} chip shape PostObjectPicker.jsx
+				// does once something is actually picked, but untouched
+				// form state can still be a bare id, the enriched
+				// {id, name, email, avatar_url} object, or an array of
+				// either.
 				const current = values[ field.name ];
 				const entries = Array.isArray( current )
 					? current
@@ -991,13 +1025,9 @@ export default function RecordForm( {
 						) }
 						{ 'user' === inputType && (
 							<UserPicker
+								field={ field }
 								value={ values[ field.name ] }
-								onChange={ ( newValue ) =>
-									setValues( ( current ) => ( {
-										...current,
-										[ field.name ]: newValue,
-									} ) )
-								}
+								onChange={ handleRelateChange( field.name ) }
 							/>
 						) }
 						{ 'permalink' === inputType && (

@@ -19,10 +19,28 @@
  * - `GET /gateway/v1/users/<id>` -- one user's own `{id, label}` shape,
  *   found by id instead of a search term -- for `UserPicker.jsx`'s own
  *   preview when a field's `return_format` is `'id'`: the record's own
- *   value in that case is a bare integer, with nothing else to build a
- *   chip/preview from without this (the same "return_format 'id' has
- *   nothing else to build a preview from" gap `Media_REST_Controller::get_media()`
+ *   value in that case is a bare integer (or array of them, with
+ *   `settings.multiple` on), with nothing else to build a chip/preview
+ *   from without this (the same "return_format 'id' has nothing else to
+ *   build a preview from" gap `Media_REST_Controller::get_media()`
  *   already fills for Image/File's own `'id'` format).
+ *
+ * - `GET /gateway/v1/roles` -- `FieldEditor.jsx`'s own Filter by Role
+ *   option list (`FilterMultiSelect.jsx`, via `useRoles.js`) -- reported
+ *   directly, alongside Select Multiple: "ensure user has these
+ *   settings: Filter by Role Return Format Select Multiple Required
+ *   Instructions." A fixed, small, per-site list (`wp_roles()`, this
+ *   site's own registered roles, e.g. "administrator"/"editor"/...),
+ *   returned as `{value, label}` pairs sorted by label -- the exact same
+ *   shape/sorting `Post_REST_Controller::list_post_types()`/
+ *   `list_taxonomies()` already use for their own filter option lists.
+ *
+ * `search_users()`'s own new `role` param (comma-joined role slugs,
+ * `settings.filter_roles`) narrows the search to users holding ANY of
+ * the selected roles, via `WP_User_Query`'s own `role__in` -- empty (the
+ * default, no Filter by Role configured) means "no restriction," the
+ * exact same default `get_users()` already had before this setting
+ * existed.
  *
  * @package Gateway
  */
@@ -73,6 +91,16 @@ class User_REST_Controller {
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE_,
+			'/roles',
+			array(
+				'methods'             => \WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'list_roles' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
 	}
 
 	/**
@@ -104,6 +132,11 @@ class User_REST_Controller {
 	public static function search_users( \WP_REST_Request $request ) {
 		$query_text  = trim( (string) $request->get_param( 'q' ) );
 		$exclude_ids = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'exclude' ) ) ) );
+		$roles       = array_values(
+			array_filter(
+				array_map( 'sanitize_text_field', array_map( 'trim', explode( ',', (string) $request->get_param( 'role' ) ) ) )
+			)
+		);
 
 		$args = array(
 			'number'  => self::SEARCH_LIMIT,
@@ -113,6 +146,13 @@ class User_REST_Controller {
 
 		if ( $exclude_ids ) {
 			$args['exclude'] = $exclude_ids;
+		}
+
+		if ( $roles ) {
+			// No Filter by Role configured means every role, WP_User_Query's
+			// own default with no 'role__in' at all -- only narrowed when
+			// this field's own settings.filter_roles actually names some.
+			$args['role__in'] = $roles;
 		}
 
 		if ( '' !== $query_text ) {
@@ -166,5 +206,31 @@ class User_REST_Controller {
 				'label' => $user->display_name,
 			)
 		);
+	}
+
+	/**
+	 * `FieldEditor.jsx`'s own Filter by Role option list -- this site's
+	 * own registered roles (`wp_roles()`), sorted by label -- the exact
+	 * same shape/sorting `Post_REST_Controller::list_post_types()`/
+	 * `list_taxonomies()` already use for their own filter option lists.
+	 *
+	 * @return \WP_REST_Response
+	 */
+	public static function list_roles() {
+		$roles   = wp_roles()->roles;
+		$options = array();
+
+		foreach ( $roles as $slug => $role ) {
+			$options[] = array(
+				'value' => $slug,
+				'label' => translate_user_role( $role['name'] ),
+			);
+		}
+
+		usort( $options, function ( $a, $b ) {
+			return strcasecmp( $a['label'], $b['label'] );
+		} );
+
+		return rest_ensure_response( $options );
 	}
 }

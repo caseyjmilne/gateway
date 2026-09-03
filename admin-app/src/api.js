@@ -368,3 +368,15 @@ export async function searchPageLinks( filterSettings, query, excludeUrls ) {
 export async function resolvePageLink( url ) {
 	return apiFetch( `/page-links/resolve?url=${ encodeURIComponent( url ) }` );
 }
+
+/**
+ * `FieldEditor.jsx`'s own Filter by Role option list -- `GET /gateway/v1/roles`
+ * (`User_REST_Controller::list_roles()`), this site's own registered WP
+ * roles -- `usePostTypes()`'s own close cousin, just for User's own new
+ * Filter by Role setting instead of Post Object's Filter by Post Type.
+ *
+ * @return {Promise<Array<{value: string, label: string}>>}
+ */
+export async function fetchRoles() {
+	return apiFetch( '/roles' );
+}

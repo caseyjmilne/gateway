@@ -533,28 +533,55 @@ interface Field_Type {
 	public static function supports_embed_settings();
 
 	/**
-	 * Whether a field of this type has its own "Return Format" setting --
-	 * `true` only for `User_Field_Type` today. Gates exactly one key,
-	 * `return_format` (General), reusing the SAME setting name AND the
-	 * same `Model_Fields::sanitize_settings()` enum check
-	 * `supports_media_settings()`/`supports_file_settings()` already
-	 * have -- just a narrower slice of it: `'array'` (an enriched
-	 * `{id, name, email, avatar_url}` object) or `'id'` (the bare WP user
-	 * id) only, never `'url'` -- a WP user has no single canonical URL
-	 * the way an attachment does (`get_author_posts_url()` names an
-	 * archive-of-posts-by, not "the URL of this user", and would be a
-	 * confusing thing to hand back under a generic `'url'` format).
-	 * `FieldEditor.jsx`'s own Return Format `<select>` simply never
-	 * offers a "User URL" option for this type -- there's no need for
-	 * `Model_Fields::sanitize_settings()`'s own shared enum to be
-	 * narrowed to match, the same "validated broadly, offered narrowly"
-	 * split every other reused enum value in this interface already has.
+	 * Whether a field of this type has its own User settings bundle --
+	 * `true` only for `User_Field_Type` today. Three keys, all General:
+	 *
+	 * - `return_format` -- reuses the SAME setting name AND the same
+	 *   `Model_Fields::sanitize_settings()` enum check
+	 *   `supports_media_settings()`/`supports_file_settings()` already
+	 *   have -- just a narrower slice of it: `'array'` (an enriched
+	 *   `{id, name, email, avatar_url}` object) or `'id'` (the bare WP
+	 *   user id) only, never `'url'` -- a WP user has no single canonical
+	 *   URL the way an attachment does (`get_author_posts_url()` names an
+	 *   archive-of-posts-by, not "the URL of this user", and would be a
+	 *   confusing thing to hand back under a generic `'url'` format).
+	 *   `FieldEditor.jsx`'s own Return Format `<select>` simply never
+	 *   offers a "User URL" option for this type -- there's no need for
+	 *   `Model_Fields::sanitize_settings()`'s own shared enum to be
+	 *   narrowed to match, the same "validated broadly, offered
+	 *   narrowly" split every other reused enum value in this interface
+	 *   already has.
+	 * - `multiple` -- a boolean switch (the same generic sanitize
+	 *   already gives `show_toggle`/`Post_Object_Field_Type`'s own
+	 *   `multiple` this exact treatment: a submitted `true` becomes
+	 *   `"1"`, kept; `false` becomes `""`, dropped), reported directly
+	 *   alongside Filter by Role below ("ensure user has these settings:
+	 *   Filter by Role Return Format Select Multiple Required
+	 *   Instructions"). Added well after this type first shipped
+	 *   single-select-only -- see `User_Field_Type`'s own docblock for
+	 *   why its underlying storage had to become a plain array of user
+	 *   ids to support it at all (the exact same "`blueprint_method()`/
+	 *   `eloquent_cast()` can't vary per-field, only per TYPE" reasoning
+	 *   `Post_Object_Field_Type`'s own docblock already gives), and why
+	 *   that change was safe to make directly rather than needing a real
+	 *   schema-upgrade migration path (confirmed directly: no live User
+	 *   field data existed yet to preserve).
+	 * - `filter_roles` -- an array of WP role slugs (`administrator`,
+	 *   `editor`, ...), the User-field equivalent of Post Object's own
+	 *   `filter_post_types`/etc. -- narrows `UserPicker.jsx`'s own live
+	 *   search to users holding ANY of the selected roles. Empty (the
+	 *   default) means "no restriction," resolved server-side, in
+	 *   `User_REST_Controller::search_users()`, to WordPress's own
+	 *   default `get_users()` behavior (every role). An array, not a
+	 *   scalar string, so it gets the exact same array-valued special
+	 *   case in `Model_Fields::sanitize_settings()`
+	 *   `filter_post_types`/etc. already do, for the identical reason.
 	 *
 	 * Unlike `supports_media_settings()`/`supports_file_settings()`,
 	 * there's no Validation-tab bundle at all here -- a bare user id has
 	 * no width/height/file-size/allowed-extension to bound the way an
-	 * attachment does, so this gates General's own Return Format alone,
-	 * nothing else.
+	 * attachment does, so this gates General settings alone, nothing
+	 * else.
 	 *
 	 * `true` only for `User_Field_Type` -- `false` for every other
 	 * built-in type, including `Relate_To_One_Field_Type`/

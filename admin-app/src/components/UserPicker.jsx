@@ -4,99 +4,124 @@ import { apiFetch } from '../api.js';
 const DEBOUNCE_MS = 300;
 
 /**
- * A User field's own control -- search-and-select for one of this site's
- * own registered WP users, backed by `GET /gateway/v1/users/search`
- * (`User_REST_Controller`), rather than a plain `<select>` -- the same
- * "search a possibly large table instead of rendering every row as an
- * option" reasoning `RelateAutocomplete.jsx` already gives for Relate to
- * One/Relate to Many, just single-select only (this plugin's own "User"
- * field, unlike ACF's, has no multi-select variant -- picking several
- * users is a separate, unimplemented feature, not this component's job)
- * and pointed at `wp_users` instead of a Gateway model's own records.
+ * A User field's own control -- search-and-select for one or more of
+ * this site's own registered WP users, backed by
+ * `GET /gateway/v1/users/search` (`User_REST_Controller`), rather than a
+ * plain `<select>` -- the same "search a possibly large table instead of
+ * rendering every row as an option" reasoning `RelateAutocomplete.jsx`
+ * already gives for Relate to One/Relate to Many -- pointed at
+ * `wp_users` instead of a Gateway model's own records.
  *
- * `value` -- like an Image/File field's own attachment id -- can be
- * richer than the bare WP user id `User_Field_Type`'s own DB column
- * actually stores: for an EXISTING record, it's whatever shape the
- * field's configured `return_format` gave the record's own GET response
- * (a bare number for `'id'`, or the enriched `{id, name, email,
- * avatar_url}` object for `'array'` -- see `Field_Type::supports_user_settings()`'s
- * own docblock for why there's no third, `'url'`-shaped case the way
- * Image/File have). Unlike Image/File, though, this component always
- * normalizes form state down to just the bare id, right on mount,
- * regardless of which shape it started as -- there's no in-between
- * "keep the richer shape until submit" step to reduce later in
- * `RecordForm`'s own `handleSubmit()`, because there's no `'url'`-shaped
- * case here that would need to KEEP something other than the id around
- * for later re-resolution the way Image/File's own `'url'` format does.
- * A `return_format: 'array'` value's own `{id, name, ...}` shape is read
- * once, to seed this component's own internal chip, and `onChange( value.id )`
- * fires immediately after -- the same "one-time, transparent
- * normalization... not a change the person editing the record ever
- * sees" already established by `ImagePicker.jsx`'s own identical
- * treatment of its `'url'`-shaped value, just simpler here since it's
- * never asynchronous (nothing to fetch -- the object already has
- * everything this component needs).
+ * `PostObjectPicker.jsx`'s own close cousin -- this type originally
+ * shipped single-select only (with `onChange()` firing a bare id
+ * directly, no chip shape at all), reported directly, much later,
+ * alongside Filter by Role: "ensure user has these settings: Filter by
+ * Role Return Format Select Multiple Required Instructions." Adding
+ * Select Multiple meant this component needed the SAME "richer
+ * `{id, label}` chip in form state, reduced to a bare array of ids only
+ * at submit time" shape `PostObjectPicker.jsx`/`RelateAutocomplete.jsx`
+ * already use, rather than normalizing to a bare id immediately on its
+ * own the way this component used to -- see `User_Field_Type`'s own
+ * docblock for why the underlying storage had to become a plain array
+ * either way, regardless of `settings.multiple`.
  *
- * A bare numeric `value` (`return_format: 'id'`) has the opposite
- * problem Image/File's own bare id has: nothing to render a chip from
- * without an extra round trip. `GET /gateway/v1/users/<id>` resolves the
- * same `{id, label}` shape `search_users()` itself returns, purely for
- * that preview -- the form's own value stays just the id regardless, no
- * `onChange()` call needed for this case (it's already exactly the
- * shape this field is meant to store).
+ * An EXISTING record's own value arrives in whatever shape
+ * `field.settings.return_format` gave it: the enriched `{id, name,
+ * email, avatar_url}` object (`'array'`, the default) or a bare user id
+ * (`'id'`) -- either way, one entry per user, either a single one or an
+ * array of them depending on `field.settings.multiple`. This component
+ * normalizes ALL of those into the `{id, label}` chip shape as it
+ * renders: an object entry's own `name` becomes `label` directly (no
+ * fetch needed); a bare id has nothing to build a label from, so it's
+ * resolved via `GET /gateway/v1/users/<id>` purely for display, cached
+ * locally by id -- the exact same "return_format 'id' has nothing else
+ * to build a preview from" gap `PostObjectPicker.jsx`'s own bare-id
+ * branch already fills for its own type.
  */
-export default function UserPicker( { value, onChange } ) {
-	const [ selectedUser, setSelectedUser ] = useState( null ); // {id, label} | null
+export default function UserPicker( { field, value, onChange } ) {
+	const settings = field.settings || {};
+	const multiple = !! settings.multiple;
+
 	const [ query, setQuery ] = useState( '' );
 	const [ open, setOpen ] = useState( false );
 	const [ results, setResults ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
+	const [ resolvedById, setResolvedById ] = useState( {} );
 	const containerRef = useRef( null );
 
-	useEffect( () => {
-		if ( null === value || undefined === value || '' === value ) {
-			setSelectedUser( null );
-			return;
-		}
+	// Whatever shape `value` currently has, reduce it to a plain array of
+	// raw entries (an enriched record, a bare id, or an already
+	// -normalized {id,label} chip from a pick made this session) so
+	// everything below can treat single/multiple the same way.
+	const rawEntries = multiple
+		? Array.isArray( value )
+			? value
+			: []
+		: value
+		? [ value ]
+		: [];
+	const rawEntriesKey = JSON.stringify( rawEntries );
 
-		if ( 'object' === typeof value ) {
-			setSelectedUser( { id: value.id, label: value.name } );
-			onChange( value.id );
+	// Resolve any bare-id entry not already cached -- mirrors
+	// PostObjectPicker.jsx's own bare-id-needs-a-follow-up-fetch effect.
+	useEffect( () => {
+		const idsNeedingResolve = rawEntries
+			.filter( ( entry ) => 'object' !== typeof entry || null === entry )
+			.map( ( entry ) => Number( entry ) )
+			.filter( ( id ) => id && ! resolvedById[ id ] );
+
+		if ( 0 === idsNeedingResolve.length ) {
 			return;
 		}
 
 		let cancelled = false;
 
-		// A bare id (return_format 'id') -- fetch just enough to render a
-		// chip from; the form's own value stays just the id regardless.
-		apiFetch( `/users/${ value }` )
-			.then( ( data ) => {
-				if ( ! cancelled ) {
-					setSelectedUser( data );
-				}
-			} )
-			.catch( () => {
-				if ( ! cancelled ) {
-					// Couldn't resolve it back to a real user (deleted
-					// since, e.g.) -- still show SOMETHING rather than a
-					// blank picker.
-					setSelectedUser( { id: value, label: `User #${ value }` } );
-				}
+		Promise.all(
+			idsNeedingResolve.map( ( id ) =>
+				apiFetch( `/users/${ id }` ).catch( () => ( {
+					id,
+					label: `User #${ id }`,
+				} ) )
+			)
+		).then( ( fetched ) => {
+			if ( cancelled ) {
+				return;
+			}
+
+			setResolvedById( ( previous ) => {
+				const next = { ...previous };
+				fetched.forEach( ( option ) => {
+					next[ option.id ] = option;
+				} );
+				return next;
 			} );
+		} );
 
 		return () => {
 			cancelled = true;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- onChange
-		// intentionally excluded: RecordForm passes a fresh closure every
-		// render, and including it here would re-run this effect on every
-		// keystroke elsewhere in the form, not just when this field's own
-		// value actually changes (same reasoning ImagePicker.jsx's own
-		// identical effect already documents).
-	}, [ value ] );
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ rawEntriesKey ] );
+
+	const selected = rawEntries.map( ( entry ) => {
+		if ( 'object' === typeof entry && null !== entry ) {
+			return {
+				id: entry.id,
+				label: entry.label || entry.name || `User #${ entry.id }`,
+			};
+		}
+
+		const id = Number( entry );
+		return resolvedById[ id ] || { id, label: `User #${ id }` };
+	} );
+
+	const showSearch = multiple || 0 === selected.length;
+	const excludeIds = selected.map( ( item ) => item.id );
+	const filterRoles = settings.filter_roles || [];
+	const filterRolesKey = filterRoles.join( ',' );
 
 	useEffect( () => {
-		if ( ! open ) {
+		if ( ! open || ! showSearch ) {
 			return;
 		}
 
@@ -108,8 +133,11 @@ export default function UserPicker( { value, onChange } ) {
 			if ( query ) {
 				params.set( 'q', query );
 			}
-			if ( selectedUser ) {
-				params.set( 'exclude', String( selectedUser.id ) );
+			if ( excludeIds.length ) {
+				params.set( 'exclude', excludeIds.join( ',' ) );
+			}
+			if ( filterRoles.length ) {
+				params.set( 'role', filterRoles.join( ',' ) );
 			}
 
 			apiFetch( `/users/search?${ params.toString() }` )
@@ -135,7 +163,7 @@ export default function UserPicker( { value, onChange } ) {
 			clearTimeout( handle );
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [ query, open, selectedUser ] );
+	}, [ query, open, showSearch, filterRolesKey, excludeIds.join( ',' ) ] );
 
 	// Close the results dropdown on an outside click -- same as
 	// RelateAutocomplete.jsx's own identical behavior.
@@ -159,34 +187,45 @@ export default function UserPicker( { value, onChange } ) {
 	}, [ open ] );
 
 	const handleSelect = ( option ) => {
-		setSelectedUser( option );
-		onChange( option.id );
-		setQuery( '' );
-		setOpen( false );
+		if ( multiple ) {
+			onChange( [ ...selected, option ] );
+			setQuery( '' );
+			// Left open deliberately -- same "keep picking" reasoning
+			// RelateAutocomplete.jsx's own belongsToMany case already gives.
+		} else {
+			onChange( option );
+			setQuery( '' );
+			setOpen( false );
+		}
 	};
 
-	const handleRemove = () => {
-		setSelectedUser( null );
-		onChange( null );
+	const handleRemove = ( id ) => {
+		onChange(
+			multiple ? selected.filter( ( item ) => item.id !== id ) : null
+		);
 	};
 
 	return (
 		<div className="gateway-user-picker" ref={ containerRef }>
-			{ selectedUser && (
-				<span className="gateway-user-picker-chip">
-					{ selectedUser.label }
-					<button
-						type="button"
-						className="gateway-user-picker-remove"
-						onClick={ handleRemove }
-						aria-label={ `Remove ${ selectedUser.label }` }
-					>
-						×
-					</button>
-				</span>
+			{ selected.length > 0 && (
+				<ul className="gateway-user-picker-chips">
+					{ selected.map( ( item ) => (
+						<li key={ item.id } className="gateway-user-picker-chip">
+							{ item.label }
+							<button
+								type="button"
+								className="gateway-user-picker-remove"
+								onClick={ () => handleRemove( item.id ) }
+								aria-label={ `Remove ${ item.label }` }
+							>
+								×
+							</button>
+						</li>
+					) ) }
+				</ul>
 			) }
 
-			{ ! selectedUser && (
+			{ showSearch && (
 				<div className="gateway-user-picker-search">
 					<input
 						type="text"

@@ -931,11 +931,21 @@
 	color: #646970;
 }
 
-/* UserPicker.jsx -- single-select sibling of RelateAutocomplete's own
- * classes above, one chip instead of a list of them (never more than one
- * user selected at once), otherwise the same look. */
+/* UserPicker.jsx -- PostObjectPicker's own close sibling, same
+ * chips-plus-search shape, now that Select Multiple made more than one
+ * chip possible (originally single-select-only, one bare chip with no
+ * wrapping <ul> at all). */
 .gateway-admin-app .gateway-user-picker {
 	max-width: 320px;
+}
+
+.gateway-admin-app .gateway-user-picker-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 6px;
+	padding: 0;
+	list-style: none;
 }
 
 .gateway-admin-app .gateway-user-picker-chip {

@@ -1336,10 +1336,14 @@ class Records_REST_Controller {
 	}
 
 	/**
-	 * User_Field_Type's own close sibling of `enrich_image_fields()`/
-	 * `enrich_file_fields()` above -- same "replace the raw stored id
-	 * with whatever return_format asks for" shape, just via
-	 * `resolve_user_value()` instead.
+	 * User_Field_Type's own close sibling of `enrich_post_object_fields()`
+	 * above -- same "replace the raw stored array of ids with whatever
+	 * return_format asks for, then unwrap to a single value unless
+	 * settings.multiple is on" shape, just via `resolve_user_value()`/WP
+	 * users instead of posts. See `User_Field_Type`'s own docblock for
+	 * why the underlying storage stays a plain array either way
+	 * regardless of `multiple`, with only this enrichment step actually
+	 * caring about it.
 	 *
 	 * @param array $array       A record's own toArray(), modified in place.
 	 * @param array $user_fields Every field on this model with
@@ -1354,61 +1358,77 @@ class Records_REST_Controller {
 				continue;
 			}
 
-			$user_id = $array[ $field['name'] ];
+			$return_format = $field['settings']['return_format'] ?? 'array';
+			$multiple      = ! empty( $field['settings']['multiple'] );
+			$resolved      = self::resolve_user_value( $array[ $field['name'] ], $return_format );
 
-			if ( empty( $user_id ) || ! is_numeric( $user_id ) ) {
-				$array[ $field['name'] ] = null;
-				continue;
-			}
-
-			$user_id                 = (int) $user_id;
-			$return_format           = $field['settings']['return_format'] ?? 'array';
-			$array[ $field['name'] ] = self::resolve_user_value( $user_id, $return_format );
+			$array[ $field['name'] ] = $multiple ? $resolved : ( $resolved[0] ?? null );
 		}
 	}
 
 	/**
-	 * User_Field_Type's own close sibling of `resolve_image_value()`/
-	 * `resolve_file_value()` above -- but simpler, with only two
-	 * `return_format` shapes (bare id / an enriched object), never a
-	 * `'url'` one -- see `Field_Type::supports_user_settings()`'s own
-	 * docblock for why. Public for the same reason those two are:
-	 * `User_REST_Controller::get_user()` builds this exact shape for
-	 * `UserPicker.jsx`'s own preview needs when a field's `return_format`
-	 * is `'id'` (the record's own value is then a bare integer with
-	 * nothing else to build a preview from).
+	 * User_Field_Type's own close sibling of `resolve_post_object_value()`
+	 * above -- but simpler, with only two `return_format` shapes (bare
+	 * id / an enriched object), never a `'url'` one -- see
+	 * `Field_Type::supports_user_settings()`'s own docblock for why.
+	 * Public for the same reason `resolve_post_object_value()` is:
+	 * `User_REST_Controller::get_user()` builds this same `{id, name,
+	 * email, avatar_url}`-shaped preview independently for
+	 * `UserPicker.jsx`'s own bare-id resolution needs, rather than
+	 * calling this method directly (a small, deliberate duplication --
+	 * that route's own shape is `{id, label}`, matching every other
+	 * picker's own search-result shape, not this method's own richer
+	 * one).
 	 *
-	 * @param int    $user_id       WP user id.
-	 * @param string $return_format One of 'array'/'id' (anything else,
-	 *                                including missing/invalid, is
-	 *                                treated as 'array' -- the same
-	 *                                "invalid falls back to the rich
-	 *                                shape, not an error" convention
-	 *                                every other return_format already
-	 *                                has).
-	 * @return array{id:int,name:string,email:string,avatar_url:string}|int|null
+	 * @param array|null $value         The raw, already-cast column value
+	 *                                    (`User_Field_Type::cast()`'s own
+	 *                                    array of user ids).
+	 * @param string     $return_format One of 'array'/'id' (anything
+	 *                                    else, including missing/invalid,
+	 *                                    is treated as 'array' -- the
+	 *                                    same "invalid falls back to the
+	 *                                    rich shape, not an error"
+	 *                                    convention every other
+	 *                                    return_format already has).
+	 * @return array A plain, re-indexed array -- one entry per id that
+	 *                still names a real, existing user (a since-deleted
+	 *                user's own id is silently dropped, the same "don't
+	 *                invent data for something that isn't there"
+	 *                reasoning `resolve_image_value()`'s own
+	 *                since-deleted attachment guard already gives) --
+	 *                each entry either a bare user id ('id') or
+	 *                `{id, name, email, avatar_url}` ('array', the
+	 *                default).
 	 */
-	public static function resolve_user_value( $user_id, $return_format ) {
-		$user = get_userdata( $user_id );
-
-		if ( ! $user ) {
-			// No real user behind this id any more (deleted by hand,
-			// e.g.) -- same "don't invent data for something that isn't
-			// there" reasoning a since-deleted attachment's own id
-			// already gets from resolve_image_value()/resolve_file_value().
-			return null;
+	public static function resolve_user_value( $value, $return_format ) {
+		if ( ! is_array( $value ) ) {
+			return array();
 		}
 
-		if ( 'id' === $return_format ) {
-			return $user_id;
+		$resolved = array();
+
+		foreach ( $value as $user_id ) {
+			$user_id = (int) $user_id;
+			$user    = get_userdata( $user_id );
+
+			if ( ! $user ) {
+				continue;
+			}
+
+			if ( 'id' === $return_format ) {
+				$resolved[] = $user_id;
+				continue;
+			}
+
+			$resolved[] = array(
+				'id'         => $user_id,
+				'name'       => $user->display_name,
+				'email'      => $user->user_email,
+				'avatar_url' => get_avatar_url( $user_id ),
+			);
 		}
 
-		return array(
-			'id'         => $user_id,
-			'name'       => $user->display_name,
-			'email'      => $user->user_email,
-			'avatar_url' => get_avatar_url( $user_id ),
-		);
+		return $resolved;
 	}
 
 	/**
