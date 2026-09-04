@@ -30,6 +30,10 @@
 	padding: 0 0 0 0.75em;
 }
 
+// A real <a href="#!/..."> now (see render.php/view.js's own docblocks),
+// not a <button> -- text-decoration/color are reset the same way a
+// button never needed to, so it still just reads as a plain sidebar
+// link, not a conspicuously blue, underlined one.
 .gateway-data-display__child-link {
 	display: block;
 	width: 100%;
@@ -39,6 +43,7 @@
 	cursor: pointer;
 	padding: 0.25em 0;
 	color: inherit;
+	text-decoration: none;
 	opacity: 0.75;
 }
 

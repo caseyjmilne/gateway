@@ -12,6 +12,18 @@
  * clicking a doc loads it into the main reading pane) -- confirmed
  * against this feature's own worked example, Doc Groups -> Docs.
  *
+ * Every child link is a real, unique, bookmarkable/shareable anchor --
+ * `#!/{related model}/{slug}`, a "hashbang" fragment rather than a real
+ * WordPress URL/route -- so an external page (or a saved bookmark) can
+ * link straight to one specific child's own detail pane. `{slug}` is the
+ * related model's own Permalink field value when it has one configured
+ * (`Model_Fields::permalink_field_for()`), else the child's own bare id
+ * -- unlike gateway/single-record's fully-routed template pages (real
+ * rewrite rules, `Permalink_Routes`), a child here is always linkable
+ * this way regardless of whether its model has a Permalink field, or a
+ * full `root`/Template Page route, configured at all. See view.js's own
+ * docblock for how that fragment is read back on load/hashchange.
+ *
  * Everything is rendered server-side, up front, for every child across
  * every group -- there's no REST fetch on click, no pagination. A plain
  * `view.js` (see that file's own docblock) just toggles which of the
@@ -72,6 +84,31 @@ if ( ! $relationship || 'hasMany' !== $relationship['type'] ) {
 
 $related_model = $relationship['related_model'];
 
+$permalink_field = \Gateway\Model_Fields::permalink_field_for( $related_model );
+
+/**
+ * A child's own unique slug for the `#!/{related model}/{slug}` link --
+ * see this file's own docblock. A closure, not a top-level named
+ * function: this file is `include`d fresh for every instance of this
+ * block on the same page (WordPress' own dynamic-block render
+ * mechanism), and a top-level `function` declaration would fatal on the
+ * second one.
+ *
+ * @param \Illuminate\Database\Eloquent\Model $child
+ * @return string
+ */
+$compute_child_slug = function ( $child ) use ( $permalink_field ) {
+	if ( $permalink_field ) {
+		$value = $child->{ $permalink_field['name'] } ?? null;
+
+		if ( is_string( $value ) && '' !== $value ) {
+			return $value;
+		}
+	}
+
+	return (string) $child->id;
+};
+
 $template_blocks = ! empty( $block->parsed_block['innerBlocks'] ) ? $block->parsed_block['innerBlocks'] : array();
 
 $parent_display_field = \Gateway\Records_REST_Controller::resolve_display_field( $collection );
@@ -103,11 +140,20 @@ foreach ( $parents as $parent ) {
 
 			$child_label = \Gateway\Records_REST_Controller::record_option( $child, $child_display_field )['label'];
 			$is_active   = $child->id === $first_child_id;
+			$child_slug  = $compute_child_slug( $child );
 
+			// A real <a href>, not a <button> -- clicking it updates
+			// `location.hash` entirely on its own (native browser
+			// behavior), which is also exactly what view.js's own
+			// `hashchange` listener needs to react to; no click handler
+			// of this block's own is involved at all any more.
 			$sidebar_html .= sprintf(
-				'<li><button type="button" class="gateway-data-display__child-link%s" data-child-id="%d" aria-current="%s">%s</button></li>',
+				'<li><a href="#!/%1$s/%2$s" class="gateway-data-display__child-link%3$s" data-child-id="%4$d" data-child-slug="%5$s" aria-current="%6$s">%7$s</a></li>',
+				rawurlencode( $related_model ),
+				rawurlencode( $child_slug ),
 				$is_active ? ' is-active' : '',
 				(int) $child->id,
+				esc_attr( $child_slug ),
 				$is_active ? 'true' : 'false',
 				esc_html( $child_label )
 			);
@@ -121,7 +167,17 @@ foreach ( $parents as $parent ) {
 	$sidebar_html .= '</li>';
 }
 
-$wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-data-display' ) );
+$wrapper_attributes = get_block_wrapper_attributes(
+	array(
+		'class'                   => 'gateway-data-display',
+		// Read by view.js so a hashbang fragment belonging to a
+		// DIFFERENT Collection's own Data Display block elsewhere on the
+		// same page (or to an unrelated feature entirely) is never
+		// mistaken for this instance's own -- see that file's own
+		// docblock.
+		'data-related-collection' => $related_model,
+	)
+);
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
 	<nav class="gateway-data-display__sidebar">
@@ -165,8 +221,8 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 					$all_children,
 					$template_blocks,
 					'gateway-data-display__panel',
-					function ( $record ) use ( $first_child_id ) {
-						$attributes = 'data-child-id="' . (int) $record->id . '"';
+					function ( $record ) use ( $first_child_id, $compute_child_slug ) {
+						$attributes = 'data-child-id="' . (int) $record->id . '" data-child-slug="' . esc_attr( $compute_child_slug( $record ) ) . '"';
 
 						if ( $record->id !== $first_child_id ) {
 							$attributes .= ' hidden';
