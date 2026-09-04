@@ -193,9 +193,11 @@ class Records_REST_Controller {
 
 		list( $orderby, $order ) = self::resolve_sort( $class, $request );
 
+		$apply_search = self::search_filter( $class, (string) $request->get_param( 'search' ) );
+
 		try {
-			$total   = $class::count();
-			$records = $class::orderBy( $orderby, $order )->forPage( $page, $per_page )->get();
+			$total   = $apply_search( $class::query() )->count();
+			$records = $apply_search( $class::query() )->orderBy( $orderby, $order )->forPage( $page, $per_page )->get();
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_records_query_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -216,6 +218,93 @@ class Records_REST_Controller {
 				'order'    => $order,
 			)
 		);
+	}
+
+	/**
+	 * Builds a closure that applies (or, for a blank `$search`, leaves
+	 * untouched) a global search filter to a query builder -- returned
+	 * as a closure, not applied directly, so `list_records()` above can
+	 * run the exact same filter against TWO separate builders (one for
+	 * `count()`, one for the actual page of results), the same "two
+	 * separate builder chains from a fresh `$class::query()`" shape that
+	 * method's own `$total`/`$records` already used before this existed,
+	 * since Eloquent's own aggregate methods (`count()` included) don't
+	 * mutate the builder they're called on in a way that's safe to keep
+	 * chaining further clauses onto afterwards.
+	 *
+	 * A global, case-insensitive `LIKE '%...%'` match across every one
+	 * of `$class`'s own fields that's both `Field_Type::is_filterable()`
+	 * and actually backed by a real column (`blueprint_method() !== ''`
+	 * -- Relate to Many, backed by a pivot table instead, is the one
+	 * type this currently excludes; a real column is what a plain
+	 * `WHERE ... LIKE` can run against at all) -- the same eligibility
+	 * ColumnsEditor.jsx's own `hasColumn()` already checks for a related,
+	 * but distinct, reason (whether a column can be SORTED by). `id` is
+	 * also matched, but only exactly (`WHERE id = `), and only when the
+	 * search text is itself all digits -- an id is never a
+	 * partial-substring kind of match.
+	 *
+	 * Wildcards already present in the visitor's own typed search text
+	 * are escaped first so they're matched literally, not treated as
+	 * LIKE wildcards themselves -- the same reasoning (if not the same
+	 * escaping mechanics -- Eloquent's query builder always
+	 * parameter-binds this value, so there's no SQL-injection concern
+	 * here) `search_records()`'s own identical LIKE search already
+	 * documents.
+	 *
+	 * A search term that matches NO searchable field at all (a model
+	 * with zero filterable fields, searched with non-numeric text) forces
+	 * zero results outright, rather than silently ignoring the search and
+	 * returning everything -- a site owner who typed a search term and
+	 * got the full, unfiltered list back would reasonably read that as a
+	 * bug, not as "there was nothing to search by."
+	 *
+	 * @param string $class_name Model class name.
+	 * @param string $search     The request's own raw `search` param.
+	 * @return \Closure(\Illuminate\Database\Eloquent\Builder):\Illuminate\Database\Eloquent\Builder
+	 */
+	private static function search_filter( $class_name, $search ) {
+		$search = trim( $search );
+
+		if ( '' === $search ) {
+			return function ( $builder ) {
+				return $builder;
+			};
+		}
+
+		$searchable_fields = array();
+
+		foreach ( Model_Fields::all( $class_name ) as $field ) {
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			if ( $type_class && $type_class::is_filterable() && '' !== $type_class::blueprint_method() ) {
+				$searchable_fields[] = $field['name'];
+			}
+		}
+
+		$is_id_search = ctype_digit( $search );
+
+		if ( ! $searchable_fields && ! $is_id_search ) {
+			return function ( $builder ) {
+				return $builder->whereRaw( '1 = 0' );
+			};
+		}
+
+		$escaped = str_replace( array( '\\', '%', '_' ), array( '\\\\', '\\%', '\\_' ), $search );
+
+		return function ( $builder ) use ( $searchable_fields, $escaped, $search, $is_id_search ) {
+			return $builder->where(
+				function ( $inner ) use ( $searchable_fields, $escaped, $search, $is_id_search ) {
+					foreach ( $searchable_fields as $name ) {
+						$inner->orWhere( $name, 'LIKE', '%' . $escaped . '%' );
+					}
+
+					if ( $is_id_search ) {
+						$inner->orWhere( 'id', (int) $search );
+					}
+				}
+			);
+		};
 	}
 
 	/**

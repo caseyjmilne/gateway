@@ -14,6 +14,62 @@ import { getRecordPermalink } from '../utils/permalink.js';
 const PER_PAGE = 20;
 
 /**
+ * How many of the page-size <select>'s own options to offer -- the same
+ * "reasonable, small, fixed set" every other length-menu in this plugin
+ * already uses (e.g. gateway/datatable's own default length menu).
+ */
+const PER_PAGE_OPTIONS = [ 10, 20, 50, 100 ];
+
+/**
+ * How long a pause in typing, in ms, before the search box's own value
+ * actually fires a request -- long enough that a normal typing cadence
+ * never fires one per keystroke, short enough that it still feels
+ * immediate once someone stops.
+ */
+const SEARCH_DEBOUNCE_MS = 350;
+
+/**
+ * A permissive, best-effort comparator for `handleSort()`'s own instant,
+ * client-side resort -- never the authoritative sort (the server's real
+ * `ORDER BY`, which always follows a moment later to confirm/correct
+ * this), so it only needs to be "usually right," not exhaustively
+ * correct for every locale/collation edge case a real SQL sort handles.
+ */
+function compareForInstantSort( a, b ) {
+	if ( 'number' === typeof a && 'number' === typeof b ) {
+		return a - b;
+	}
+
+	return String( a ?? '' ).localeCompare( String( b ?? '' ), undefined, {
+		numeric: true,
+		sensitivity: 'base',
+	} );
+}
+
+/**
+ * Whether every one of `records`' own values for `key` is a plain scalar
+ * (string/number/boolean/null) -- the only shapes `compareForInstantSort()`
+ * above handles meaningfully. A structured value (a Relate/Image/User/...
+ * field's own enriched `{id, label}`-shaped object, or an array of them)
+ * has no single obvious "compare these" rule worth guessing at
+ * client-side, so a column full of those simply skips the instant resort
+ * and waits for the server's own authoritative response instead -- see
+ * `handleSort()`'s own docblock.
+ */
+function isInstantlySortable( records, key ) {
+	return records.every( ( record ) => {
+		const value = record[ key ];
+		return (
+			null === value ||
+			undefined === value ||
+			'string' === typeof value ||
+			'number' === typeof value ||
+			'boolean' === typeof value
+		);
+	} );
+}
+
+/**
  * The page size used INSTEAD of PER_PAGE for a model that has a Position
  * field (`Position_Field_Type`) -- matches Records_REST_Controller::
  * MAX_PER_PAGE exactly, the server's own hard cap. Drag-and-drop
@@ -102,8 +158,47 @@ export default function RecordsCrud() {
 	const [ records, setRecords ] = useState( [] );
 	const [ total, setTotal ] = useState( 0 );
 	const [ page, setPage ] = useState( 1 );
+	// User-selectable, via the page-size <select> below -- overridden by
+	// POSITION_PER_PAGE whenever this model has a Position field (see
+	// that constant's own docblock), same as the fixed PER_PAGE default
+	// this replaces was.
+	const [ perPage, setPerPage ] = useState( PER_PAGE );
 	const [ loadingRecords, setLoadingRecords ] = useState( true );
 	const [ recordsError, setRecordsError ] = useState( '' );
+
+	// The search box's own live value (`searchInput`, updates every
+	// keystroke) vs. what's actually been SENT to the server (`search`,
+	// updates only after the debounce effect below settles) -- the
+	// classic split for a search-as-you-type control that shouldn't fire
+	// a request per keystroke.
+	const [ searchInput, setSearchInput ] = useState( '' );
+	const [ search, setSearch ] = useState( '' );
+
+	// True once this MODEL's own records have loaded successfully at
+	// least once -- reset to false on a genuine model switch (below), so
+	// a brand new model's own first load still gets the classic full-page
+	// "Loading…" treatment (there's no existing table shape worth holding
+	// onto yet). Every load AFTER that first one keeps the table -- and
+	// its headers -- mounted throughout instead of tearing the whole
+	// thing down to a bare "Loading…" and rebuilding it a moment later,
+	// which is what made even a single-column sort click look like the
+	// entire screen had reloaded. See `rowsPending` below for what
+	// actually shows in the row area meanwhile.
+	const [ hasLoadedOnce, setHasLoadedOnce ] = useState( false );
+
+	// Whether the table's own ROWS specifically should show a skeleton
+	// placeholder while `loadingRecords` is true -- as opposed to simply
+	// leaving whatever's already in `records` on screen. Sorting the
+	// column currently loaded via `handleSort()`'s own instant client
+	// -side resort (see that function's own docblock) never sets this:
+	// the rows on screen are already showing the right order, so there's
+	// nothing to visually replace while the network confirms it a moment
+	// later. Every other reload that could show a genuinely DIFFERENT set
+	// of records -- a page change, a sort that can't be resolved instantly
+	// (jumping back to page 1 from elsewhere), or a refresh after
+	// add/edit/delete -- sets this explicitly right before calling
+	// `loadRecords()`.
+	const [ rowsPending, setRowsPending ] = useState( false );
 
 	// Which column the table is currently sorted by -- 'id'/'desc' is
 	// this endpoint's own long-standing default (see Records_REST_
@@ -141,6 +236,15 @@ export default function RecordsCrud() {
 		setModelError( '' );
 		setShowAddForm( false );
 		setEditingId( null );
+		// A genuinely different model's own Records screen starts fresh --
+		// its own first load still deserves the classic full-page
+		// "Loading…" treatment (see `hasLoadedOnce`'s own docblock), and a
+		// leftover search term/page size from whichever model was showing
+		// before has no business carrying over to this one.
+		setHasLoadedOnce( false );
+		setSearchInput( '' );
+		setSearch( '' );
+		setPerPage( PER_PAGE );
 
 		apiFetch( `/models/${ encodeURIComponent( className ) }` )
 			.then( ( data ) => {
@@ -159,8 +263,28 @@ export default function RecordsCrud() {
 		};
 	}, [ className ] );
 
+	/**
+	 * Deliberately takes one options object, not positional arguments --
+	 * every call site passes ALL FIVE of page/orderBy/order/search/perPage
+	 * explicitly (via `refetch()` below, which fills in whichever of them
+	 * a given call isn't changing from current state) rather than this
+	 * function reading any of them from its own closure. That's what lets
+	 * this stay a stable `useCallback` depending on nothing but
+	 * `basePath`/`positionField` -- reading `page`/`orderBy`/etc. from
+	 * closure instead would mean a new function identity on every one of
+	 * ITS OWN state updates, which would in turn re-fire the initial-load
+	 * effect below (it depends on `loadRecords`'s own identity) on every
+	 * single fetch this function itself completes -- an infinite loop.
+	 *
+	 * `search`/`perPage` are the two new query-string params this endpoint
+	 * gained alongside DataTables-style pagination controls -- `search`
+	 * is a global LIKE search across every filterable field
+	 * (`Records_REST_Controller::list_records()`'s own docblock), and
+	 * `perPage` a user-selectable page size, both capped/validated
+	 * server-side the exact same way `orderby`/`order` already are.
+	 */
 	const loadRecords = useCallback(
-		async ( targetPage, targetOrderBy, targetOrder ) => {
+		async ( { page: targetPage, orderBy: targetOrderBy, order: targetOrder, search: targetSearch, perPage: targetPerPage } ) => {
 			setLoadingRecords( true );
 			setRecordsError( '' );
 
@@ -172,11 +296,16 @@ export default function RecordsCrud() {
 					// drag-and-drop reordering needs the model's entire
 					// current ordering in hand, not one arbitrary slice of
 					// it, regardless of which column it happens to be
-					// sorted by at the moment.
-					per_page: positionField ? POSITION_PER_PAGE : PER_PAGE,
+					// sorted by, or which page size is otherwise selected.
+					per_page: positionField ? POSITION_PER_PAGE : targetPerPage,
 					orderby: targetOrderBy,
 					order: targetOrder,
 				} );
+
+				if ( targetSearch ) {
+					params.set( 'search', targetSearch );
+				}
+
 				const data = await apiFetch( `${ basePath }?${ params.toString() }` );
 				setRecords( data.records );
 				setTotal( data.total );
@@ -188,6 +317,7 @@ export default function RecordsCrud() {
 				// showing rather than whatever was merely requested.
 				setOrderBy( data.orderby );
 				setOrder( data.order );
+				setHasLoadedOnce( true );
 			} catch ( err ) {
 				setRecordsError( err.message );
 			} finally {
@@ -196,6 +326,26 @@ export default function RecordsCrud() {
 		},
 		[ basePath, positionField ]
 	);
+
+	/**
+	 * The thin wrapper every call site below actually calls -- fills in
+	 * whichever of page/orderBy/order/search/perPage `overrides` doesn't
+	 * specify from current state, so e.g. the Delete handler only needs
+	 * `refetch({ page, orderBy, order })` (unchanged search/perPage) while
+	 * the search box only needs `refetch({ search: value, page: 1 })`.
+	 * Reading current state here (rather than in `loadRecords` itself) is
+	 * exactly what's safe to do in a plain function recreated every
+	 * render -- it's never itself a `useCallback`/effect dependency,
+	 * unlike `loadRecords`.
+	 */
+	const refetch = ( overrides = {} ) =>
+		loadRecords( {
+			page: overrides.page ?? page,
+			orderBy: overrides.orderBy ?? orderBy,
+			order: overrides.order ?? order,
+			search: overrides.search ?? search,
+			perPage: overrides.perPage ?? perPage,
+		} );
 
 	useEffect( () => {
 		// Waits for the model itself to resolve (rather than firing
@@ -210,24 +360,100 @@ export default function RecordsCrud() {
 			return;
 		}
 
-		if ( positionField ) {
-			loadRecords( 1, positionField.name, 'asc' );
-		} else {
-			loadRecords( 1, 'id', 'desc' );
-		}
+		loadRecords( {
+			page: 1,
+			orderBy: positionField ? positionField.name : 'id',
+			order: positionField ? 'asc' : 'desc',
+			search: '',
+			perPage: PER_PAGE,
+		} );
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- only
 		// re-fetches on a genuine model switch (model/positionField, both
 		// derived from the same model fetch) or a deliberate handleSort()/
-		// drag reorder (which pass their own explicit orderBy/order
-		// straight through, not via this effect) -- orderBy/order
-		// themselves are deliberately left out of this dependency list so
-		// loadRecords() correcting them back from the server's own
-		// response (just above) never triggers a second, redundant fetch.
+		// drag reorder/search/page-size change (which all go through
+		// `refetch()`, reading their own current state directly, not via
+		// this effect) -- orderBy/order/search/perPage are deliberately
+		// left out of this dependency list so loadRecords() correcting
+		// orderBy/order back from the server's own response (just above)
+		// never triggers a second, redundant fetch.
 	}, [ model, positionField, loadRecords ] );
+
+	// Debounced search-as-you-type: `search` (what's actually sent) only
+	// catches up to `searchInput` (what's actually typed) once typing
+	// pauses for SEARCH_DEBOUNCE_MS -- see the effect below this one for
+	// what actually fires the request once it does.
+	useEffect( () => {
+		const handle = setTimeout( () => {
+			setSearch( searchInput );
+		}, SEARCH_DEBOUNCE_MS );
+
+		return () => clearTimeout( handle );
+	}, [ searchInput ] );
+
+	useEffect( () => {
+		// Guards against firing on this component's own very first mount
+		// (this effect runs once regardless of whether `search` "changed"
+		// at all, same as every other effect does) AND against the
+		// model-switch effect above resetting `search` back to '' --
+		// `hasLoadedOnce` is reset to false in that SAME synchronous
+		// update, so it's still false by the time this effect's own
+		// dependency check runs; either way, the initial-load effect
+		// above already owns that first fetch.
+		if ( ! hasLoadedOnce ) {
+			return;
+		}
+
+		setRowsPending( true );
+		refetch( { page: 1, search } );
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fires
+		// only on a genuine `search` change (the debounce effect above is
+		// the only thing that ever changes it); `refetch` itself reads
+		// every OTHER current value directly, not through this
+		// dependency list.
+	}, [ search ] );
 
 	const handleSort = ( key ) => {
 		const nextOrder = key === orderBy && 'asc' === order ? 'desc' : 'asc';
-		loadRecords( 1, key, nextOrder );
+
+		// The instant, no-flash resort this whole feature exists for:
+		// re-sorts whatever's ALREADY on screen immediately, client-side,
+		// rather than waiting on a round trip -- correct as long as
+		// what's on screen is genuinely the same set of records the next
+		// page load would show anyway. That's true exactly when (a) we're
+		// already on page 1, the only page a sort-triggered reload ever
+		// targets, so nothing outside the currently-loaded rows could
+		// possibly need to appear, and (b) every record's own value for
+		// this column is a plain scalar `compareForInstantSort()` can
+		// actually compare -- a structured (Relate/Image/User/...) column
+		// has no obvious client-side "compare these" rule worth guessing
+		// at, so those fall through to the plain skeleton-while-loading
+		// path below instead, same as a genuine page change would.
+		//
+		// Either way, the real request still fires right behind it
+		// (`refetch()` below) to confirm/correct this guess against the
+		// server's own authoritative order -- this is a perceived-instant
+		// preview, never a replacement for the real sort.
+		if ( 1 === page && isInstantlySortable( records, key ) ) {
+			const resorted = [ ...records ].sort( ( a, b ) => {
+				const cmp = compareForInstantSort( a[ key ], b[ key ] );
+				return 'asc' === nextOrder ? cmp : -cmp;
+			} );
+			setRecords( resorted );
+			setOrderBy( key );
+			setOrder( nextOrder );
+			setRowsPending( false );
+		} else {
+			setRowsPending( true );
+		}
+
+		refetch( { page: 1, orderBy: key, order: nextOrder } );
+	};
+
+	const handlePerPageChange = ( event ) => {
+		const value = parseInt( event.target.value, 10 );
+		setPerPage( value );
+		setRowsPending( true );
+		refetch( { page: 1, perPage: value } );
 	};
 
 	const handleAdd = async ( values ) => {
@@ -240,11 +466,13 @@ export default function RecordsCrud() {
 				body: JSON.stringify( values ),
 			} );
 			setShowAddForm( false );
-			// Preserves whatever sort is currently showing (id/desc puts a
-			// new record first, but a site owner already sorted by, say,
-			// Title has no reason to have that silently reset just because
-			// a record was added).
-			loadRecords( 1, orderBy, order );
+			// Preserves whatever sort/search/page size is currently
+			// showing (id/desc puts a new record first, but a site owner
+			// already sorted by, say, Title -- or filtered by a search
+			// term -- has no reason to have any of that silently reset
+			// just because a record was added).
+			setRowsPending( true );
+			refetch( { page: 1 } );
 		} catch ( err ) {
 			setAddError( err.message );
 		} finally {
@@ -262,7 +490,8 @@ export default function RecordsCrud() {
 				body: JSON.stringify( values ),
 			} );
 			setEditingId( null );
-			loadRecords( page, orderBy, order );
+			setRowsPending( true );
+			refetch();
 		} catch ( err ) {
 			setEditError( err.message );
 		} finally {
@@ -282,7 +511,8 @@ export default function RecordsCrud() {
 			// own `editError` already has, rather than silently
 			// dismissing a failed delete as if it had gone through.
 			setDeleteConfirmId( null );
-			loadRecords( page, orderBy, order );
+			setRowsPending( true );
+			refetch();
 		} catch ( err ) {
 			setDeleteError( err.message );
 		} finally {
@@ -331,7 +561,8 @@ export default function RecordsCrud() {
 			// own (unchanged) Position values -- re-fetching is simpler,
 			// and just as correct, as hand-computing the exact inverse of
 			// arrayMove() above.
-			loadRecords( page, orderBy, order );
+			setRowsPending( true );
+			refetch();
 		} );
 	};
 
@@ -377,17 +608,20 @@ export default function RecordsCrud() {
 	// currently sorted by Position ascending -- sorted any other way, the
 	// on-screen row order wouldn't match real Position values at all, so
 	// dragging would reorder something other than what's visually being
-	// dragged.
+	// dragged. A non-empty search ALSO disables this -- dragging within a
+	// FILTERED subset would renumber only those records' own Position
+	// values to 0, 1, 2, ..., colliding with the untouched records the
+	// search is currently hiding rather than actually reordering anything
+	// against the model's real, complete ordering.
 	const canReorder =
 		Boolean( positionField ) &&
 		orderBy === positionField.name &&
 		'asc' === order &&
+		'' === search &&
 		total <= records.length;
 
-	const totalPages = Math.max(
-		1,
-		Math.ceil( total / ( positionField ? POSITION_PER_PAGE : PER_PAGE ) )
-	);
+	const effectivePerPage = positionField ? POSITION_PER_PAGE : perPage;
+	const totalPages = Math.max( 1, Math.ceil( total / effectivePerPage ) );
 	// `null` both while nothing is being edited and for the brief window
 	// right after a delete/reload where the previously-edited record's id
 	// no longer matches anything in the freshly-fetched `records` -- the
@@ -789,7 +1023,7 @@ export default function RecordsCrud() {
 						</p>
 					) : (
 						<>
-							<p>
+							<div className="gateway-records-crud-toolbar">
 								<button
 									type="button"
 									className="button button-primary"
@@ -797,7 +1031,35 @@ export default function RecordsCrud() {
 								>
 									Add New
 								</button>
-							</p>
+
+								<input
+									type="search"
+									className="gateway-records-crud-search"
+									placeholder="Search records…"
+									aria-label="Search records"
+									value={ searchInput }
+									onChange={ ( event ) =>
+										setSearchInput( event.target.value )
+									}
+								/>
+
+								{ ! positionField && (
+									<label className="gateway-records-crud-per-page">
+										Show{ ' ' }
+										<select
+											value={ perPage }
+											onChange={ handlePerPageChange }
+										>
+											{ PER_PAGE_OPTIONS.map( ( option ) => (
+												<option key={ option } value={ option }>
+													{ option }
+												</option>
+											) ) }
+										</select>{ ' ' }
+										per page
+									</label>
+								) }
+							</div>
 
 							{ positionField && (
 								<p className="description">
@@ -827,13 +1089,29 @@ export default function RecordsCrud() {
 								</div>
 							) }
 
-							{ loadingRecords ? (
+							{ hasLoadedOnce && loadingRecords && rowsPending && (
+								<span className="screen-reader-text" role="status">
+									Refreshing records…
+								</span>
+							) }
+
+							{ ! hasLoadedOnce && loadingRecords ? (
 								<p>Loading…</p>
-							) : records.length === 0 ? (
-								<p className="description">No records yet.</p>
+							) : 0 === records.length && ! loadingRecords ? (
+								<p className="description">
+									{ search
+										? 'No records match your search.'
+										: 'No records yet.' }
+								</p>
 							) : (
+								// `rowsPending` decides what fills the ROW area
+								// while a background reload is in flight -- see
+								// that state's own docblock. Never a bare
+								// "Loading…" swap for the whole block any more:
+								// the table (headers included) stays mounted
+								// throughout every load after the first.
 								<DndSortableGroup
-									enabled={ canReorder }
+									enabled={ canReorder && ! ( loadingRecords && rowsPending ) }
 									sensors={ dragSensors }
 									onDragEnd={ handleDragEnd }
 									itemIds={ records.map( ( record ) => record.id ) }
@@ -871,22 +1149,37 @@ export default function RecordsCrud() {
 												<th></th>
 											</tr>
 										</thead>
-										<tbody>
-											{ records.map( ( record ) =>
-												canReorder ? (
-													<SortableRecordRow
-														key={ record.id }
-														record={ record }
-													>
-														{ renderRecordCells( record ) }
-													</SortableRecordRow>
-												) : (
-													<tr key={ record.id }>
-														{ renderRecordCells( record ) }
-													</tr>
-												)
-											) }
-										</tbody>
+										{ loadingRecords && rowsPending ? (
+											<SkeletonRows
+												rowCount={ Math.min(
+													Math.max( records.length, 1 ),
+													10
+												) }
+												columnCount={
+													( canReorder ? 1 : 0 ) +
+													1 +
+													displayedFields.length +
+													1
+												}
+											/>
+										) : (
+											<tbody>
+												{ records.map( ( record ) =>
+													canReorder ? (
+														<SortableRecordRow
+															key={ record.id }
+															record={ record }
+														>
+															{ renderRecordCells( record ) }
+														</SortableRecordRow>
+													) : (
+														<tr key={ record.id }>
+															{ renderRecordCells( record ) }
+														</tr>
+													)
+												) }
+											</tbody>
+										) }
 									</table>
 								</DndSortableGroup>
 							) }
@@ -896,10 +1189,11 @@ export default function RecordsCrud() {
 									<button
 										type="button"
 										className="button"
-										onClick={ () =>
-											loadRecords( page - 1, orderBy, order )
-										}
-										disabled={ page <= 1 }
+										onClick={ () => {
+											setRowsPending( true );
+											refetch( { page: page - 1 } );
+										} }
+										disabled={ page <= 1 || loadingRecords }
 									>
 										Previous
 									</button>{ ' ' }
@@ -907,10 +1201,11 @@ export default function RecordsCrud() {
 									<button
 										type="button"
 										className="button"
-										onClick={ () =>
-											loadRecords( page + 1, orderBy, order )
-										}
-										disabled={ page >= totalPages }
+										onClick={ () => {
+											setRowsPending( true );
+											refetch( { page: page + 1 } );
+										} }
+										disabled={ page >= totalPages || loadingRecords }
 									>
 										Next
 									</button>
@@ -1080,5 +1375,34 @@ function SortableRecordRow( { record, children } ) {
 			</td>
 			{ children }
 		</tr>
+	);
+}
+
+/**
+ * Stands in for `<tbody>` while a background reload's own `rowsPending`
+ * is true (see that state's own docblock) -- `rowCount` placeholder
+ * `<tr>`s, each `columnCount` cells wide (matching whatever the REAL
+ * rows would currently have: the drag-handle column when `canReorder`,
+ * one per displayed field, plus the leading id and trailing actions
+ * columns), so the table never visibly changes shape while this is
+ * showing in place of real data. `aria-hidden` -- this is a purely
+ * visual placeholder, not content a screen reader has any reason to
+ * read row-by-row; the separate `role="status"` text rendered just
+ * above the table (see the caller) is what actually announces "still
+ * loading" to one instead.
+ */
+function SkeletonRows( { rowCount, columnCount } ) {
+	return (
+		<tbody className="gateway-records-crud-skeleton" aria-hidden="true">
+			{ Array.from( { length: rowCount } ).map( ( _unused, rowIndex ) => (
+				<tr key={ rowIndex }>
+					{ Array.from( { length: columnCount } ).map( ( _unused2, colIndex ) => (
+						<td key={ colIndex }>
+							<span className="gateway-records-crud-skeleton-bar" />
+						</td>
+					) ) }
+				</tr>
+			) ) }
+		</tbody>
 	);
 }
