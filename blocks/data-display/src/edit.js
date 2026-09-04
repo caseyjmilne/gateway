@@ -66,17 +66,30 @@ function DataDisplayInnerBlocks() {
  * switching which child is active never has to rebuild a preview from
  * scratch. Same mechanism as gateway/data-cards-body's own
  * DataCardsBodyPreview/gateway/related-items' own RelatedItemsPreview.
+ *
+ * Clickable (`onClick`/`onKeyPress`, matching DataCardsBodyPreview's own
+ * identical affordance) so a visitor -- er, editor -- can activate any
+ * previewed child directly from the main pane, not only via its own
+ * separate sidebar link; the sidebar and the preview panels are just two
+ * different ways to reach the same `setActiveChildId`.
  */
-function DataDisplayPanelPreview( { blocks, blockContextId, isHidden } ) {
+function DataDisplayPanelPreview( { blocks, blockContextId, isHidden, onActivate } ) {
 	const blockPreviewProps = useBlockPreview( {
 		blocks,
 		props: { className: 'gateway-data-display__panel' },
 	} );
 
+	const handleActivate = () => onActivate( blockContextId );
+
 	return (
 		<li
 			{ ...blockPreviewProps }
 			data-block-context-id={ blockContextId }
+			tabIndex={ 0 }
+			// eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
+			role="button"
+			onClick={ handleActivate }
+			onKeyPress={ handleActivate }
 			style={ { display: isHidden ? 'none' : undefined } }
 		/>
 	);
@@ -402,7 +415,27 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 								return (
 									<BlockContextProvider
 										key={ child.id }
-										value={ { record: child } }
+										// useBlockPreview() renders each non-active
+										// child in its own isolated block-editor
+										// instance -- it has no real ancestor chain
+										// of its own, so it never inherits this
+										// block's own `providesContext` (block.json
+										// declares 'gateway/data-cards/collection'
+										// from `relatedCollection`) the way the one
+										// real, still-nested InnerBlocks instance
+										// does. Without re-supplying it here
+										// explicitly, every gateway/card-field-text
+										// inside a non-active preview resolves an
+										// empty `collection`, fetches no columns,
+										// and shows "(no field selected)" even
+										// though a field genuinely is configured --
+										// exactly what made only the active child
+										// ever render correctly.
+										value={ {
+											record: child,
+											'gateway/data-cards/sourceType': 'collection',
+											'gateway/data-cards/collection': relatedCollection,
+										} }
 									>
 										{ isActive ? (
 											<DataDisplayInnerBlocks />
@@ -411,6 +444,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 											blocks={ blocks }
 											blockContextId={ child.id }
 											isHidden={ isActive }
+											onActivate={ setActiveChildId }
 										/>
 									</BlockContextProvider>
 								);
