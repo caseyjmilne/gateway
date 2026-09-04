@@ -1,24 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-	DndContext,
-	PointerSensor,
-	closestCenter,
-	useSensor,
-	useSensors,
-} from '@dnd-kit/core';
-import {
-	SortableContext,
-	arrayMove,
-	useSortable,
-	verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { arrayMove } from '@dnd-kit/sortable';
 import { GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
+import useReorderSensors from '../hooks/useReorderSensors.js';
+import useSortableRow from '../hooks/useSortableRow.js';
 import RecordForm from '../components/RecordForm.jsx';
 import Modal from '../components/Modal.jsx';
+import DndTableBody from '../components/DndTableBody.jsx';
 import { getRecordPermalink } from '../utils/permalink.js';
 
 const PER_PAGE = 20;
@@ -302,15 +292,7 @@ export default function RecordsCrud() {
 
 	const [ reorderError, setReorderError ] = useState( '' );
 
-	// A small `distance` activation constraint -- without it, the
-	// drag-handle button's own onClick-shaped affordance would start a
-	// drag on the very first pixel of movement, which reads as jittery
-	// and makes a plain, deliberate click feel like it "caught" on
-	// something; 4px matches dnd-kit's own commonly-recommended default
-	// for exactly this reason.
-	const dragSensors = useSensors(
-		useSensor( PointerSensor, { activationConstraint: { distance: 4 } } )
-	);
+	const dragSensors = useReorderSensors();
 
 	/**
 	 * Persists a completed drag -- optimistically reorders `records` in
@@ -850,11 +832,11 @@ export default function RecordsCrud() {
 							) : records.length === 0 ? (
 								<p className="description">No records yet.</p>
 							) : (
-								<TableWithOptionalDnd
-									canReorder={ canReorder }
-									dragSensors={ dragSensors }
+								<DndTableBody
+									enabled={ canReorder }
+									sensors={ dragSensors }
 									onDragEnd={ handleDragEnd }
-									recordIds={ records.map( ( record ) => record.id ) }
+									itemIds={ records.map( ( record ) => record.id ) }
 								>
 									<table className="widefat striped">
 										<thead>
@@ -906,7 +888,7 @@ export default function RecordsCrud() {
 											) }
 										</tbody>
 									</table>
-								</TableWithOptionalDnd>
+								</DndTableBody>
 							) }
 
 							{ totalPages > 1 && (
@@ -1074,92 +1056,15 @@ function SortableHeader( { label, columnKey, orderBy, order, onSort } ) {
 }
 
 /**
- * Wraps a `<table>` in `DndContext`/`SortableContext` only while
- * `canReorder` is on -- outside the `<table>` element entirely, not
- * between `<thead>` and `<tbody>` (where an earlier version of this
- * component had it): `DndContext` renders its own extra
- * accessibility-announcement `<div>`s as siblings of whatever it wraps,
- * which is invalid, `validateDOMNesting`-warning markup when that
- * "whatever" is itself already inside a `<table>` (a `<div>` is never a
- * legal direct child of `<table>` -- only `<thead>`/`<tbody>`/`<tfoot>`/
- * `<caption>`/`<colgroup>` are). Wrapping the WHOLE `<table>` instead
- * means those divs land as harmless siblings after `</table>`.
- * `canReorder` false renders `children` completely unwrapped -- no
- * `DndContext` at all, not even an inert one, when nothing on the page
- * would use it.
- */
-function TableWithOptionalDnd( { canReorder, dragSensors, onDragEnd, recordIds, children } ) {
-	if ( ! canReorder ) {
-		return children;
-	}
-
-	return (
-		<DndContext
-			sensors={ dragSensors }
-			collisionDetection={ closestCenter }
-			onDragEnd={ onDragEnd }
-		>
-			<SortableContext items={ recordIds } strategy={ verticalListSortingStrategy }>
-				{ children }
-			</SortableContext>
-		</DndContext>
-	);
-}
-
-/**
  * One draggable table row, used ONLY while `canReorder` is true (the
- * component above never mounts this otherwise -- a plain `<tr>` handles
- * every other case). Built directly on `@dnd-kit/sortable`'s own
- * `useSortable()`, chosen specifically to fix the two concrete
- * complaints this feature was built to avoid (this plugin already had a
- * few other drag-to-reorder lists -- ChoicesEditor/ColumnsEditor/
- * FieldEditor's own -- that share both):
- *
- * 1. "The dragged item is just the draggable icon, when it should be the
- *    full row." `listeners`/`attributes` (the actual pointer-capture
- *    that starts a drag) are scoped to the small grip-icon `<button>`
- *    below -- clicking anywhere else in the row (an Edit/Delete button,
- *    a cell's own text) must never accidentally start a drag -- but
- *    `ref`/`style` (what actually MOVES during a drag) are applied to
- *    this entire `<tr>`, not the icon alone. The handle is only ever the
- *    grab TARGET; what visibly lifts and follows the cursor is the
- *    row's own real, complete content.
- * 2. "The items don't move [and other rows don't shift]." `transform`/
- *    `transition` come straight from `useSortable()`, which recalculates
- *    every OTHER row's own offset live as a drag crosses it -- the
- *    "other items shift smoothly to make room" behavior neither missed
- *    at all previously.
- *
- * No `DragOverlay` -- unnecessary complexity for a single same-table,
- * same-container sort (it exists mainly for cross-container drags, or
- * to escape a clipping/overflow ancestor, neither of which applies
- * here): the real `<tr>` itself already lifts and moves via its own
- * `transform`, staying inside its real `<table>` the whole time so its
- * column widths never need separately replicating the way an overlaid
- * clone rendered outside the table would. `position: relative` plus a
- * raised `zIndex`/opaque background while `isDragging` is what keeps the
- * lifted row painting cleanly on TOP of its striped neighbors
- * (`<table className="widefat striped">`) instead of visually
- * flickering beneath them mid-drag.
+ * caller never mounts this otherwise -- a plain `<tr>` handles every
+ * other case). `useSortableRow()` (shared with FieldEditor's own Fields
+ * list) does the actual `@dnd-kit/sortable` wiring -- see that hook's
+ * own docblock for why the handle button only carries `handleProps`
+ * while the whole `<tr>` carries `setNodeRef`/`style`.
  */
 function SortableRecordRow( { record, children } ) {
-	const {
-		attributes,
-		listeners,
-		setNodeRef,
-		transform,
-		transition,
-		isDragging,
-	} = useSortable( { id: record.id } );
-
-	const style = {
-		transform: CSS.Transform.toString( transform ),
-		transition,
-		position: 'relative',
-		zIndex: isDragging ? 1 : undefined,
-		background: isDragging ? '#fff' : undefined,
-		boxShadow: isDragging ? '0 2px 10px rgba(0, 0, 0, 0.18)' : undefined,
-	};
+	const { setNodeRef, style, handleProps } = useSortableRow( record.id );
 
 	return (
 		<tr ref={ setNodeRef } style={ style }>
@@ -1168,8 +1073,7 @@ function SortableRecordRow( { record, children } ) {
 					type="button"
 					className="gateway-records-crud-drag-handle-button"
 					aria-label="Drag to reorder"
-					{ ...attributes }
-					{ ...listeners }
+					{ ...handleProps }
 				>
 					<GripVertical size={ 16 } aria-hidden="true" />
 				</button>

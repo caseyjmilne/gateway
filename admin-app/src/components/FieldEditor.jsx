@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { arrayMove } from '@dnd-kit/sortable';
 import { ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
@@ -8,10 +9,13 @@ import useImageSizes from '../hooks/useImageSizes.js';
 import usePostTypes from '../hooks/usePostTypes.js';
 import useTaxonomies from '../hooks/useTaxonomies.js';
 import useRoles from '../hooks/useRoles.js';
+import useReorderSensors from '../hooks/useReorderSensors.js';
+import useSortableRow from '../hooks/useSortableRow.js';
 import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 import TypeSelect from './TypeSelect.jsx';
 import FilterMultiSelect from './FilterMultiSelect.jsx';
+import DndTableBody from './DndTableBody.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -196,9 +200,10 @@ const slugifyFieldName = ( value ) =>
  * Each row's own leading cell holds two separate controls, both from
  * `lucide-react`: a `GripVertical` handle, visible only on that row's own
  * hover (`.gateway-field-editor-grip`, opacity `0` otherwise) and the
- * ONLY thing `draggable`/reorder-triggering any more (a plain click
- * anywhere else on the row opens/closes it instead, so dragging and
- * opening can't be confused for each other) -- and a `ChevronRight`/
+ * ONLY thing that starts a drag (`useSortableRow()`'s own `handleProps`,
+ * spread onto just this handle -- a plain click anywhere else on the row
+ * opens/closes it instead, so dragging and opening can't be confused for
+ * each other) -- and a `ChevronRight`/
  * `ChevronDown`, always visible, purely indicating open/closed state (it
  * doesn't need its own click handler; the row's own `onClick` already
  * covers the whole row). A small wp-admin-style row-actions menu ("Edit |
@@ -248,16 +253,19 @@ const slugifyFieldName = ( value ) =>
  * it alone never runs a migration. Left blank, the server derives one
  * from the name automatically (e.g. "first_name" -> "First Name").
  *
- * Fields are a sortable list -- drag a row (anywhere on it, not just its
- * leading chevron cell) to reorder it, via native HTML5 drag-and-drop
- * rather than a library, and the same "reorder is metadata-only" reasoning
- * as label: PUT .../fields-order takes the whole new name order and never
- * runs a migration either (Gateway\Model_Fields::reorder()). The drop
- * updates local state immediately (so the list doesn't visually snap
- * back while the request is in flight) and reverts it if the request
- * fails. Disabled the whole time any row is open for editing/adding --
- * there's nothing meaningful to drop a row onto while its own name/
- * position is still unsettled.
+ * Fields are a sortable list -- drag a row by its own grip handle to
+ * reorder it, via `@dnd-kit` (`useSortableRow()`/`DndTableBody()`,
+ * shared with RecordsCrud's own Position-sorted table -- see that hook's
+ * own docblock for why: a previous, native-HTML5-drag-and-drop version
+ * of this exact list only ever moved the grip icon itself during a drag,
+ * with no other row visibly shifting to make room), and the same
+ * "reorder is metadata-only" reasoning as label: PUT .../fields-order
+ * takes the whole new name order and never runs a migration either
+ * (Gateway\Model_Fields::reorder()). The drop updates local state
+ * immediately (so the list doesn't visually snap back while the request
+ * is in flight) and reverts it if the request fails. Disabled the whole
+ * time any row is open for editing/adding -- there's nothing meaningful
+ * to drop a row onto while its own name/position is still unsettled.
  *
  * The Type picker (`TypeSelect.jsx`, a searchable popover grouped by
  * category -- ACF's own "Add Field" picker's layout, `Basic`/`Content`/
@@ -627,8 +635,8 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 
 	const [ deletingName, setDeletingName ] = useState( null );
 
-	const [ draggedName, setDraggedName ] = useState( null );
 	const [ reordering, setReordering ] = useState( false );
+	const dragSensors = useReorderSensors();
 
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/fields`;
 	const dragEnabled = null === editingIndex && null === deletingName;
@@ -1393,43 +1401,32 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 		}
 	};
 
-	const handleDragStart = ( name ) => ( event ) => {
-		setDraggedName( name );
-		event.dataTransfer.effectAllowed = 'move';
-	};
+	/**
+	 * Persists a completed drag -- optimistically reorders `fields` in
+	 * state immediately (so the row's own drop feels instant, not stuck
+	 * waiting on a round trip), then tells the server the full new order
+	 * via `PUT .../fields-order` (`Model_Fields::reorder()`, metadata-only,
+	 * never a migration -- see this component's own docblock). A failed
+	 * request reverts to the previous, still-server-side order rather than
+	 * trying to hand-compute a rollback -- same shape as RecordsCrud's own
+	 * identical `handleDragEnd()`.
+	 */
+	const handleDragEnd = async ( event ) => {
+		const { active, over } = event;
 
-	const handleDragOver = ( event ) => {
-		// A drop target must cancel dragover for onDrop to ever fire --
-		// standard (if easy to forget) HTML5 drag-and-drop requirement.
-		event.preventDefault();
-		event.dataTransfer.dropEffect = 'move';
-	};
-
-	const handleDrop = ( targetName ) => async ( event ) => {
-		event.preventDefault();
-
-		const fromName = draggedName;
-		setDraggedName( null );
-
-		if ( ! fromName || fromName === targetName ) {
+		if ( ! over || active.id === over.id ) {
 			return;
 		}
 
 		const previousFields = fields;
-		const fromIndex = previousFields.findIndex(
-			( field ) => field.name === fromName
-		);
-		const toIndex = previousFields.findIndex(
-			( field ) => field.name === targetName
-		);
+		const fromIndex = previousFields.findIndex( ( field ) => field.name === active.id );
+		const toIndex = previousFields.findIndex( ( field ) => field.name === over.id );
 
 		if ( -1 === fromIndex || -1 === toIndex ) {
 			return;
 		}
 
-		const reorderedFields = [ ...previousFields ];
-		const [ moved ] = reorderedFields.splice( fromIndex, 1 );
-		reorderedFields.splice( toIndex, 0, moved );
+		const reorderedFields = arrayMove( previousFields, fromIndex, toIndex );
 
 		setError( '' );
 		setReordering( true );
@@ -2423,6 +2420,12 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 			{ fields.length === 0 ? (
 				<p className="description">No fields yet.</p>
 			) : (
+				<DndTableBody
+					enabled={ dragEnabled }
+					sensors={ dragSensors }
+					onDragEnd={ handleDragEnd }
+					itemIds={ fields.map( ( field ) => field.name ) }
+				>
 				<table className="widefat striped gateway-field-editor-table">
 					<thead>
 						<tr>
@@ -2483,27 +2486,21 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 							// what keeps drag-reorder's own DOM reuse working.
 							const rowKey = isEditingThisRow ? 'editing-row' : field.id;
 
-							return [
-								<tr
-									key={ rowKey }
-									onDragOver={
-										dragEnabled ? handleDragOver : undefined
-									}
-									onDrop={
-										dragEnabled
-											? handleDrop( field.name )
-											: undefined
-									}
-									onClick={ () => handleRowClick( field, index ) }
-									className={
-										( draggedName === field.name
-											? 'gateway-field-editor-row-dragging '
-											: '' ) +
-										( isEditingThisRow
-											? 'gateway-field-editor-row-active'
-											: '' )
-									}
-								>
+							const rowClassName = isEditingThisRow
+								? 'gateway-field-editor-row-active'
+								: '';
+							const rowOnClick = () => handleRowClick( field, index );
+
+							// Shared between the draggable (SortableFieldRow,
+							// while dragEnabled) and plain-<tr> (while a row
+							// is open for editing/deleting) cases below --
+							// identical either way except for `handleProps`
+							// itself, which is a real `@dnd-kit` drag source
+							// only in the first case ({} -- no-op spread --
+							// in the second, matching the grip's own
+							// `-disabled` styling then).
+							const renderCells = ( handleProps ) => (
+								<>
 									<td className="gateway-field-editor-drag-col">
 										<span className="gateway-field-editor-drag-col-inner">
 											<span
@@ -2513,12 +2510,11 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 														? ''
 														: ' gateway-field-editor-grip-disabled' )
 												}
-												draggable={ dragEnabled }
-												onDragStart={ handleDragStart( field.name ) }
 												onClick={ ( event ) =>
 													event.stopPropagation()
 												}
 												title="Drag to reorder"
+												{ ...handleProps }
 											>
 												<GripVertical
 													size={ 16 }
@@ -2599,7 +2595,28 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 											( type ) => type.key === rowType
 										)?.label || rowType }
 									</td>
-								</tr>,
+								</>
+							);
+
+							return [
+								dragEnabled ? (
+									<SortableFieldRow
+										key={ rowKey }
+										fieldName={ field.name }
+										onClick={ rowOnClick }
+										className={ rowClassName }
+									>
+										{ renderCells }
+									</SortableFieldRow>
+								) : (
+									<tr
+										key={ rowKey }
+										onClick={ rowOnClick }
+										className={ rowClassName }
+									>
+										{ renderCells( {} ) }
+									</tr>
+								),
 								isEditingThisRow && (
 									// Only ever rendered for the editing row (see
 									// the `isEditingThisRow &&` guard) -- same
@@ -2623,6 +2640,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 						} ) }
 					</tbody>
 				</table>
+				</DndTableBody>
 			) }
 
 			{ null === editingIndex && (
@@ -2637,5 +2655,32 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 				</p>
 			) }
 		</div>
+	);
+}
+
+/**
+ * One draggable field row, used ONLY while `dragEnabled` is true (the
+ * component above renders a plain `<tr>` for every other case -- there's
+ * nothing meaningful to drop a row onto while another one is still open
+ * for editing/adding/deleting, see this file's own top docblock).
+ * `useSortableRow()` (shared with RecordsCrud's own Position-sorted
+ * table) does the actual `@dnd-kit/sortable` wiring -- see that hook's
+ * own docblock for why the grip `<span>` only ever receives
+ * `handleProps` while the whole `<tr>` carries `setNodeRef`/`style`.
+ *
+ * `children` is a render prop (a function, not a plain node) rather than
+ * plain JSX -- the exact same cells need rendering whether or not this
+ * component is even used at all (the plain-`<tr>` fallback calls the
+ * identical `renderCells()` closure with `{}` instead of a real
+ * `handleProps`), and only THIS component actually has a real
+ * `handleProps` to hand it.
+ */
+function SortableFieldRow( { fieldName, onClick, className, children } ) {
+	const { setNodeRef, style, handleProps } = useSortableRow( fieldName );
+
+	return (
+		<tr ref={ setNodeRef } style={ style } onClick={ onClick } className={ className }>
+			{ children( handleProps ) }
+		</tr>
 	);
 }

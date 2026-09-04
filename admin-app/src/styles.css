@@ -62,6 +62,11 @@
 	cursor: grab;
 	opacity: 0;
 	transition: opacity 0.1s ease-in-out;
+	/* Prevents the browser's own touch scroll/pan gesture from competing
+	   with a touch-driven drag -- PointerSensor handles pointer AND touch
+	   input alike, but only once the browser stops trying to scroll the
+	   page first. */
+	touch-action: none;
 }
 
 .gateway-admin-app .gateway-field-editor-table tbody tr:hover .gateway-field-editor-grip {
@@ -75,10 +80,6 @@
 
 .gateway-admin-app .gateway-field-editor-table tbody tr:hover .gateway-field-editor-grip-disabled {
 	opacity: 0;
-}
-
-.gateway-admin-app .gateway-field-editor-row-dragging {
-	opacity: 0.5;
 }
 
 .gateway-admin-app .gateway-field-editor-table tbody tr {
