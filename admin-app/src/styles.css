@@ -485,10 +485,11 @@
 .gateway-admin-app .gateway-choices-editor-drag-col {
 	cursor: grab;
 	color: #787c82;
-}
-
-.gateway-admin-app .gateway-choices-editor-row-dragging {
-	opacity: 0.5;
+	/* Prevents the browser's own touch scroll/pan gesture from competing
+	   with a touch-driven drag -- PointerSensor handles pointer AND touch
+	   input alike, but only once the browser stops trying to scroll the
+	   page first. */
+	touch-action: none;
 }
 
 .gateway-admin-app .gateway-choices-editor .button {
@@ -1327,14 +1328,6 @@
 	border-top: 1px solid #e0e0e0;
 }
 
-.gateway-admin-app .gateway-columns-config__row.is-dragging {
-	opacity: 0.4;
-}
-
-.gateway-admin-app .gateway-columns-config__row.is-drop-target {
-	box-shadow: inset 0 2px 0 var( --wp-admin-theme-color, #2271b1 );
-}
-
 .gateway-admin-app .gateway-columns-config__row td {
 	padding: 6px;
 	vertical-align: middle;
@@ -1345,6 +1338,11 @@
 	color: #949494;
 	text-align: center;
 	letter-spacing: -1px;
+	/* Prevents the browser's own touch scroll/pan gesture from competing
+	   with a touch-driven drag -- PointerSensor handles pointer AND touch
+	   input alike, but only once the browser stops trying to scroll the
+	   page first. */
+	touch-action: none;
 }
 
 .gateway-admin-app .gateway-columns-config__remove {

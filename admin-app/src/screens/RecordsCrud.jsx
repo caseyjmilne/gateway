@@ -8,7 +8,7 @@ import useReorderSensors from '../hooks/useReorderSensors.js';
 import useSortableRow from '../hooks/useSortableRow.js';
 import RecordForm from '../components/RecordForm.jsx';
 import Modal from '../components/Modal.jsx';
-import DndTableBody from '../components/DndTableBody.jsx';
+import DndSortableGroup from '../components/DndSortableGroup.jsx';
 import { getRecordPermalink } from '../utils/permalink.js';
 
 const PER_PAGE = 20;
@@ -832,7 +832,7 @@ export default function RecordsCrud() {
 							) : records.length === 0 ? (
 								<p className="description">No records yet.</p>
 							) : (
-								<DndTableBody
+								<DndSortableGroup
 									enabled={ canReorder }
 									sensors={ dragSensors }
 									onDragEnd={ handleDragEnd }
@@ -888,7 +888,7 @@ export default function RecordsCrud() {
 											) }
 										</tbody>
 									</table>
-								</DndTableBody>
+								</DndSortableGroup>
 							) }
 
 							{ totalPages > 1 && (

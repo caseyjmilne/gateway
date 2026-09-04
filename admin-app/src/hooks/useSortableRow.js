@@ -2,10 +2,11 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 /**
- * The `@dnd-kit/sortable` wiring shared by every draggable table row in
- * this admin app (RecordsCrud's own Position-sorted table, FieldEditor's
- * own Fields list) -- built specifically to fix the two concrete
- * complaints those lists' own PREVIOUS native-HTML5-drag-and-drop
+ * The `@dnd-kit/sortable` wiring shared by every draggable row/list-item
+ * in this admin app (RecordsCrud's own Position-sorted table,
+ * FieldEditor's own Fields list, ChoicesEditor's own choice rows,
+ * ColumnsEditor's own column rows) -- built specifically to fix the two
+ * concrete complaints those lists' own PREVIOUS native-HTML5-drag-and-drop
  * implementations had:
  *
  * 1. "The dragged item is just the draggable icon, when it should be the
@@ -36,7 +37,7 @@ import { CSS } from '@dnd-kit/utilities';
  *
  * @param {string|number} id This row's own sortable id -- must match
  *                            one of the entries in the enclosing
- *                            `DndTableBody`'s own `itemIds`.
+ *                            `DndSortableGroup`'s own `itemIds`.
  * @return {{setNodeRef: Function, style: Object, isDragging: boolean, handleProps: Object}}
  */
 export default function useSortableRow( id ) {

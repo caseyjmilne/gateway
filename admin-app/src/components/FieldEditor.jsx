@@ -15,7 +15,7 @@ import ChoicesEditor from './ChoicesEditor.jsx';
 import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 import TypeSelect from './TypeSelect.jsx';
 import FilterMultiSelect from './FilterMultiSelect.jsx';
-import DndTableBody from './DndTableBody.jsx';
+import DndSortableGroup from './DndSortableGroup.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -254,7 +254,7 @@ const slugifyFieldName = ( value ) =>
  * from the name automatically (e.g. "first_name" -> "First Name").
  *
  * Fields are a sortable list -- drag a row by its own grip handle to
- * reorder it, via `@dnd-kit` (`useSortableRow()`/`DndTableBody()`,
+ * reorder it, via `@dnd-kit` (`useSortableRow()`/`DndSortableGroup()`,
  * shared with RecordsCrud's own Position-sorted table -- see that hook's
  * own docblock for why: a previous, native-HTML5-drag-and-drop version
  * of this exact list only ever moved the grip icon itself during a drag,
@@ -2420,7 +2420,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 			{ fields.length === 0 ? (
 				<p className="description">No fields yet.</p>
 			) : (
-				<DndTableBody
+				<DndSortableGroup
 					enabled={ dragEnabled }
 					sensors={ dragSensors }
 					onDragEnd={ handleDragEnd }
@@ -2640,7 +2640,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 						} ) }
 					</tbody>
 				</table>
-				</DndTableBody>
+				</DndSortableGroup>
 			) }
 
 			{ null === editingIndex && (

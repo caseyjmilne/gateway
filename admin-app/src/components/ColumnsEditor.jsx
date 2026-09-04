@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
+import { arrayMove } from '@dnd-kit/sortable';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
+import useReorderSensors from '../hooks/useReorderSensors.js';
+import useSortableRow from '../hooks/useSortableRow.js';
+import DndSortableGroup from './DndSortableGroup.jsx';
 
 /**
  * Model-level Records-table column configuration -- the **Columns** tab
@@ -17,7 +21,16 @@ import useFieldTypes from '../hooks/useFieldTypes.js';
  * plain-HTML idiom rather than shared code: the admin app is a
  * completely separate build from the Gutenberg blocks (see this app's
  * own README, "Plain React + Vite, not @wordpress/scripts"), so there's
- * no `@wordpress/components` here to import that UI from directly.
+ * no `@wordpress/components` here to import that UI from directly. The
+ * drag-to-reorder mechanism itself is `@dnd-kit` (`useSortableRow()`/
+ * `DndSortableGroup()`, shared with RecordsCrud's own Position-sorted
+ * table, FieldEditor's own Fields list, and ChoicesEditor's own choice
+ * rows), not the plain native HTML5 drag-and-drop this used to use --
+ * that version only ever moved the "⠿" handle itself during a drag,
+ * with no other row visibly shifting to make room. `column.key` (a
+ * field's own unique name) is already a real, stable id on its own --
+ * unlike ChoicesEditor's own choices, nothing synthetic needs generating
+ * here for `@dnd-kit` to track a drag by.
  *
  * **Show or not** is the main option (per the feature's own framing):
  * clicking a field's name in the available list toggles it in/out of
@@ -70,8 +83,7 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 		initialColumns && initialColumns.length ? initialColumns : defaultColumns();
 
 	const [ columns, setColumns ] = useState( seedColumns );
-	const [ dragIndex, setDragIndex ] = useState( null );
-	const [ overIndex, setOverIndex ] = useState( null );
+	const dragSensors = useReorderSensors();
 	const [ saving, setSaving ] = useState( false );
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
@@ -122,14 +134,21 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 		);
 	};
 
-	const moveColumn = ( fromIndex, toIndex ) => {
-		if ( fromIndex === toIndex || fromIndex === null || toIndex === null ) {
+	const handleDragEnd = ( event ) => {
+		const { active, over } = event;
+
+		if ( ! over || active.id === over.id ) {
 			return;
 		}
-		const next = columns.slice();
-		const [ moved ] = next.splice( fromIndex, 1 );
-		next.splice( toIndex, 0, moved );
-		setColumns( next );
+
+		const fromIndex = columns.findIndex( ( column ) => column.key === active.id );
+		const toIndex = columns.findIndex( ( column ) => column.key === over.id );
+
+		if ( -1 === fromIndex || -1 === toIndex ) {
+			return;
+		}
+
+		setColumns( arrayMove( columns, fromIndex, toIndex ) );
 	};
 
 	const dirty = JSON.stringify( columns ) !== JSON.stringify( seedColumns() );
@@ -197,6 +216,12 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 					Select at least one field above.
 				</p>
 			) : (
+				<DndSortableGroup
+					enabled
+					sensors={ dragSensors }
+					onDragEnd={ handleDragEnd }
+					itemIds={ columns.map( ( column ) => column.key ) }
+				>
 				<table className="gateway-columns-config">
 					<thead>
 						<tr>
@@ -213,77 +238,51 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 							)?.type;
 
 							return (
-								<tr
-									key={ column.key }
-									className={
-										'gateway-columns-config__row' +
-										( dragIndex === index ? ' is-dragging' : '' ) +
-										( overIndex === index && dragIndex !== index
-											? ' is-drop-target'
-											: '' )
-									}
-									onDragOver={ ( event ) => {
-										event.preventDefault();
-										setOverIndex( index );
-									} }
-									onDrop={ ( event ) => {
-										event.preventDefault();
-										moveColumn( dragIndex, index );
-										setDragIndex( null );
-										setOverIndex( null );
-									} }
-									onDragEnd={ () => {
-										setDragIndex( null );
-										setOverIndex( null );
-									} }
-								>
-									<td
-										className="gateway-columns-config__handle"
-										aria-hidden="true"
-										draggable
-										onDragStart={ ( event ) => {
-											setDragIndex( index );
-											event.dataTransfer.effectAllowed = 'move';
-											event.dataTransfer.setData(
-												'text/plain',
-												String( index )
-											);
-										} }
-									>
-										⠿
-									</td>
-									<td>{ labelsByKey[ column.key ] || column.key }</td>
-									<td>
-										<button
-											type="button"
-											className="button"
-											disabled={ ! hasColumn( type ) }
-											title={
-												hasColumn( type )
-													? undefined
-													: 'This field type has no real column to sort by.'
-											}
-											onClick={ () => toggleSortable( index ) }
-										>
-											{ column.sortable ? 'Sortable' : 'Not sortable' }
-										</button>
-									</td>
-									<td>
-										<button
-											type="button"
-											className="button gateway-columns-config__remove"
-											aria-label={ `Remove ${ labelsByKey[ column.key ] || column.key }` }
-											disabled={ columns.length <= 1 }
-											onClick={ () => handleRemove( column.key ) }
-										>
-											×
-										</button>
-									</td>
-								</tr>
+								<SortableColumnRow key={ column.key } id={ column.key }>
+									{ ( handleProps ) => (
+										<>
+											<td
+												className="gateway-columns-config__handle"
+												aria-hidden="true"
+												{ ...handleProps }
+											>
+												⠿
+											</td>
+											<td>{ labelsByKey[ column.key ] || column.key }</td>
+											<td>
+												<button
+													type="button"
+													className="button"
+													disabled={ ! hasColumn( type ) }
+													title={
+														hasColumn( type )
+															? undefined
+															: 'This field type has no real column to sort by.'
+													}
+													onClick={ () => toggleSortable( index ) }
+												>
+													{ column.sortable ? 'Sortable' : 'Not sortable' }
+												</button>
+											</td>
+											<td>
+												<button
+													type="button"
+													className="button gateway-columns-config__remove"
+													aria-label={ `Remove ${ labelsByKey[ column.key ] || column.key }` }
+													disabled={ columns.length <= 1 }
+													onClick={ () => handleRemove( column.key ) }
+												>
+													×
+												</button>
+											</td>
+										</>
+									) }
+								</SortableColumnRow>
 							);
 						} ) }
 					</tbody>
 				</table>
+				</DndSortableGroup>
 			) }
 
 			<p>
@@ -300,5 +299,24 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 				) }
 			</p>
 		</div>
+	);
+}
+
+/**
+ * One draggable column row. `useSortableRow()` (shared with RecordsCrud's
+ * own Position-sorted table, FieldEditor's own Fields list, and
+ * ChoicesEditor's own choice rows) does the actual `@dnd-kit/sortable`
+ * wiring -- see that hook's own docblock for why the "⠿" handle cell
+ * only ever receives `handleProps` while the whole `<tr>` carries
+ * `setNodeRef`/`style`. `children` is a render prop (a function) so the
+ * row's own cells can receive that real `handleProps`.
+ */
+function SortableColumnRow( { id, children } ) {
+	const { setNodeRef, style, handleProps } = useSortableRow( id );
+
+	return (
+		<tr ref={ setNodeRef } style={ style } className="gateway-columns-config__row">
+			{ children( handleProps ) }
+		</tr>
 	);
 }
