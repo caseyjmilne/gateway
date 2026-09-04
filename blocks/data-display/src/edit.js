@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from '@wordpress/element';
-import { useDispatch, useSelect } from '@wordpress/data';
+import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
+import { useDispatch } from '@wordpress/data';
 import { createBlock } from '@wordpress/blocks';
 import apiFetch from '@wordpress/api-fetch';
 import { __ } from '@wordpress/i18n';
@@ -8,7 +8,6 @@ import {
 	InspectorControls,
 	useBlockProps,
 	useInnerBlocksProps,
-	__experimentalUseBlockPreview as useBlockPreview,
 	store as blockEditorStore,
 } from '@wordpress/block-editor';
 import { Notice, PanelBody, SelectControl, Spinner } from '@wordpress/components';
@@ -45,10 +44,19 @@ const LOOPABLE_TYPES = [ 'hasMany' ];
 const INNER_BLOCKS_LAYOUT = { type: 'default' };
 
 /**
- * The real, editable template -- rendered for exactly one child record
- * (the "active" one) at a time. Every other fetched child gets
- * DataDisplayPanelPreview below instead. Structurally identical to
- * gateway/data-cards-body's own DataCardsBodyInnerBlocks.
+ * The real, editable template -- rendered for exactly one child record at
+ * a time: whichever one is active on the sidebar (or the first child, when
+ * none has been picked yet). Deliberately the ONLY thing ever mounted in
+ * the main pane -- no inert clones of the other children sit alongside it
+ * (unlike gateway/data-cards-body's own grid, which must show every card
+ * at once and so keeps one memoized preview per card around to avoid
+ * rebuilding on every switch). This block's own real front end
+ * (render.php) only ever shows one child's markup at a time too (every
+ * other panel carries the `hidden` attribute) -- mirroring that exactly
+ * means the editor has no reason to keep anything else mounted, and
+ * switching the active child is simply re-rendering this same template
+ * against a new block context, same as any other Collection-aware field
+ * block re-rendering when its own context changes.
  */
 function DataDisplayInnerBlocks() {
 	const innerBlocksProps = useInnerBlocksProps(
@@ -58,44 +66,6 @@ function DataDisplayInnerBlocks() {
 
 	return <li { ...innerBlocksProps } />;
 }
-
-/**
- * An inert, always-mounted clone of the template, rendered against one
- * specific child record's own block context -- hidden via `display:
- * none` (rather than unmounted) whenever it isn't the active one, so
- * switching which child is active never has to rebuild a preview from
- * scratch. Same mechanism as gateway/data-cards-body's own
- * DataCardsBodyPreview/gateway/related-items' own RelatedItemsPreview.
- *
- * Clickable (`onClick`/`onKeyPress`, matching DataCardsBodyPreview's own
- * identical affordance) so a visitor -- er, editor -- can activate any
- * previewed child directly from the main pane, not only via its own
- * separate sidebar link; the sidebar and the preview panels are just two
- * different ways to reach the same `setActiveChildId`.
- */
-function DataDisplayPanelPreview( { blocks, blockContextId, isHidden, onActivate } ) {
-	const blockPreviewProps = useBlockPreview( {
-		blocks,
-		props: { className: 'gateway-data-display__panel' },
-	} );
-
-	const handleActivate = () => onActivate( blockContextId );
-
-	return (
-		<li
-			{ ...blockPreviewProps }
-			data-block-context-id={ blockContextId }
-			tabIndex={ 0 }
-			// eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
-			role="button"
-			onClick={ handleActivate }
-			onKeyPress={ handleActivate }
-			style={ { display: isHidden ? 'none' : undefined } }
-		/>
-	);
-}
-
-const MemoizedDataDisplayPanelPreview = memo( DataDisplayPanelPreview );
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
 	const { collection, relationshipMethod, relatedCollection } = attributes;
@@ -250,15 +220,9 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		};
 	}, [ collection, relationshipMethod, isStaleRelationship ] );
 
-	const blocks = useSelect(
-		( select ) => select( blockEditorStore ).getBlocks( clientId ),
-		[ clientId ]
-	);
-
 	// Every child, across every group, flattened -- what actually drives
-	// the active/preview InnerBlocks pair below. A group heading itself
-	// is never "active" -- only a child ever loads into the (single,
-	// shared) detail template.
+	// which one is active below. A group heading itself is never "active"
+	// -- only a child ever loads into the single, shared detail template.
 	const allChildren = useMemo(
 		() => ( groups || [] ).flatMap( ( group ) => group.children ),
 		[ groups ]
@@ -266,6 +230,18 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 
 	const effectiveActiveChildId =
 		activeChildId ?? ( allChildren[ 0 ] ? allChildren[ 0 ].id : null );
+
+	// The one child actually rendered into the main pane -- whichever is
+	// active on the sidebar, falling back to the first child (matching
+	// render.php's own identical fallback: its `$first_child_id` is what
+	// starts without the `hidden` attribute). `?? allChildren[0]` covers
+	// the moment `effectiveActiveChildId` still names a child from a since
+	// -changed relationship/collection that this fresh `allChildren` no
+	// longer contains.
+	const activeChild =
+		allChildren.find( ( child ) => child.id === effectiveActiveChildId ) ??
+		allChildren[ 0 ] ??
+		null;
 
 	const blockProps = useBlockProps( { className: 'gateway-data-display' } );
 
@@ -404,51 +380,44 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				</nav>
 				<div className="gateway-data-display__main">
 					{ 0 === allChildren.length ? (
-						<p className="gateway-data-display__empty">
-							{ __( 'No related records yet.', 'gateway' ) }
-						</p>
+						// Mirrors render.php's own `! $has_any_children` branch --
+						// there's no record this template could possibly render
+						// against, so this is a real error state, not a quiet
+						// placeholder.
+						<Notice status="error" isDismissible={ false }>
+							{ __(
+								'No related records found. Add at least one before this template can render.',
+								'gateway'
+							) }
+						</Notice>
 					) : (
 						<ul className="gateway-data-display__panels">
-							{ allChildren.map( ( child ) => {
-								const isActive = child.id === effectiveActiveChildId;
-
-								return (
-									<BlockContextProvider
-										key={ child.id }
-										// useBlockPreview() renders each non-active
-										// child in its own isolated block-editor
-										// instance -- it has no real ancestor chain
-										// of its own, so it never inherits this
-										// block's own `providesContext` (block.json
-										// declares 'gateway/data-cards/collection'
-										// from `relatedCollection`) the way the one
-										// real, still-nested InnerBlocks instance
-										// does. Without re-supplying it here
-										// explicitly, every gateway/card-field-text
-										// inside a non-active preview resolves an
-										// empty `collection`, fetches no columns,
-										// and shows "(no field selected)" even
-										// though a field genuinely is configured --
-										// exactly what made only the active child
-										// ever render correctly.
-										value={ {
-											record: child,
-											'gateway/data-cards/sourceType': 'collection',
-											'gateway/data-cards/collection': relatedCollection,
-										} }
-									>
-										{ isActive ? (
-											<DataDisplayInnerBlocks />
-										) : null }
-										<MemoizedDataDisplayPanelPreview
-											blocks={ blocks }
-											blockContextId={ child.id }
-											isHidden={ isActive }
-											onActivate={ setActiveChildId }
-										/>
-									</BlockContextProvider>
-								);
-							} ) }
+							<BlockContextProvider
+								// Only the active child is ever mounted -- see
+								// DataDisplayInnerBlocks' own docblock for why no
+								// inert clones of the others sit alongside it.
+								// `record` is the one piece this genuinely nested
+								// InnerBlocks instance couldn't otherwise get --
+								// it's dynamic, so there's no static
+								// `providesContext` entry for it (mirrors
+								// Data_Cards_Renderer::render_items_for_collection()'s
+								// own `render_block_context` filter on the front
+								// end). `gateway/data-cards/sourceType`/
+								// `gateway/data-cards/collection` are already
+								// inherited from this block's own real
+								// `providesContext` (declared in block.json) since
+								// this is a real, still-nested block -- named here
+								// too only to spell out the full context contract
+								// a nested field block can rely on.
+								key={ activeChild.id }
+								value={ {
+									record: activeChild,
+									'gateway/data-cards/sourceType': 'collection',
+									'gateway/data-cards/collection': relatedCollection,
+								} }
+							>
+								<DataDisplayInnerBlocks />
+							</BlockContextProvider>
 						</ul>
 					) }
 				</div>
