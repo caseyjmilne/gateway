@@ -380,6 +380,38 @@ class Model_Fields {
 	}
 
 	/**
+	 * The one canonical answer to "which field is the Position field for
+	 * model X" -- mirrors `permalink_field_for()` above exactly, same
+	 * reasoning (`Field_Type::max_one_per_model()` guarantees at most one
+	 * match). Called by `Records_REST_Controller` (auto-assigning a new
+	 * record's own value on create, and the `reorder` endpoint that's the
+	 * only other thing that ever changes one) and RecordsCrud.jsx's own
+	 * auto-detection (`GET /gateway/v1/models/<class>` already returns
+	 * every field, `type: 'position'` included, so no extra REST route
+	 * was needed just to expose this).
+	 *
+	 * Not to be confused with the `position` KEY every field array
+	 * (including this method's own return value) already carries --
+	 * that's this FIELD's own place in the model's field list (FieldEditor's
+	 * own ordering), a completely different concept from the field TYPE
+	 * this method looks for, which orders that model's own RECORDS.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array{id:int,name:string,label:string,type:string,position:int,relationship_method:?string,related_model:?string,choices:array{value:string,label:string}[],required:bool,settings:array<string,string>,conditional_logic:?array}|null
+	 *              One of `all()`'s own field arrays, or `null` if this
+	 *              model has no Position field configured yet.
+	 */
+	public static function position_field_for( $class_name ) {
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( 'position' === $field['type'] ) {
+				return $field;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Prepares a single field array (one of `all()`'s own return values,
 	 * or `add()`/`update()`'s) for a JSON REST response -- specifically,
 	 * casts `settings` to a real PHP object (`(object)`) rather than

@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import {
+	DndContext,
+	PointerSensor,
+	closestCenter,
+	useSensor,
+	useSensors,
+} from '@dnd-kit/core';
+import {
+	SortableContext,
+	arrayMove,
+	useSortable,
+	verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import RecordForm from '../components/RecordForm.jsx';
@@ -7,6 +22,24 @@ import Modal from '../components/Modal.jsx';
 import { getRecordPermalink } from '../utils/permalink.js';
 
 const PER_PAGE = 20;
+
+/**
+ * The page size used INSTEAD of PER_PAGE for a model that has a Position
+ * field (`Position_Field_Type`) -- matches Records_REST_Controller::
+ * MAX_PER_PAGE exactly, the server's own hard cap. Drag-and-drop
+ * reordering only makes sense against the model's ENTIRE current
+ * ordering, not one arbitrary 20-row slice of it (dragging a row from
+ * page 1 to page 2 has no sensible meaning) -- so a Position-enabled
+ * model always requests this larger page instead, and `canReorder` below
+ * only ever turns on once every one of the model's own records genuinely
+ * fits on that one page (`total <= records.length`). A model with more
+ * records than this is a known, accepted trade-off (same "real
+ * pagination/lazy-loading is separate work" shape this plugin's own
+ * Data Display block docblock already accepts elsewhere): reordering
+ * simply isn't offered, and the table falls back to its normal paginated
+ * view instead of ever silently dragging against an incomplete list.
+ */
+const POSITION_PER_PAGE = 100;
 
 /**
  * The actual CRUD UI for one model's records: a table of existing rows,
@@ -66,6 +99,15 @@ export default function RecordsCrud() {
 
 	const [ model, setModel ] = useState( null );
 	const [ modelError, setModelError ] = useState( '' );
+
+	// This model's own Position field (Position_Field_Type), auto-detected
+	// the same way `getRecordPermalink()` already auto-detects a Permalink
+	// field -- `null` for every model that doesn't have one, which is what
+	// keeps every bit of drag-and-drop reordering below a no-op for those.
+	const positionField =
+		( model ? model.fields : [] ).find(
+			( field ) => 'position' === field.type
+		) || null;
 
 	const [ records, setRecords ] = useState( [] );
 	const [ total, setTotal ] = useState( 0 );
@@ -135,7 +177,13 @@ export default function RecordsCrud() {
 			try {
 				const params = new URLSearchParams( {
 					page: targetPage,
-					per_page: PER_PAGE,
+					// A Position-enabled model always requests the larger
+					// page -- see POSITION_PER_PAGE's own docblock for why
+					// drag-and-drop reordering needs the model's entire
+					// current ordering in hand, not one arbitrary slice of
+					// it, regardless of which column it happens to be
+					// sorted by at the moment.
+					per_page: positionField ? POSITION_PER_PAGE : PER_PAGE,
 					orderby: targetOrderBy,
 					order: targetOrder,
 				} );
@@ -156,19 +204,36 @@ export default function RecordsCrud() {
 				setLoadingRecords( false );
 			}
 		},
-		[ basePath ]
+		[ basePath, positionField ]
 	);
 
 	useEffect( () => {
-		loadRecords( 1, orderBy, order );
+		// Waits for the model itself to resolve (rather than firing
+		// alongside that fetch the way this effect used to) purely so the
+		// very FIRST records fetch already knows whether to default to
+		// Position order -- a model with a Position field sorts by it
+		// (ascending) right from the start, the same unconditional
+		// treatment `id` already gets for every other model, rather than
+		// loading id/desc first and only re-sorting a moment later once
+		// the model's own fields arrive.
+		if ( ! model ) {
+			return;
+		}
+
+		if ( positionField ) {
+			loadRecords( 1, positionField.name, 'asc' );
+		} else {
+			loadRecords( 1, 'id', 'desc' );
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- only
-		// re-fetches on a genuine model switch (basePath, inside
-		// loadRecords) or a deliberate handleSort() click (which passes
-		// its own explicit orderBy/order straight through, not via this
-		// effect) -- orderBy/order are deliberately left out here so
+		// re-fetches on a genuine model switch (model/positionField, both
+		// derived from the same model fetch) or a deliberate handleSort()/
+		// drag reorder (which pass their own explicit orderBy/order
+		// straight through, not via this effect) -- orderBy/order
+		// themselves are deliberately left out of this dependency list so
 		// loadRecords() correcting them back from the server's own
 		// response (just above) never triggers a second, redundant fetch.
-	}, [ loadRecords ] );
+	}, [ model, positionField, loadRecords ] );
 
 	const handleSort = ( key ) => {
 		const nextOrder = key === orderBy && 'asc' === order ? 'desc' : 'asc';
@@ -235,6 +300,59 @@ export default function RecordsCrud() {
 		}
 	};
 
+	const [ reorderError, setReorderError ] = useState( '' );
+
+	// A small `distance` activation constraint -- without it, the
+	// drag-handle button's own onClick-shaped affordance would start a
+	// drag on the very first pixel of movement, which reads as jittery
+	// and makes a plain, deliberate click feel like it "caught" on
+	// something; 4px matches dnd-kit's own commonly-recommended default
+	// for exactly this reason.
+	const dragSensors = useSensors(
+		useSensor( PointerSensor, { activationConstraint: { distance: 4 } } )
+	);
+
+	/**
+	 * Persists a completed drag -- optimistically reorders `records` in
+	 * state immediately (so the row's own drop feels instant, not stuck
+	 * waiting on a round trip), then tells the server the full new order
+	 * via `reorder_records()`, which renumbers every one of this model's
+	 * own records' Position values to match. A failed request rolls the
+	 * optimistic reorder back by simply re-fetching the real, still
+	 * -server-side order rather than trying to reverse the local
+	 * reshuffle by hand.
+	 */
+	const handleDragEnd = ( event ) => {
+		const { active, over } = event;
+
+		if ( ! over || active.id === over.id ) {
+			return;
+		}
+
+		const oldIndex = records.findIndex( ( record ) => record.id === active.id );
+		const newIndex = records.findIndex( ( record ) => record.id === over.id );
+
+		if ( -1 === oldIndex || -1 === newIndex ) {
+			return;
+		}
+
+		const reordered = arrayMove( records, oldIndex, newIndex );
+		setRecords( reordered );
+		setReorderError( '' );
+
+		apiFetch( `${ basePath }/reorder`, {
+			method: 'PUT',
+			body: JSON.stringify( { ids: reordered.map( ( record ) => record.id ) } ),
+		} ).catch( ( err ) => {
+			setReorderError( err.message );
+			// The optimistic reorder above no longer matches the server's
+			// own (unchanged) Position values -- re-fetching is simpler,
+			// and just as correct, as hand-computing the exact inverse of
+			// arrayMove() above.
+			loadRecords( page, orderBy, order );
+		} );
+	};
+
 	const fields = model ? model.fields : [];
 
 	// Which of this model's own fields actually show as Records-table
@@ -258,16 +376,36 @@ export default function RecordsCrud() {
 
 	// Which columns are actually clickable to sort by -- 'id' (this
 	// table's own fixed leading column) is always sortable, matching
-	// Records_REST_Controller::list_records()'s own resolve_sort(),
-	// which always allows it regardless of Columns configuration.
+	// Records_REST_Controller::list_records()'s own resolve_sort(), which
+	// always allows it regardless of Columns configuration -- a Position
+	// field's own column gets that same unconditional treatment there,
+	// mirrored here.
 	const sortableKeys = new Set( [
 		'id',
+		...( positionField ? [ positionField.name ] : [] ),
 		...( columnsConfig || [] )
 			.filter( ( column ) => column.sortable )
 			.map( ( column ) => column.key ),
 	] );
 
-	const totalPages = Math.max( 1, Math.ceil( total / PER_PAGE ) );
+	// Whether every one of this model's own records is genuinely showing
+	// right now (drag-and-drop reordering against anything less would
+	// silently corrupt the records NOT currently loaded -- see
+	// POSITION_PER_PAGE's own docblock), AND the table is actually
+	// currently sorted by Position ascending -- sorted any other way, the
+	// on-screen row order wouldn't match real Position values at all, so
+	// dragging would reorder something other than what's visually being
+	// dragged.
+	const canReorder =
+		Boolean( positionField ) &&
+		orderBy === positionField.name &&
+		'asc' === order &&
+		total <= records.length;
+
+	const totalPages = Math.max(
+		1,
+		Math.ceil( total / ( positionField ? POSITION_PER_PAGE : PER_PAGE ) )
+	);
 	// `null` both while nothing is being edited and for the brief window
 	// right after a delete/reload where the previously-edited record's id
 	// no longer matches anything in the freshly-fetched `records` -- the
@@ -588,6 +726,59 @@ export default function RecordsCrud() {
 		return isSensitive( field.type ) && '' !== value ? '••••••••' : value;
 	};
 
+	/**
+	 * One record's own `<td>`s (id, every displayed field, then the View/
+	 * Edit/Delete actions) -- shared between the plain `<tr>` this table
+	 * renders normally and `SortableRecordRow`'s own `<tr>` while
+	 * `canReorder` is on, so the two never risk drifting out of sync with
+	 * each other (a mismatched cell count between them would misalign the
+	 * `<thead>`'s own columns the moment reordering toggles on/off).
+	 */
+	const renderRecordCells = ( record ) => {
+		const recordPermalink = getRecordPermalink( fields, record );
+
+		return (
+			<>
+				<td>{ record.id }</td>
+				{ displayedFields.map( ( field ) => (
+					<td key={ field.name }>
+						{ displayValue( field, record ) }
+					</td>
+				) ) }
+				<td>
+					{ recordPermalink && (
+						<a
+							href={ recordPermalink }
+							target="_blank"
+							rel="noreferrer"
+							className="button"
+						>
+							View
+						</a>
+					) }
+					<button
+						type="button"
+						className="button"
+						onClick={ () => setEditingId( record.id ) }
+					>
+						Edit
+					</button>
+					<button
+						type="button"
+						className="button"
+						onClick={ () => {
+							setDeleteError( '' );
+							setDeleteConfirmId( record.id );
+						} }
+						disabled={ deletingId === record.id }
+					>
+						{ deletingId === record.id ? 'Deleting…' : 'Delete' }
+					</button>
+				</td>
+			</>
+		);
+	};
+
 	return (
 		<div className="gateway-records-crud">
 			<p>
@@ -626,6 +817,18 @@ export default function RecordsCrud() {
 								</button>
 							</p>
 
+							{ positionField && (
+								<p className="description">
+									{ canReorder
+										? 'Drag a row by its handle to reorder. Sorting saves automatically.'
+										: 'This model has a Position field -- ' +
+										  `sort by "${
+												positionField.label ||
+												positionField.name
+										  }" to drag-and-drop reorder it.` }
+								</p>
+							) }
+
 							{ recordsError && (
 								<div className="notice notice-error">
 									<p>{ recordsError }</p>
@@ -636,107 +839,74 @@ export default function RecordsCrud() {
 									<p>{ deleteError }</p>
 								</div>
 							) }
+							{ reorderError && (
+								<div className="notice notice-error">
+									<p>{ reorderError }</p>
+								</div>
+							) }
 
 							{ loadingRecords ? (
 								<p>Loading…</p>
 							) : records.length === 0 ? (
 								<p className="description">No records yet.</p>
 							) : (
-								<table className="widefat striped">
-									<thead>
-										<tr>
-											<th>
-												<SortableHeader
-													label="ID"
-													columnKey="id"
-													orderBy={ orderBy }
-													order={ order }
-													onSort={ handleSort }
-												/>
-											</th>
-											{ displayedFields.map( ( field ) => (
-												<th key={ field.name }>
-													{ sortableKeys.has( field.name ) ? (
-														<SortableHeader
-															label={ field.label || field.name }
-															columnKey={ field.name }
-															orderBy={ orderBy }
-															order={ order }
-															onSort={ handleSort }
-														/>
-													) : (
-														field.label || field.name
-													) }
+								<TableWithOptionalDnd
+									canReorder={ canReorder }
+									dragSensors={ dragSensors }
+									onDragEnd={ handleDragEnd }
+									recordIds={ records.map( ( record ) => record.id ) }
+								>
+									<table className="widefat striped">
+										<thead>
+											<tr>
+												{ canReorder && (
+													<th className="gateway-records-crud-drag-handle-column"></th>
+												) }
+												<th>
+													<SortableHeader
+														label="ID"
+														columnKey="id"
+														orderBy={ orderBy }
+														order={ order }
+														onSort={ handleSort }
+													/>
 												</th>
-											) ) }
-											<th></th>
-										</tr>
-									</thead>
-									<tbody>
-										{ records.map( ( record ) => {
-											const recordPermalink = getRecordPermalink(
-												fields,
-												record
-											);
-
-											return (
-											<tr key={ record.id }>
-												<td>{ record.id }</td>
 												{ displayedFields.map( ( field ) => (
-													<td key={ field.name }>
-														{ displayValue(
-															field,
-															record
+													<th key={ field.name }>
+														{ sortableKeys.has( field.name ) ? (
+															<SortableHeader
+																label={ field.label || field.name }
+																columnKey={ field.name }
+																orderBy={ orderBy }
+																order={ order }
+																onSort={ handleSort }
+															/>
+														) : (
+															field.label || field.name
 														) }
-													</td>
+													</th>
 												) ) }
-												<td>
-													{ recordPermalink && (
-														<a
-															href={ recordPermalink }
-															target="_blank"
-															rel="noreferrer"
-															className="button"
-														>
-															View
-														</a>
-													) }
-													<button
-														type="button"
-														className="button"
-														onClick={ () =>
-															setEditingId(
-																record.id
-															)
-														}
-													>
-														Edit
-													</button>
-													<button
-														type="button"
-														className="button"
-														onClick={ () => {
-															setDeleteError( '' );
-															setDeleteConfirmId(
-																record.id
-															);
-														} }
-														disabled={
-															deletingId ===
-															record.id
-														}
-													>
-														{ deletingId ===
-														record.id
-															? 'Deleting…'
-															: 'Delete' }
-													</button>
-												</td>
+												<th></th>
 											</tr>
-											);
-										} ) }
-									</tbody>
-								</table>
+										</thead>
+										<tbody>
+											{ records.map( ( record ) =>
+												canReorder ? (
+													<SortableRecordRow
+														key={ record.id }
+														record={ record }
+													>
+														{ renderRecordCells( record ) }
+													</SortableRecordRow>
+												) : (
+													<tr key={ record.id }>
+														{ renderRecordCells( record ) }
+													</tr>
+												)
+											) }
+										</tbody>
+									</table>
+								</TableWithOptionalDnd>
 							) }
 
 							{ totalPages > 1 && (
@@ -900,5 +1070,111 @@ function SortableHeader( { label, columnKey, orderBy, order, onSort } ) {
 			{ label }
 			{ isActive && ( 'asc' === order ? ' ▲' : ' ▼' ) }
 		</button>
+	);
+}
+
+/**
+ * Wraps a `<table>` in `DndContext`/`SortableContext` only while
+ * `canReorder` is on -- outside the `<table>` element entirely, not
+ * between `<thead>` and `<tbody>` (where an earlier version of this
+ * component had it): `DndContext` renders its own extra
+ * accessibility-announcement `<div>`s as siblings of whatever it wraps,
+ * which is invalid, `validateDOMNesting`-warning markup when that
+ * "whatever" is itself already inside a `<table>` (a `<div>` is never a
+ * legal direct child of `<table>` -- only `<thead>`/`<tbody>`/`<tfoot>`/
+ * `<caption>`/`<colgroup>` are). Wrapping the WHOLE `<table>` instead
+ * means those divs land as harmless siblings after `</table>`.
+ * `canReorder` false renders `children` completely unwrapped -- no
+ * `DndContext` at all, not even an inert one, when nothing on the page
+ * would use it.
+ */
+function TableWithOptionalDnd( { canReorder, dragSensors, onDragEnd, recordIds, children } ) {
+	if ( ! canReorder ) {
+		return children;
+	}
+
+	return (
+		<DndContext
+			sensors={ dragSensors }
+			collisionDetection={ closestCenter }
+			onDragEnd={ onDragEnd }
+		>
+			<SortableContext items={ recordIds } strategy={ verticalListSortingStrategy }>
+				{ children }
+			</SortableContext>
+		</DndContext>
+	);
+}
+
+/**
+ * One draggable table row, used ONLY while `canReorder` is true (the
+ * component above never mounts this otherwise -- a plain `<tr>` handles
+ * every other case). Built directly on `@dnd-kit/sortable`'s own
+ * `useSortable()`, chosen specifically to fix the two concrete
+ * complaints this feature was built to avoid (this plugin already had a
+ * few other drag-to-reorder lists -- ChoicesEditor/ColumnsEditor/
+ * FieldEditor's own -- that share both):
+ *
+ * 1. "The dragged item is just the draggable icon, when it should be the
+ *    full row." `listeners`/`attributes` (the actual pointer-capture
+ *    that starts a drag) are scoped to the small grip-icon `<button>`
+ *    below -- clicking anywhere else in the row (an Edit/Delete button,
+ *    a cell's own text) must never accidentally start a drag -- but
+ *    `ref`/`style` (what actually MOVES during a drag) are applied to
+ *    this entire `<tr>`, not the icon alone. The handle is only ever the
+ *    grab TARGET; what visibly lifts and follows the cursor is the
+ *    row's own real, complete content.
+ * 2. "The items don't move [and other rows don't shift]." `transform`/
+ *    `transition` come straight from `useSortable()`, which recalculates
+ *    every OTHER row's own offset live as a drag crosses it -- the
+ *    "other items shift smoothly to make room" behavior neither missed
+ *    at all previously.
+ *
+ * No `DragOverlay` -- unnecessary complexity for a single same-table,
+ * same-container sort (it exists mainly for cross-container drags, or
+ * to escape a clipping/overflow ancestor, neither of which applies
+ * here): the real `<tr>` itself already lifts and moves via its own
+ * `transform`, staying inside its real `<table>` the whole time so its
+ * column widths never need separately replicating the way an overlaid
+ * clone rendered outside the table would. `position: relative` plus a
+ * raised `zIndex`/opaque background while `isDragging` is what keeps the
+ * lifted row painting cleanly on TOP of its striped neighbors
+ * (`<table className="widefat striped">`) instead of visually
+ * flickering beneath them mid-drag.
+ */
+function SortableRecordRow( { record, children } ) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable( { id: record.id } );
+
+	const style = {
+		transform: CSS.Transform.toString( transform ),
+		transition,
+		position: 'relative',
+		zIndex: isDragging ? 1 : undefined,
+		background: isDragging ? '#fff' : undefined,
+		boxShadow: isDragging ? '0 2px 10px rgba(0, 0, 0, 0.18)' : undefined,
+	};
+
+	return (
+		<tr ref={ setNodeRef } style={ style }>
+			<td className="gateway-records-crud-drag-handle">
+				<button
+					type="button"
+					className="gateway-records-crud-drag-handle-button"
+					aria-label="Drag to reorder"
+					{ ...attributes }
+					{ ...listeners }
+				>
+					<GripVertical size={ 16 } aria-hidden="true" />
+				</button>
+			</td>
+			{ children }
+		</tr>
 	);
 }

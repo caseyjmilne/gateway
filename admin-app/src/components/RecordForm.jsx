@@ -346,6 +346,19 @@ export default function RecordForm( {
 		return found ? found.input_type : 'text';
 	};
 
+	// A Position field (Position_Field_Type) is entirely auto-managed --
+	// assigned on create (Records_REST_Controller::resolve_position_value()'s
+	// own "append to the end" default) and only ever changed afterwards by
+	// dragging a row in RecordsCrud's own table -- there is no "type a
+	// number" story for it at all, so it never belongs in this form: not
+	// seeded into initial values, not rendered as an input, and never part
+	// of a submitted payload. `fields` itself (the full, unfiltered list)
+	// is still what `comparableValueFor()` below looks a Conditional Logic
+	// rule's own target field up against -- a Position field simply never
+	// appears there as a possible target either, so no special-casing is
+	// needed there.
+	const formFields = fields.filter( ( field ) => 'position' !== field.type );
+
 	// --- Conditional Logic (Gateway\\Field_Type::validate_required_fields()/
 	// validate_character_limits()'s own client-side counterpart -- see
 	// this component's own docblock's final paragraph) -------------------
@@ -456,7 +469,7 @@ export default function RecordForm( {
 
 	const [ values, setValues ] = useState( () => {
 		const initial = {};
-		fields.forEach( ( field ) => {
+		formFields.forEach( ( field ) => {
 			const inputType = inputTypeFor( field.type );
 			const existing =
 				initialValues && initialValues[ field.name ] !== undefined
@@ -629,7 +642,7 @@ export default function RecordForm( {
 		event.preventDefault();
 
 		const payload = {};
-		fields.forEach( ( field ) => {
+		formFields.forEach( ( field ) => {
 			// A hidden field is omitted from the payload entirely, not
 			// just skipped visually -- "as if the field doesn't exist for
 			// this record" means its own already-stored value (if any)
@@ -788,7 +801,7 @@ export default function RecordForm( {
 
 	return (
 		<form onSubmit={ handleSubmit } className="gateway-record-form">
-			{ fields.map( ( field ) => {
+			{ formFields.map( ( field ) => {
 				if ( ! fieldIsVisible( field, values ) ) {
 					return null;
 				}

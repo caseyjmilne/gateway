@@ -100,6 +100,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-oembed-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-position-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/interface-relationship-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-one-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-relate-to-many-field-type.php';
@@ -175,6 +176,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\OEmbed_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\User_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Permalink_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Position_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_One_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Relate_To_Many_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Buttons_Field_Type::class );

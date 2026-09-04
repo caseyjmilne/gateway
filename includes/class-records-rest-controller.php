@@ -135,6 +135,16 @@ class Records_REST_Controller {
 
 		register_rest_route(
 			self::NAMESPACE_,
+			'/models/(?P<class>[A-Za-z0-9_]+)/records/reorder',
+			array(
+				'methods'             => \WP_REST_Server::EDITABLE,
+				'callback'            => array( __CLASS__, 'reorder_records' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_,
 			'/models/(?P<class>[A-Za-z0-9_]+)/records/(?P<id>\d+)/relationships/(?P<method>[A-Za-z0-9_]+)',
 			array(
 				'methods'             => \WP_REST_Server::READABLE,
@@ -218,12 +228,18 @@ class Records_REST_Controller {
 	 * `fieldKey` against the model's live columns).
 	 *
 	 * `id` is always allowed, matching this endpoint's own long-standing
-	 * default. Any other `orderby` must be BOTH one of `$class`'s own
-	 * CURRENT fields (a stale key -- renamed or removed since -- must
-	 * never reach a raw SQL `ORDER BY`) AND explicitly marked `sortable`
-	 * in this model's own Columns configuration (`Model_Columns::get()`)
-	 * -- an unconfigured model (`get()` returns null) allows nothing
-	 * beyond `id`, preserving today's exact pre-existing behavior for
+	 * default. A model's own Position field (`Model_Fields::
+	 * position_field_for()`, `Position_Field_Type`) is always allowed too,
+	 * the same unconditional treatment -- a field whose entire purpose is
+	 * ordering that model's own records needs no separate Columns
+	 * "sortable" opt-in, and RecordsCrud.jsx's own drag-and-drop
+	 * reordering depends on being able to request this sort without one.
+	 * Any OTHER `orderby` must be BOTH one of `$class`'s own CURRENT
+	 * fields (a stale key -- renamed or removed since -- must never reach
+	 * a raw SQL `ORDER BY`) AND explicitly marked `sortable` in this
+	 * model's own Columns configuration (`Model_Columns::get()`) -- an
+	 * unconfigured model (`get()` returns null) allows nothing beyond
+	 * `id`/Position, preserving today's exact pre-existing behavior for
 	 * every model that hasn't opted into this feature at all yet.
 	 *
 	 * Falls back to `[ 'id', 'desc' ]` -- this endpoint's own original,
@@ -242,6 +258,12 @@ class Records_REST_Controller {
 
 		if ( 'id' === $orderby ) {
 			return array( 'id', $order );
+		}
+
+		$position_field = Model_Fields::position_field_for( $class );
+
+		if ( $position_field && $orderby === $position_field['name'] ) {
+			return array( $orderby, $order );
 		}
 
 		$columns_config = Model_Columns::get( $class );
@@ -368,6 +390,8 @@ class Records_REST_Controller {
 		if ( is_wp_error( $permalink_result ) ) {
 			return $permalink_result;
 		}
+
+		self::resolve_position_value( $class, $data );
 
 		// Checked BEFORE extract_relate_many_data() strips a Relate to
 		// Many field's own value back out of $data -- see
@@ -551,6 +575,79 @@ class Records_REST_Controller {
 	}
 
 	/**
+	 * PUT /gateway/v1/models/<class>/records/reorder
+	 *
+	 * Persists a brand new record order for a model that has a Position
+	 * field (`Position_Field_Type`) -- the ONLY thing that ever changes a
+	 * record's own Position after its initial auto-assigned value (see
+	 * `resolve_position_value()`'s own docblock). RecordsCrud.jsx calls
+	 * this once per drag-and-drop reorder, sending the FULL list of ids in
+	 * their new top-to-bottom order (its own table only ever offers
+	 * dragging while showing every one of this model's records at once,
+	 * unpaginated -- see that file's own docblock for why); every id's own
+	 * Position is simply set to its own index in that list (`0, 1, 2, ...`),
+	 * an unconditional full renumbering rather than a partial shuffle --
+	 * simple, and immune to drift from any earlier gaps/duplicates.
+	 *
+	 * Requires `manage_options` (`permissions_check()`, same as every
+	 * other route here) -- there's no reason to expose this to less than a
+	 * full CRUD/reorder request. Rejects outright (`WP_Error`, 400) when
+	 * this model has no Position field configured at all, or when no ids
+	 * were actually submitted, rather than silently doing nothing --
+	 * RecordsCrud.jsx never calls this unless it has already confirmed a
+	 * Position field exists, so either error means something upstream
+	 * disagrees about that.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function reorder_records( \WP_REST_Request $request ) {
+		$class = self::require_model( $request->get_param( 'class' ) );
+
+		if ( is_wp_error( $class ) ) {
+			return $class;
+		}
+
+		if ( ! Database_Connection::is_healthy() ) {
+			return self::unavailable_error();
+		}
+
+		$position_field = Model_Fields::position_field_for( $class );
+
+		if ( ! $position_field ) {
+			return new \WP_Error(
+				'gateway_no_position_field',
+				__( 'This model has no Position field configured.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$body = (array) $request->get_json_params();
+		$ids  = isset( $body['ids'] ) && is_array( $body['ids'] ) ? array_map( 'absint', $body['ids'] ) : array();
+		$ids  = array_values( array_filter( $ids ) );
+
+		if ( empty( $ids ) ) {
+			return new \WP_Error(
+				'gateway_reorder_missing_ids',
+				__( 'No record ids were provided to reorder.', 'gateway' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$column = $position_field['name'];
+
+		try {
+			foreach ( $ids as $index => $id ) {
+				$class::where( 'id', $id )->update( array( $column => $index ) );
+			}
+		} catch ( \Throwable $e ) {
+			return new \WP_Error( 'gateway_reorder_failed', $e->getMessage(), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/**
 	 * GET /gateway/v1/models/<class>/records/<id>/relationships/<method>?per_page=
 	 *
 	 * A record's own related items through one of its `hasMany`/
@@ -678,6 +775,41 @@ class Records_REST_Controller {
 		foreach ( $relate_many as $method_name => $ids ) {
 			$record->{$method_name}()->sync( array_map( 'absint', $ids ) );
 		}
+	}
+
+	/**
+	 * Auto-assigns this model's own Position field's value for a brand
+	 * new record -- always appended to the END of the model's own current
+	 * ordering (`current max + 1`, or `0` for the model's first record
+	 * ever), the same "new items go last" default a freshly-created menu
+	 * item/list entry gets everywhere else. Called only from
+	 * `create_record()`, right alongside `resolve_permalink_value()` --
+	 * an UPDATE never touches this: the only other thing that ever
+	 * changes a record's own Position afterwards is a deliberate drag in
+	 * RecordsCrud.jsx's own table (`reorder_records()` below), never a
+	 * plain field edit.
+	 *
+	 * A no-op if this model has no Position field at all, OR if `$data`
+	 * already carries a value for it -- the latter should never actually
+	 * happen (RecordForm never renders this field at all, see
+	 * `Position_Field_Type`'s own docblock), but a request that
+	 * nonetheless submitted one explicitly is left alone rather than
+	 * silently overwritten.
+	 *
+	 * @param string $class_name Model class name.
+	 * @param array  $data       `Model_Fields::sanitize_record_data()`'s
+	 *                             own output, modified in place.
+	 */
+	private static function resolve_position_value( $class_name, array &$data ) {
+		$field = Model_Fields::position_field_for( $class_name );
+
+		if ( ! $field || array_key_exists( $field['name'], $data ) ) {
+			return;
+		}
+
+		$current_max = $class_name::query()->max( $field['name'] );
+
+		$data[ $field['name'] ] = null === $current_max ? 0 : ( (int) $current_max + 1 );
 	}
 
 	/**

@@ -533,6 +533,41 @@
 	text-decoration: underline;
 }
 
+.gateway-admin-app .gateway-records-crud-drag-handle-column {
+	width: 1%;
+}
+
+.gateway-admin-app .gateway-records-crud-drag-handle {
+	width: 1%;
+	white-space: nowrap;
+	text-align: center;
+}
+
+.gateway-admin-app .gateway-records-crud-drag-handle-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	padding: 4px;
+	margin: 0;
+	color: #787c82;
+	cursor: grab;
+	/* Prevents the browser's own touch scroll/pan gesture from competing
+	   with a touch-driven drag -- PointerSensor handles pointer AND touch
+	   input alike, but only once the browser stops trying to scroll the
+	   page first. */
+	touch-action: none;
+}
+
+.gateway-admin-app .gateway-records-crud-drag-handle-button:hover {
+	color: #2271b1;
+}
+
+.gateway-admin-app .gateway-records-crud-drag-handle-button:active {
+	cursor: grabbing;
+}
+
 .gateway-admin-app .gateway-record-form-wrap {
 	background: #fff;
 	border: 1px solid #dcdcde;
