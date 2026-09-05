@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { arrayMove } from '@dnd-kit/sortable';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, ChevronsUp, ChevronsDown, ChevronsUpDown } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
 import useResolvedModelClass from '../hooks/useResolvedModelClass.js';
@@ -1011,10 +1011,6 @@ export default function RecordsCrud() {
 
 	return (
 		<div className="gateway-records-crud">
-			<p>
-				<Link to="/records">&larr; Back to Records</Link>
-			</p>
-
 			{ slugError && (
 				<div className="notice notice-error">
 					<p>{ slugError }</p>
@@ -1029,8 +1025,11 @@ export default function RecordsCrud() {
 
 			{ model && (
 				<>
-					<h2>
-						<code>{ model.class }</code> Records
+					<h2 className="gateway-records-crud-heading">
+						<code className="gateway-records-crud-model-badge">
+							{ model.class }
+						</code>{ ' ' }
+						Records
 					</h2>
 
 					{ fields.length === 0 ? (
@@ -1236,6 +1235,10 @@ export default function RecordsCrud() {
 				</>
 			) }
 
+			<p className="gateway-records-crud-back-link">
+				<Link to="/records">&larr; Back to Records</Link>
+			</p>
+
 			{ showAddForm && (
 				<Modal
 					title={ `Add New ${ model.class }` }
@@ -1348,15 +1351,22 @@ export default function RecordsCrud() {
 
 /**
  * One clickable column-header button, for a column `sortableKeys` (in
- * the component above) actually allows sorting by. A plain inline
- * `▲`/`▼` next to the label -- not a separate icon library -- shows
- * only on the currently-active column, matching whichever `order` the
- * table is actually sorted by right now (per `orderBy`/`order` reflecting
- * the SERVER's own applied sort, not just whatever was last clicked --
- * see `loadRecords()`'s own docblock).
+ * the component above) actually allows sorting by. The same three
+ * lucide-react icons RecordsCrud's own drag handle (`GripVertical`)
+ * already draws from, rather than plain inline `▲`/`▼` text: a neutral
+ * `ChevronsUpDown` on every sortable-but-not-currently-active column
+ * (signaling "sortable," not just "unsorted"), swapping to a single
+ * -direction `ChevronsUp`/`ChevronsDown` only on the currently-active
+ * column, matching whichever `order` the table is actually sorted by
+ * right now (per `orderBy`/`order` reflecting the SERVER's own applied
+ * sort, not just whatever was last clicked -- see `loadRecords()`'s own
+ * docblock).
  */
 function SortableHeader( { label, columnKey, orderBy, order, onSort } ) {
 	const isActive = columnKey === orderBy;
+	const Icon = isActive
+		? ( 'asc' === order ? ChevronsUp : ChevronsDown )
+		: ChevronsUpDown;
 
 	return (
 		<button
@@ -1365,7 +1375,14 @@ function SortableHeader( { label, columnKey, orderBy, order, onSort } ) {
 			onClick={ () => onSort( columnKey ) }
 		>
 			{ label }
-			{ isActive && ( 'asc' === order ? ' ▲' : ' ▼' ) }
+			<Icon
+				className={
+					'gateway-records-crud-sort-icon' +
+					( isActive ? ' gateway-records-crud-sort-icon--active' : '' )
+				}
+				size={ 14 }
+				aria-hidden="true"
+			/>
 		</button>
 	);
 }

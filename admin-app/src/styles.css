@@ -501,6 +501,20 @@
 	width: 1%;
 }
 
+.gateway-admin-app .gateway-records-crud table td {
+	/* wp-admin's own .widefat rows otherwise leave this at `top` -- fine
+	   for plain, single-line cells sitting flush against each other, but
+	   it's what left the drag handle's own (taller, padded) button
+	   visually offset from the plain text next to it in the same row --
+	   every one of this table's own cells is single-line, so centering
+	   them all against a shared middle, rather than matching an explicit
+	   height/line-height the way FieldEditor's own multi-line Label cell
+	   has to (see that file's own drag-col-inner comment for why THAT
+	   one couldn't just use `middle`), is the simpler fix that actually
+	   applies here. */
+	vertical-align: middle;
+}
+
 .gateway-admin-app .gateway-records-crud table td:last-child {
 	white-space: nowrap;
 	width: 1%;
@@ -519,6 +533,9 @@
 }
 
 .gateway-admin-app .gateway-records-crud-sort {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 	background: none;
 	border: none;
 	padding: 0;
@@ -533,6 +550,22 @@
 .gateway-admin-app .gateway-records-crud-sort:hover {
 	color: #2271b1;
 	text-decoration: underline;
+}
+
+.gateway-admin-app .gateway-records-crud-sort-icon {
+	flex-shrink: 0;
+	/* Muted for the neutral ChevronsUpDown -- signals "sortable" without
+	   competing with the label; the active ChevronsUp/ChevronsDown
+	   (--active below) overrides this back to full, legible color. */
+	color: #a7aaad;
+}
+
+.gateway-admin-app .gateway-records-crud-sort-icon--active {
+	color: #2271b1;
+}
+
+.gateway-admin-app .gateway-records-crud-sort:hover .gateway-records-crud-sort-icon {
+	color: inherit;
 }
 
 .gateway-admin-app .gateway-records-crud-drag-handle-column {
@@ -570,6 +603,15 @@
 	cursor: grabbing;
 }
 
+.gateway-admin-app .gateway-records-crud-heading {
+	margin-bottom: 24px;
+}
+
+.gateway-admin-app .gateway-records-crud-model-badge {
+	font-size: 22px;
+	vertical-align: middle;
+}
+
 .gateway-admin-app .gateway-records-crud-toolbar {
 	display: flex;
 	align-items: center;
@@ -579,13 +621,20 @@
 }
 
 .gateway-admin-app .gateway-records-crud-search {
+	/* Pushed to the far right of the toolbar -- the Add New button stays
+	   flush left, and Show/per-page (when present) trails right after it,
+	   since both sit later in source order. */
+	margin-left: auto;
 	min-width: 220px;
 }
 
 .gateway-admin-app .gateway-records-crud-per-page {
-	margin-left: auto;
 	color: #646970;
 	font-size: 13px;
+}
+
+.gateway-admin-app .gateway-records-crud-back-link {
+	margin-top: 1.5em;
 }
 
 /* The table itself (headers included) stays mounted while a background
