@@ -1,0 +1,106 @@
+/**
+ * Styles for the gateway/data-display-toc block, plus the container
+ * -query rule that hides its own containing `core/column` outright once
+ * there isn't enough room left for it beside the main content column.
+ *
+ * `gateway/data-display`'s own auto-seeded starting template (see that
+ * block's own edit.js) wraps its seeded field blocks and this one in a
+ * native `core/columns` -> two `core/column`s layout -- a real,
+ * fully-editable-in-the-inserter layout, not anything this block
+ * renders itself -- giving that OUTER `core/columns` wrapper its own
+ * `gateway-data-display-layout` class, and the TOC's own `core/column`
+ * a `gateway-data-display-toc-column` class, specifically so THIS file
+ * has real, stable selectors to hang a container-query relationship off
+ * of. Lives here (not in gateway/data-display's own stylesheet) since
+ * this rule only exists to control THIS block's own visibility -- the
+ * "which block cares about a CSS relationship owns the CSS" version of
+ * the same reasoning that already put the hashbang-slug CSS in
+ * gateway/data-display's own render.php instead of some third, shared
+ * file.
+ *
+ * Container queries, not a plain viewport media query: a `core/columns`
+ * row can be embedded anywhere on a site -- a full-width page, a narrow
+ * theme sidebar, a Data Display nested inside some other narrow layout
+ * -- and it's the ACTUAL RENDERED WIDTH of this specific row that
+ * decides whether a TOC column has room to be useful, not how wide the
+ * browser window happens to be; a wide-viewport visitor looking at this
+ * same row embedded in a narrow column would still see a media query
+ * keep the TOC crammed in against its own better judgment. Unsupported
+ * in genuinely old browsers (pre-2023 Safari/Firefox) -- there the
+ * `@container` rule below is simply never applied at all, so the TOC
+ * column always shows regardless of available room: a real, if
+ * imperfect, graceful degradation (never broken, never invisible) ---
+ * good enough for an evergreen-browser-targeted admin/front-end feature
+ * like every other build-time-only technique this plugin already uses.
+ */
+
+.gateway-data-display-layout {
+	container-type: inline-size;
+	container-name: gateway-data-display-layout;
+}
+
+/**
+ * Below this width, a TOC column squeezed in beside the main content
+ * would be too narrow to be worth showing at all (a handful of
+ * characters per line, constant wrapping) -- hidden outright rather
+ * than left to `core/columns`' own `isStackedOnMobile` (explicitly
+ * turned OFF on this seeded layout) to stack it below the content
+ * instead: a TOC no longer sitting next to the headings it points at
+ * reads as clutter, not navigation, so "not enough room" means "hide
+ * it," never "move it."
+ */
+@container gateway-data-display-layout (max-width: 700px) {
+	.gateway-data-display-toc-column {
+		display: none;
+	}
+
+	// Defensive, not strictly required -- core/columns' own default
+	// per-column `flex-grow: 1` should already let the remaining
+	// content column expand to fill the space the hidden TOC column
+	// stops reserving on its own, but this guarantees it regardless of
+	// exactly how a given WordPress version implements that default.
+	.gateway-data-display-content-column {
+		flex-basis: 100% !important;
+		width: 100% !important;
+	}
+}
+
+.gateway-data-display-toc {
+	position: sticky;
+	top: 1em;
+	font-size: 0.9em;
+
+	&__heading {
+		margin: 0 0 0.5em;
+		font-size: 0.8em;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		color: #757575;
+	}
+
+	&__list {
+		ul {
+			margin: 0;
+			padding-left: 1em;
+			list-style: none;
+		}
+
+		> ul {
+			padding-left: 0;
+		}
+
+		li {
+			margin: 0.35em 0;
+		}
+
+		a {
+			color: inherit;
+			text-decoration: none;
+
+			&:hover {
+				text-decoration: underline;
+			}
+		}
+	}
+}

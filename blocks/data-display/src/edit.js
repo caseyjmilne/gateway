@@ -202,9 +202,9 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// Auto-seed a starting template the first time a relationship is
 	// chosen, or whenever it's changed to one pointing at a different
 	// model -- mirrors gateway/data-cards-body's own field-seeding, and
-	// gateway/related-items' own identical mechanism, plus one
-	// gateway/data-display-prev-next appended after the seeded field
-	// blocks (see the effect below).
+	// gateway/related-items' own identical mechanism, wrapped in a
+	// two-column layout alongside one gateway/data-display-prev-next and
+	// one gateway/data-display-toc (see the effect below).
 	const {
 		availableColumns: relatedFields,
 		isLoading: isLoadingRelatedFields,
@@ -237,21 +237,65 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			.slice( 0, RELATED_FIELD_COUNT )
 			.map( ( column ) => column.key );
 
-		// gateway/data-display-prev-next always gets seeded, even with
-		// zero eligible text fields -- Previous/Next navigation between
-		// children is independently useful on its own, and it's the one
-		// piece of this starting template a site owner would otherwise
-		// have to remember to add by hand every single time (unlike the
-		// field blocks above, which just show whatever fields happen to
-		// exist -- there's no equivalent "site owner already knows this
-		// exists" fallback for Previous/Next).
+		// gateway/data-display-prev-next and gateway/data-display-toc
+		// both always get seeded, even with zero eligible text fields --
+		// each is independently useful on its own, and both are pieces
+		// of this starting template a site owner would otherwise have to
+		// remember to add by hand every single time (unlike the field
+		// blocks below, which just show whatever fields happen to exist
+		// -- there's no equivalent "site owner already knows this
+		// exists" fallback for either).
+		//
+		// A real, fully-editable native core/columns -> two core/column
+		// layout, not anything this block renders itself -- the seeded
+		// field blocks + Previous/Next in the first (wider) column, the
+		// Table of Contents alone in the second -- giving a site owner
+		// the SAME resize/rearrange/remove controls they'd have over any
+		// other Columns block on the page, rather than a fixed layout
+		// baked into this block's own render.php. `isStackedOnMobile:
+		// false` deliberately turns off core/columns' own default
+		// viewport-media-query stacking -- gateway/data-display-toc's
+		// own style.scss instead hides its entire column outright via a
+		// CONTAINER query (this row's own actual rendered width, not the
+		// browser viewport) once there's genuinely no room for it, which
+		// is a meaningfully different, more correct condition than "the
+		// window is narrow" for a block that can end up embedded
+		// anywhere. Both columns' own `className` exist specifically to
+		// give that stylesheet stable selectors to hang the container
+		// -query relationship off of -- see that file's own docblock.
 		replaceInnerBlocks(
 			clientId,
 			[
-				...fieldKeys.map( ( fieldKey ) =>
-					createBlock( 'gateway/card-field-text', { fieldKey } )
+				createBlock(
+					'core/columns',
+					{
+						isStackedOnMobile: false,
+						className: 'gateway-data-display-layout',
+					},
+					[
+						createBlock(
+							'core/column',
+							{
+								width: '75%',
+								className: 'gateway-data-display-content-column',
+							},
+							[
+								...fieldKeys.map( ( fieldKey ) =>
+									createBlock( 'gateway/card-field-text', { fieldKey } )
+								),
+								createBlock( 'gateway/data-display-prev-next' ),
+							]
+						),
+						createBlock(
+							'core/column',
+							{
+								width: '25%',
+								className: 'gateway-data-display-toc-column',
+							},
+							[ createBlock( 'gateway/data-display-toc' ) ]
+						),
+					]
 				),
-				createBlock( 'gateway/data-display-prev-next' ),
 			],
 			false
 		);

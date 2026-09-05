@@ -12,12 +12,17 @@
  * clicking a doc loads it into the main reading pane) -- confirmed
  * against this feature's own worked example, Doc Groups -> Docs.
  *
- * A sibling block, `gateway/data-display-prev-next`, gives this same
- * detail template Previous/Next links to whichever child immediately
- * precedes/follows the active one in the sidebar's own order -- an
- * `ancestor` (not `parent`) restriction, so it can still be wrapped in a
- * Row/Group for layout, same as `gateway/card-field-text`'s own. See
- * that block's own render.php/view.js for the full mechanism.
+ * Two sibling blocks give this same detail template more docs-site
+ * navigation, both `ancestor` (not `parent`) restricted so either can
+ * still be wrapped in a Row/Group/Columns for layout, same as
+ * `gateway/card-field-text`'s own: `gateway/data-display-prev-next`
+ * (Previous/Next links to whichever child immediately precedes/follows
+ * the active one in the sidebar's own order) and
+ * `gateway/data-display-toc` (an auto-generated Table of Contents from
+ * the active child's own headings). See each one's own render.php/
+ * view.js for its full mechanism -- and this block's own edit.js for
+ * how a freshly-configured instance seeds both into a real, native
+ * `core/columns` layout automatically.
  *
  * Every child link is a real, unique, bookmarkable/shareable anchor --
  * `#!/{related model slug}/{slug}`, a "hashbang" fragment rather than a

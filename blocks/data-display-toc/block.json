@@ -1,0 +1,27 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-display-toc",
+	"title": "Data Display Table of Contents",
+	"category": "widgets",
+	"icon": "list-view",
+	"description": "An auto-generated Table of Contents linking to every heading (H2 and deeper) found in the currently active child's own rendered content, indented to match heading level. Best placed in its own column alongside the main content -- see this block's own render.php for why, and its own style.scss for the container-query technique that hides the column entirely once there isn't enough room for it.",
+	"keywords": [ "toc", "table of contents", "headings", "outline", "data display" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"ancestor": [ "gateway/data-display" ],
+	"attributes": {
+		"heading": {
+			"type": "string",
+			"default": "On This Page"
+		}
+	},
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}
