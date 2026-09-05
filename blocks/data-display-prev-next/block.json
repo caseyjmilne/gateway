@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/data-display-prev-next",
+	"title": "Data Display Previous/Next",
+	"category": "widgets",
+	"icon": "controls-forward",
+	"description": "Previous/Next links to the child immediately before/after the currently active one in a Data Display block's own sidebar order -- each link's own label is that item's own title, and either link simply doesn't show at the very first/last item. Placed anywhere inside a Data Display's own detail template.",
+	"keywords": [ "previous", "next", "pager", "navigation", "data display" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"ancestor": [ "gateway/data-display" ],
+	"supports": {
+		"html": false,
+		"anchor": true
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}

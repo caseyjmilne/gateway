@@ -202,7 +202,9 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// Auto-seed a starting template the first time a relationship is
 	// chosen, or whenever it's changed to one pointing at a different
 	// model -- mirrors gateway/data-cards-body's own field-seeding, and
-	// gateway/related-items' own identical mechanism.
+	// gateway/related-items' own identical mechanism, plus one
+	// gateway/data-display-prev-next appended after the seeded field
+	// blocks (see the effect below).
 	const {
 		availableColumns: relatedFields,
 		isLoading: isLoadingRelatedFields,
@@ -235,15 +237,24 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			.slice( 0, RELATED_FIELD_COUNT )
 			.map( ( column ) => column.key );
 
-		if ( fieldKeys.length ) {
-			replaceInnerBlocks(
-				clientId,
-				fieldKeys.map( ( fieldKey ) =>
+		// gateway/data-display-prev-next always gets seeded, even with
+		// zero eligible text fields -- Previous/Next navigation between
+		// children is independently useful on its own, and it's the one
+		// piece of this starting template a site owner would otherwise
+		// have to remember to add by hand every single time (unlike the
+		// field blocks above, which just show whatever fields happen to
+		// exist -- there's no equivalent "site owner already knows this
+		// exists" fallback for Previous/Next).
+		replaceInnerBlocks(
+			clientId,
+			[
+				...fieldKeys.map( ( fieldKey ) =>
 					createBlock( 'gateway/card-field-text', { fieldKey } )
 				),
-				false
-			);
-		}
+				createBlock( 'gateway/data-display-prev-next' ),
+			],
+			false
+		);
 
 		setIsSeedPending( false );
 	}, [

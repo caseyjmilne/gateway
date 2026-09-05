@@ -12,6 +12,13 @@
  * clicking a doc loads it into the main reading pane) -- confirmed
  * against this feature's own worked example, Doc Groups -> Docs.
  *
+ * A sibling block, `gateway/data-display-prev-next`, gives this same
+ * detail template Previous/Next links to whichever child immediately
+ * precedes/follows the active one in the sidebar's own order -- an
+ * `ancestor` (not `parent`) restriction, so it can still be wrapped in a
+ * Row/Group for layout, same as `gateway/card-field-text`'s own. See
+ * that block's own render.php/view.js for the full mechanism.
+ *
  * Every child link is a real, unique, bookmarkable/shareable anchor --
  * `#!/{related model slug}/{slug}`, a "hashbang" fragment rather than a
  * real WordPress URL/route -- so an external page (or a saved bookmark)

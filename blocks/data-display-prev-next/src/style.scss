@@ -1,0 +1,44 @@
+/**
+ * Styles for the gateway/data-display-prev-next block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core).
+ */
+
+.gateway-data-display-prev-next {
+	display: flex;
+	gap: 1em;
+	margin-top: 1.5em;
+	padding-top: 1em;
+	border-top: 1px solid #e0e0e0;
+
+	&__link {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25em;
+		max-width: 45%;
+		padding: 0.75em 1em;
+		border: 1px solid #e0e0e0;
+		border-radius: 4px;
+		text-decoration: none;
+		color: inherit;
+
+		&:hover {
+			border-color: #949494;
+		}
+	}
+
+	&__link--next {
+		margin-left: auto;
+		text-align: right;
+	}
+
+	&__direction {
+		font-size: 0.85em;
+		color: #757575;
+	}
+
+	&__title {
+		font-weight: 600;
+	}
+}
