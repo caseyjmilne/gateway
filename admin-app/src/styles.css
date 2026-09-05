@@ -839,8 +839,8 @@
 	color: rgb( 60, 67, 74 );
 }
 
-.gateway-admin-app .gateway-record-form p {
-	/* Each field is a plain <p> (see RecordForm's own docblock) --
+.gateway-admin-app .gateway-record-form-field {
+	/* Each field row is a plain <p> (see RecordForm's own docblock) --
 	 * without this, they fall back to wp-admin's own default <p> margin
 	 * (1em, ~16px top+bottom -- ~16px of empty space between two
 	 * consecutive fields, half of it "belonging" to each), reading as
@@ -850,11 +850,20 @@
 	 * only (not split top+bottom) so it's a single, predictable amount
 	 * of space between any two fields, not dependent on each one's own
 	 * margin-top collapsing against its neighbor's margin-bottom the way
-	 * adjoining block margins normally would. */
+	 * adjoining block margins normally would. A shared CLASS, not the
+	 * bare `p` element, specifically so a "markdown" field's own row
+	 * (rendered as a `<div>` instead -- MarkdownEditor's own genuine
+	 * block-level content can never legally nest inside a `<p>`) gets
+	 * the identical spacing. */
 	margin: 0 0 32px;
 }
 
 .gateway-admin-app .gateway-record-form p:last-of-type {
+	/* Deliberately still keyed to the bare `p` element, not
+	 * `.gateway-record-form-field` -- this targets the trailing submit
+	 * -button row (its own plain, unclassed `<p>` right after every
+	 * mapped field), not "the last field," so it's unaffected by any
+	 * individual field row's own wrapper tag. */
 	margin-bottom: 0;
 }
 

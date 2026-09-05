@@ -1,0 +1,66 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/card-field-markdown",
+	"title": "Field: Markdown",
+	"category": "widgets",
+	"icon": "editor-code",
+	"description": "Converts a Markdown field's own raw stored value to real HTML and displays it. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
+	"keywords": [ "field", "markdown", "model", "collection", "data cards", "data display" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"ancestor": [ "gateway/data-cards-body", "gateway/data-display", "gateway/single-record" ],
+	"usesContext": [
+		"gateway/data-cards/sourceType",
+		"gateway/data-cards/collection",
+		"record"
+	],
+	"attributes": {
+		"fieldKey": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"anchor": true,
+		"__experimentalBorder": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"color": {
+			"gradients": true,
+			"link": true,
+			"__experimentalDefaultControls": {
+				"background": true,
+				"text": true
+			}
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true,
+			"__experimentalDefaultControls": {
+				"margin": true,
+				"padding": true
+			}
+		},
+		"typography": {
+			"fontSize": true,
+			"lineHeight": true,
+			"textAlign": true,
+			"__experimentalFontFamily": true,
+			"__experimentalFontStyle": true,
+			"__experimentalFontWeight": true,
+			"__experimentalLetterSpacing": true,
+			"__experimentalTextDecoration": true,
+			"__experimentalDefaultControls": {
+				"fontSize": true
+			}
+		}
+	},
+	"editorScript": "file:./build/index.js",
+	"render": "file:./render.php"
+}

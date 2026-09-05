@@ -201,6 +201,13 @@ class Page_Link_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_markdown_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function eloquent_cast() {
 		return 'array';
 	}

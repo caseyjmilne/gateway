@@ -96,6 +96,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-password-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-file-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-wysiwyg-field-type.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-markdown-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-oembed-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-field-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-user-rest-controller.php';
@@ -129,6 +130,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-number-formatter.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-image-renderer.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-markdown-converter.php';
 
 /**
  * Boot the plugin.
@@ -173,6 +175,7 @@ function gateway_boot() {
 	\Gateway\Field_Type_Registry::register( \Gateway\Image_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\File_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\WYSIWYG_Field_Type::class );
+	\Gateway\Field_Type_Registry::register( \Gateway\Markdown_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\OEmbed_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\User_Field_Type::class );
 	\Gateway\Field_Type_Registry::register( \Gateway\Permalink_Field_Type::class );

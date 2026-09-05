@@ -311,20 +311,30 @@ class Column_Registry {
 				// long-standing default every model's own id already got
 				// before this flag existed at all.
 				'isOrderable'      => true,
+				// A bare integer id is neither Markdown source nor
+				// anything gateway/card-field-markdown's own Field picker
+				// would ever offer.
+				'isMarkdownRenderable' => false,
 			),
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
-			$type_class          = Field_Type_Registry::get( $field['type'] );
-			$is_filterable       = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
-			$is_orderable        = $type_class && class_exists( $type_class ) && $type_class::is_orderable();
-			$is_text_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
+			$type_class             = Field_Type_Registry::get( $field['type'] );
+			$is_filterable          = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
+			$is_orderable           = $type_class && class_exists( $type_class ) && $type_class::is_orderable();
+			$is_text_renderable     = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
 			// gateway/card-field-text's own second eligibility signal --
 			// see Field_Type::is_html_renderable()'s own docblock for why
 			// this is a separate flag from is_text_renderable rather than
 			// folded into it (true only for WYSIWYG_Field_Type today).
-			$is_html_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_html_renderable();
-			$is_numeric          = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
+			$is_html_renderable     = $type_class && class_exists( $type_class ) && $type_class::is_html_renderable();
+			// gateway/card-field-markdown's own SOLE eligibility signal --
+			// see Field_Type::is_markdown_renderable()'s own docblock for
+			// why this is a third, separate flag rather than folded into
+			// either of the two immediately above (true only for
+			// Markdown_Field_Type today).
+			$is_markdown_renderable = $type_class && class_exists( $type_class ) && $type_class::is_markdown_renderable();
+			$is_numeric             = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
 			// Reuses the EXISTING supports_media_settings() flag rather
 			// than a new one -- it's already true for exactly one
 			// built-in type (Image_Field_Type; File_Field_Type has its
@@ -333,7 +343,7 @@ class Column_Registry {
 			// gateway/card-field-image's own render.php/edit.js, both of
 			// which read this (as `isImage`) the same way
 			// gateway/card-field-number reads `isNumeric`.
-			$is_image            = $type_class && class_exists( $type_class ) && $type_class::supports_media_settings();
+			$is_image               = $type_class && class_exists( $type_class ) && $type_class::supports_media_settings();
 			// The field's own configured Return Format
 			// (Image_Field_Type::supports_media_settings()'s own
 			// `settings.return_format`, 'array'/'url'/'id' -- same
@@ -345,7 +355,7 @@ class Column_Registry {
 			// resolve the field's own raw stored attachment id (and
 			// whether a Size setting makes sense at all -- see that
 			// block's own render.php/edit.js for the full "why").
-			$return_format       = $field['settings']['return_format'] ?? 'array';
+			$return_format          = $field['settings']['return_format'] ?? 'array';
 			// Text_Area_Field_Type's own `settings.new_lines` (`''`/`'br'`/
 			// `'wpautop'`) -- meaningless for any other type, but harmless
 			// to compute unconditionally, same reasoning `returnFormat`
@@ -356,7 +366,7 @@ class Column_Registry {
 			// gateway/card-field-text's own render.php prints its value as
 			// real HTML (`nl2br()`/`wpautop()` applied) or plain escaped
 			// text -- see that type's own presentation_fields() docblock.
-			$new_lines           = $field['settings']['new_lines'] ?? '';
+			$new_lines              = $field['settings']['new_lines'] ?? '';
 
 			$facet_type = array();
 
@@ -384,22 +394,26 @@ class Column_Registry {
 			$facet_type = apply_filters( 'gateway_datatable_collection_facet_type', $facet_type, $field, $class_name );
 
 			$columns[] = array(
-				'key'              => $field['name'],
-				'label'            => $field['label'],
-				'type'             => 'model_field',
-				'isFilterable'     => ! empty( $facet_type ),
-				'facetType'        => array_values( $facet_type ),
-				'isTextRenderable' => $is_text_renderable,
-				'isHtmlRenderable' => $is_html_renderable,
-				'isNumeric'        => $is_numeric,
-				'isImage'          => $is_image,
-				'returnFormat'     => $return_format,
-				'newLines'         => $new_lines,
+				'key'                  => $field['name'],
+				'label'                => $field['label'],
+				'type'                 => 'model_field',
+				'isFilterable'         => ! empty( $facet_type ),
+				'facetType'            => array_values( $facet_type ),
+				'isTextRenderable'     => $is_text_renderable,
+				'isHtmlRenderable'     => $is_html_renderable,
+				// gateway/card-field-markdown's own Field picker reads
+				// this to decide which fields to offer at all -- see
+				// Field_Type::is_markdown_renderable()'s own docblock.
+				'isMarkdownRenderable' => $is_markdown_renderable,
+				'isNumeric'            => $is_numeric,
+				'isImage'              => $is_image,
+				'returnFormat'         => $return_format,
+				'newLines'             => $new_lines,
 				// gateway/data-display's own Order By pickers (one for its
 				// Parent collection, one for its Child/related collection)
 				// read this to decide which fields to offer at all -- see
 				// Field_Type::is_orderable()'s own docblock.
-				'isOrderable'      => $is_orderable,
+				'isOrderable'          => $is_orderable,
 			);
 		}
 
@@ -478,36 +492,42 @@ class Column_Registry {
 				}
 
 				$columns[] = array(
-					'key'                 => $relationship['method_name'] . '.' . $related_field['name'],
-					'label'               => $related_label . ': ' . $related_field['label'],
-					'type'                => 'model_related_field',
-					'isFilterable'        => false,
-					'facetType'           => array(),
+					'key'                  => $relationship['method_name'] . '.' . $related_field['name'],
+					'label'                => $related_label . ': ' . $related_field['label'],
+					'type'                 => 'model_related_field',
+					'isFilterable'         => false,
+					'facetType'            => array(),
 					// Same reasoning as isFilterable above -- neither
 					// Facet_Query nor (now) gateway/data-display's own
 					// Order By pickers can filter/sort THROUGH a
 					// relationship, only against $class_name's own table.
-					'isOrderable'         => false,
+					'isOrderable'          => false,
 					// False only for a related WYSIWYG field today (see
 					// isHtmlRenderable below for that one instead) -- the
 					// "one level deep only" skip above already excludes a
 					// related field that's itself a relate field, and the
 					// is_sensitive() skip already excludes Password.
-					'isTextRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
+					'isTextRenderable'     => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_text_renderable(),
 					// Same isHtmlRenderable flag gateway/card-field-text's
 					// own Field picker/render.php already check for a
 					// model's OWN fields, just against a related model's
 					// field instead -- true only for a related WYSIWYG
 					// field.
-					'isHtmlRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_html_renderable(),
-					'isNumeric'           => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
-					'isImage'             => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
-					'returnFormat'        => $related_field['settings']['return_format'] ?? 'array',
+					'isHtmlRenderable'     => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_html_renderable(),
+					// Same treatment again -- gateway/card-field-markdown's
+					// own Field picker offers a related model's own
+					// Markdown field the exact same "one level deep only"
+					// way gateway/card-field-text already offers a related
+					// WYSIWYG/plain-text field.
+					'isMarkdownRenderable' => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_markdown_renderable(),
+					'isNumeric'            => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
+					'isImage'              => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
+					'returnFormat'         => $related_field['settings']['return_format'] ?? 'array',
 					// Same reasoning as get_columns_for_collection()'s own
 					// identical `newLines` key above, just for a related
 					// Text Area field instead of one of this model's own.
-					'newLines'            => $related_field['settings']['new_lines'] ?? '',
-					'relationship_method' => $relationship['method_name'],
+					'newLines'             => $related_field['settings']['new_lines'] ?? '',
+					'relationship_method'  => $relationship['method_name'],
 				);
 			}
 		}

@@ -129,6 +129,13 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_markdown_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function relationship_type() {
 		return 'belongsTo';
 	}

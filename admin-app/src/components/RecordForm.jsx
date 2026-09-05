@@ -4,6 +4,7 @@ import ImagePicker from './ImagePicker.jsx';
 import FilePicker from './FilePicker.jsx';
 import UserPicker from './UserPicker.jsx';
 import WysiwygEditor from './WysiwygEditor.jsx';
+import MarkdownEditor from './MarkdownEditor.jsx';
 import OEmbedPicker from './OEmbedPicker.jsx';
 import PermalinkControl from './PermalinkControl.jsx';
 import LinkPicker from './LinkPicker.jsx';
@@ -31,7 +32,14 @@ import PageLinkPicker from './PageLinkPicker.jsx';
  * the same classic editor a post's own content field and ACF's own
  * WYSIWYG field both use) instead of a plain `<textarea>` -- see that
  * component's own docblock for why it's deliberately uncontrolled from
- * React's own side, unlike every other field here. "oembed"
+ * React's own side, unlike every other field here. "markdown"
+ * (Markdown_Field_Type) is the SAME plain-string form state/payload
+ * shape yet again (raw Markdown SOURCE text, not HTML -- converting it
+ * is entirely `gateway/card-field-markdown`'s own render.php's job, via
+ * `Markdown_Converter`/`league/commonmark`, never anything this form
+ * does), but renders a `MarkdownEditor` (`@uiw/react-md-editor`, a
+ * genuinely controlled component unlike "wysiwyg"'s own -- see that
+ * component's own docblock). "oembed"
  * (OEmbed_Field_Type) is a plainer case again -- same plain-string form
  * state/payload as "text"/"url" (a genuinely controlled input, unlike
  * "wysiwyg"'s own), just rendering an `OEmbedPicker` (a URL `<input>`
@@ -780,7 +788,7 @@ export default function RecordForm( {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
 				// plain-string field type (text/number/textarea/wysiwyg/
-				// select/radio/buttons/...) -- none of those need
+				// markdown/select/radio/buttons/...) -- none of those need
 				// converting either. "user" also falls through to here,
 				// unlike "image"/"file" above, even though its own form
 				// state can likewise start out as a richer `{id, name,
@@ -808,9 +816,22 @@ export default function RecordForm( {
 
 				const inputType = inputTypeFor( field.type );
 				const inputId = `gateway-record-field-${ field.name }`;
+				// `<p>` for every other field type -- see this component's
+				// own top-of-file docblock and `.gateway-record-form p`'s
+				// own styles.css comment for why -- except "markdown":
+				// `MarkdownEditor` renders genuine block-level content of
+				// its own (a toolbar, two `<div>` panes) that a `<p>`
+				// can never legally contain; React's own dev-mode
+				// validateDOMNesting warning (harmless in practice --
+				// browsers silently auto-close the `<p>` early instead of
+				// erroring -- but real, and worth just not triggering)
+				// is what surfaced this. `.gateway-record-form-field`
+				// carries the exact same spacing regardless of which tag
+				// actually renders -- see that class's own styles.css rule.
+				const FieldWrapper = 'markdown' === inputType ? 'div' : 'p';
 
 				return (
-					<p key={ field.name }>
+					<FieldWrapper key={ field.name } className="gateway-record-form-field">
 						<label htmlFor={ inputId }>
 							{ field.label || field.name }
 							{ field.required && (
@@ -1024,6 +1045,18 @@ export default function RecordForm( {
 								}
 							/>
 						) }
+						{ 'markdown' === inputType && (
+							<MarkdownEditor
+								field={ field }
+								value={ values[ field.name ] }
+								onChange={ ( newValue ) =>
+									setValues( ( current ) => ( {
+										...current,
+										[ field.name ]: newValue,
+									} ) )
+								}
+							/>
+						) }
 						{ 'oembed' === inputType && (
 							<OEmbedPicker
 								field={ field }
@@ -1109,6 +1142,7 @@ export default function RecordForm( {
 							'image' !== inputType &&
 							'file' !== inputType &&
 							'wysiwyg' !== inputType &&
+							'markdown' !== inputType &&
 							'oembed' !== inputType &&
 							'user' !== inputType &&
 							'permalink' !== inputType &&
@@ -1155,7 +1189,7 @@ export default function RecordForm( {
 								{ field.settings.instructions }
 							</span>
 						) }
-					</p>
+					</FieldWrapper>
 				);
 			} ) }
 			<p>

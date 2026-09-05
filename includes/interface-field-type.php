@@ -244,6 +244,36 @@ interface Field_Type {
 	public static function is_html_renderable();
 
 	/**
+	 * Whether this type's own raw stored value is Markdown SOURCE text
+	 * that needs a real conversion step before it's safe/meaningful to
+	 * display at all -- a THIRD content-shape flag alongside
+	 * `is_text_renderable()`/`is_html_renderable()` immediately above,
+	 * not a third value either of those two could just be repurposed to
+	 * mean: raw Markdown source is neither safe page-facing plain text
+	 * (it's full of literal `#`/`**`/`` ` `` syntax, not prose --
+	 * `is_text_renderable()`'s own contract) NOR html at all yet
+	 * (`is_html_renderable()`'s own contract assumes the value is
+	 * ALREADY trusted, converted markup, which raw Markdown isn't until
+	 * something actually runs it through a parser).
+	 *
+	 * `true` only for `Markdown_Field_Type` -- `gateway/card-field-text`'s
+	 * own Field picker (`isTextRenderable || isHtmlRenderable` --
+	 * `Column_Registry::get_columns_for_collection()`) never offers a
+	 * Markdown field at all, which is the whole point: it forces the
+	 * real conversion through this type's own dedicated sibling block,
+	 * `gateway/card-field-markdown` (its own Field picker reads this
+	 * flag instead, as `isMarkdownRenderable`), rather than that generic
+	 * block silently printing raw, unconverted Markdown syntax as if it
+	 * were finished prose. `false` for every other built-in type,
+	 * `Text_Area_Field_Type`/`WYSIWYG_Field_Type` included -- both of
+	 * those already have a real, direct display story of their own via
+	 * the other two flags, with nothing left for this one to add.
+	 *
+	 * @return bool
+	 */
+	public static function is_markdown_renderable();
+
+	/**
 	 * The Eloquent native cast name (`$casts`, e.g. "array"/"boolean") a
 	 * generated model's own column for this type needs declared against
 	 * it, or `null` for the default (no cast -- what every plain scalar
