@@ -1080,16 +1080,6 @@ export default function RecordsCrud() {
 								) }
 							</div>
 
-							{ positionField && ! canReorder && (
-								<p className="description">
-									{ 'This model has a Position field -- ' +
-										`sort by "${
-											positionField.label ||
-											positionField.name
-										}" to drag-and-drop reorder it.` }
-								</p>
-							) }
-
 							{ recordsError && (
 								<div className="notice notice-error">
 									<p>{ recordsError }</p>
