@@ -501,6 +501,15 @@
 	width: 1%;
 }
 
+.gateway-admin-app .gateway-records-crud table th {
+	/* Same `.widefat`-inflated line-height fix as the td rule right below
+	   -- wp-admin's own .widefat thead th carries its own line-height,
+	   independent of (and not fixed by) overriding it on td alone, which
+	   is why the header row's own sort icon/label pairs (SortableHeader)
+	   still read slightly misaligned even after that one was in place. */
+	line-height: normal;
+}
+
 .gateway-admin-app .gateway-records-crud table td {
 	/* wp-admin's own .widefat rows otherwise leave this at `top` -- fine
 	   for plain, single-line cells sitting flush against each other, but
@@ -578,6 +587,12 @@
 	   competing with the label; the active ChevronsUp/ChevronsDown
 	   (--active below) overrides this back to full, legible color. */
 	color: #a7aaad;
+	/* Same inline-<svg>-reserves-descender-space fix as the drag handle's
+	   own icon (see that selector's own comment) -- without it this
+	   icon renders a hair below where `align-items: center` on the
+	   button above already centers it, reading as slightly offset from
+	   the label text right next to it. */
+	display: block;
 }
 
 .gateway-admin-app .gateway-records-crud-sort-icon--active {
