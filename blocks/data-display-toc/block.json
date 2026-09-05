@@ -10,10 +10,15 @@
 	"version": "0.1.0",
 	"textdomain": "gateway",
 	"ancestor": [ "gateway/data-display" ],
+	"usesContext": [ "record", "gateway/data-cards/collection" ],
 	"attributes": {
 		"heading": {
 			"type": "string",
 			"default": "On This Page"
+		},
+		"fieldKeys": {
+			"type": "array",
+			"default": []
 		}
 	},
 	"supports": {

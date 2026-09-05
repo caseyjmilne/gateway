@@ -1,6 +1,8 @@
 import { InspectorControls, useBlockProps } from '@wordpress/block-editor';
-import { PanelBody, TextControl } from '@wordpress/components';
+import { FormTokenField, Notice, PanelBody, TextControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
+
+import { useAvailableColumns } from '../../shared/use-available-columns';
 
 /**
  * Representative placeholder entries only -- same reasoning as
@@ -20,9 +22,60 @@ const PLACEHOLDER_ITEMS = [
 	{ label: __( 'Next Steps', 'gateway' ), children: [] },
 ];
 
-export default function Edit( { attributes, setAttributes } ) {
-	const { heading } = attributes;
+export default function Edit( { attributes, setAttributes, context } ) {
+	const { heading, fieldKeys } = attributes;
+	const collection = context[ 'gateway/data-cards/collection' ] || '';
 	const blockProps = useBlockProps( { className: 'gateway-data-display-toc' } );
+
+	// The SAME hook/REST route every other field picker in this plugin
+	// already uses (gateway/card-field-text's own Field picker chief
+	// among them) -- always exactly whichever fields the related
+	// Collection actually has right now, never a stale/hardcoded guess.
+	const { availableColumns, isLoading } = useAvailableColumns( '', {
+		sourceType: 'collection',
+		collection,
+	} );
+
+	// Only a field that could ever actually CONTAIN a heading is worth
+	// offering here at all -- a plain Text/Number/Date/... field only
+	// ever renders as escaped plain text or a bare value (never real
+	// markup), so scanning it for `<h2>`-`<h6>` tags could never find
+	// one; only a WYSIWYG field's own value is genuine, unescaped HTML
+	// (`isHtmlRenderable` -- see `Field_Type::is_html_renderable()`'s
+	// own docblock) that could realistically contain real heading tags
+	// at all. Narrower than gateway/card-field-text's own Field picker
+	// (which also offers every plain isTextRenderable field, since IT
+	// can display any of them) -- this picker's own question is "could
+	// headings live in here," not "can this block display it."
+	const headingCapableColumns = availableColumns.filter(
+		( column ) => column.isHtmlRenderable
+	);
+
+	// FormTokenField itself only ever deals in plain display strings
+	// ("tokens"), never a separate key/value pair -- resolved through a
+	// label<->key map instead, the same shape WordPress core's own
+	// category/tag pickers already resolve an identically-shaped name
+	// <-> id relationship through. A genuine label collision between two
+	// different fields on the same model (Model_Fields enforces unique
+	// NAMES, never unique LABELS) would resolve to whichever of them
+	// happens to match first -- a real but extremely narrow edge case,
+	// no different in kind from every other label-driven picker already
+	// accepting the same trade-off.
+	const labelByKey = new Map( headingCapableColumns.map( ( column ) => [ column.key, column.label ] ) );
+	const keyByLabel = new Map( headingCapableColumns.map( ( column ) => [ column.label, column.key ] ) );
+
+	const selectedLabels = fieldKeys
+		.map( ( key ) => labelByKey.get( key ) )
+		.filter( Boolean );
+
+	const handleFieldKeysChange = ( labels ) => {
+		// A freshly-TYPED value with no matching suggestion (FormTokenField
+		// allows arbitrary free text by default) resolves to `undefined`
+		// here and is dropped -- only a field that genuinely still exists
+		// on this Collection is ever storable.
+		const keys = labels.map( ( label ) => keyByLabel.get( label ) ).filter( Boolean );
+		setAttributes( { fieldKeys: keys } );
+	};
 
 	return (
 		<>
@@ -33,6 +86,26 @@ export default function Edit( { attributes, setAttributes } ) {
 						value={ heading }
 						onChange={ ( value ) => setAttributes( { heading: value } ) }
 					/>
+					<FormTokenField
+						__experimentalExpandOnFocus
+						label={ __( 'Only Parse These Fields', 'gateway' ) }
+						value={ selectedLabels }
+						suggestions={ headingCapableColumns.map( ( column ) => column.label ) }
+						disabled={ isLoading || ! collection || 0 === headingCapableColumns.length }
+						onChange={ handleFieldKeysChange }
+						help={ __(
+							'Optional -- leave blank to scan every heading anywhere in the active item\'s own content. When set, only headings found within these fields\' own rendered value (a WYSIWYG field, typically) are listed.',
+							'gateway'
+						) }
+					/>
+					{ collection && ! isLoading && 0 === headingCapableColumns.length && (
+						<Notice status="info" isDismissible={ false }>
+							{ __(
+								'This model has no WYSIWYG field -- the only kind of field that could ever contain a real heading. Leave this blank to keep scanning the whole item.',
+								'gateway'
+							) }
+						</Notice>
+					) }
 				</PanelBody>
 			</InspectorControls>
 			<nav { ...blockProps } aria-label={ heading }>

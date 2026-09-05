@@ -9,6 +9,10 @@ import './style.scss';
  * belongs to never changes after render, only which panel is currently
  * visible does, already handled by gateway/data-display's own existing
  * view.js.
+ *
+ * Honors the block's own OPTIONAL "only parse these fields" setting
+ * (edit.js's own FormTokenField) via `data-field-keys` -- see
+ * collectHeadings()'s own docblock for the full mechanics.
  */
 
 const HEADING_SELECTOR = 'h2, h3, h4, h5, h6';
@@ -104,6 +108,65 @@ function buildList( headings, doc ) {
 }
 
 /**
+ * Every heading this instance should list, in real DOM order -- either
+ * "everything in the panel" (the default, unrestricted, behavior) or,
+ * when render.php's own `data-field-keys` names one or more fields,
+ * ONLY headings found within one of those specific fields' own
+ * rendered value (concretely: inside a `gateway/card-field-text`
+ * instance whose own `data-field-key` matches one of them -- see that
+ * block's own render.php). A hand-placed `core/heading`, or a heading
+ * from an unrelated `gateway/related-items` loop, is deliberately
+ * excluded once this restriction is configured -- that's the whole
+ * point of naming specific fields.
+ *
+ * @param {HTMLElement} panel     This instance's own enclosing
+ *                                  `.gateway-data-display__panel`.
+ * @param {HTMLElement} nav       This block's own wrapper element --
+ *                                  excluded from the scan either way.
+ * @param {string[]}    fieldKeys From `data-field-keys`, already split/
+ *                                  filtered -- empty means unrestricted.
+ * @return {HTMLHeadingElement[]}
+ */
+function collectHeadings( panel, nav, fieldKeys ) {
+	if ( 0 === fieldKeys.length ) {
+		return Array.prototype.filter.call(
+			panel.querySelectorAll( HEADING_SELECTOR ),
+			// Excludes any heading that might somehow live INSIDE this TOC
+			// widget's own markup (it doesn't today -- render.php uses a
+			// plain <p> for its own label specifically to avoid this case
+			// -- but never assume a future edit couldn't introduce one).
+			( heading ) => ! nav.contains( heading )
+		);
+	}
+
+	const seen = new Set();
+	const headings = [];
+
+	fieldKeys.forEach( ( fieldKey ) => {
+		panel
+			.querySelectorAll( `[data-field-key="${ CSS.escape( fieldKey ) }"]` )
+			.forEach( ( fieldWrapper ) => {
+				fieldWrapper.querySelectorAll( HEADING_SELECTOR ).forEach( ( heading ) => {
+					if ( ! seen.has( heading ) ) {
+						seen.add( heading );
+						headings.push( heading );
+					}
+				} );
+			} );
+	} );
+
+	// Multiple fields' own wrappers are visited in the order THIS
+	// BLOCK'S OWN ATTRIBUTE lists them, not necessarily the order they
+	// actually appear on the page -- restore real DOM order before
+	// building the list, the same order a reader would actually
+	// encounter these headings scrolling down the page.
+	return headings.sort( ( a, b ) =>
+		// eslint-disable-next-line no-bitwise
+		a.compareDocumentPosition( b ) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+	);
+}
+
+/**
  * @param {HTMLElement} nav This block's own wrapper element.
  */
 function initToc( nav ) {
@@ -115,14 +178,12 @@ function initToc( nav ) {
 		return;
 	}
 
-	const headings = Array.prototype.filter.call(
-		panel.querySelectorAll( HEADING_SELECTOR ),
-		// Excludes any heading that might somehow live INSIDE this TOC
-		// widget's own markup (it doesn't today -- render.php uses a
-		// plain <p> for its own label specifically to avoid this case --
-		// but never assume a future edit couldn't introduce one).
-		( heading ) => ! nav.contains( heading )
-	);
+	const fieldKeys = ( nav.dataset.fieldKeys || '' )
+		.split( ',' )
+		.map( ( key ) => key.trim() )
+		.filter( Boolean );
+
+	const headings = collectHeadings( panel, nav, fieldKeys );
 
 	// Nothing to link to -- leave the whole widget hidden rather than
 	// showing an empty "On This Page" box.
