@@ -1080,15 +1080,13 @@ export default function RecordsCrud() {
 								) }
 							</div>
 
-							{ positionField && (
+							{ positionField && ! canReorder && (
 								<p className="description">
-									{ canReorder
-										? 'Drag a row by its handle to reorder. Sorting saves automatically.'
-										: 'This model has a Position field -- ' +
-										  `sort by "${
-												positionField.label ||
-												positionField.name
-										  }" to drag-and-drop reorder it.` }
+									{ 'This model has a Position field -- ' +
+										`sort by "${
+											positionField.label ||
+											positionField.name
+										}" to drag-and-drop reorder it.` }
 								</p>
 							) }
 
