@@ -573,12 +573,26 @@
 }
 
 .gateway-admin-app .gateway-records-crud-drag-handle {
+	/* `position: relative` makes this cell the positioning context for
+	   the button's own `position: absolute` centering below -- a dead
+	   -center fix (both axes, via `top/left: 50%` + `translate(-50%,
+	   -50%)`) that doesn't depend on this table's own row height, cell
+	   padding, or line-height lining up with the button's own rendered
+	   size the way `vertical-align: middle` alone would need to; a
+	   table cell's own box always stretches to match its row's real
+	   height regardless of its content, so this still centers correctly
+	   against the plain-text cells next to it. */
+	position: relative;
 	width: 1%;
+	min-width: 32px;
 	white-space: nowrap;
-	text-align: center;
 }
 
 .gateway-admin-app .gateway-records-crud-drag-handle-button {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate( -50%, -50% );
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -593,6 +607,18 @@
 	   input alike, but only once the browser stops trying to scroll the
 	   page first. */
 	touch-action: none;
+}
+
+.gateway-admin-app .gateway-records-crud-drag-handle-button svg {
+	/* An inline `<svg>` defaults to `display: inline`, which reserves
+	   invisible descender space underneath it the same way a line of
+	   text does -- real, but neither padding nor margin, so it doesn't
+	   show up as either in devtools' box model. `align-items: center`
+	   above already centers the flex ITEM itself correctly, but that
+	   invisible descender strip is still part of the svg's own rendered
+	   box, throwing off exactly-centered comparisons against plain text
+	   next to it. `display: block` removes it outright. */
+	display: block;
 }
 
 .gateway-admin-app .gateway-records-crud-drag-handle-button:hover {
