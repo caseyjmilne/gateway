@@ -7,32 +7,36 @@
  * child, all but the first `hidden`).
  *
  * Which child is shown is driven entirely by `window.location.hash`, a
- * "hashbang" fragment of the form `#!/{related model}/{slug}` -- see
- * render.php's own docblock for how `{slug}` is computed and why. Each
- * sidebar link is a real `<a href="#!/...">`, so clicking one updates
- * the hash and fires a native `hashchange` event entirely on its own; no
- * click handler of this file's own is involved at all. That's also
- * exactly what makes an external page (or a saved bookmark) able to
- * link straight to one specific child: this same `hashchange` listener,
- * plus one read of an already-present hash on load, is the ONLY thing
- * that decides which panel is visible -- a plain page load with no hash
- * at all leaves render.php's own server-picked first child showing,
+ * "hashbang" fragment of the form `#!/{related model slug}/{slug}` --
+ * see render.php's own docblock for how `{related model slug}` and
+ * `{slug}` are each computed and why (the former is the related model's
+ * own auto-generated permalink slug, e.g. `PortfolioItem` ->
+ * `portfolio-item` -- the same one used for that model's own admin
+ * `#/records/{slug}` URL -- never the raw class name). Each sidebar
+ * link is a real `<a href="#!/...">`, so clicking one updates the hash
+ * and fires a native `hashchange` event entirely on its own; no click
+ * handler of this file's own is involved at all. That's also exactly
+ * what makes an external page (or a saved bookmark) able to link
+ * straight to one specific child: this same `hashchange` listener, plus
+ * one read of an already-present hash on load, is the ONLY thing that
+ * decides which panel is visible -- a plain page load with no hash at
+ * all leaves render.php's own server-picked first child showing,
  * untouched.
  *
  * Scoped per block instance (`querySelectorAll` within one `.gateway-
  * data-display` wrapper at a time) so more than one of these blocks can
  * exist on the same page without their own child ids/slugs -- not
  * guaranteed unique across two different Collections -- colliding with
- * each other; each instance also checks the hash's own `{related model}`
- * segment against its own `data-related-collection` before ever acting
- * on it, so a hash belonging to a DIFFERENT block (or an unrelated
- * feature entirely) is simply ignored.
+ * each other; each instance also checks the hash's own `{related model
+ * slug}` segment against its own `data-related-collection` before ever
+ * acting on it, so a hash belonging to a DIFFERENT block (or an
+ * unrelated feature entirely) is simply ignored.
  */
 
 import './style.scss';
 
 /**
- * @param {string} hash `window.location.hash`, e.g. "#!/Ticket/ticket-one".
+ * @param {string} hash `window.location.hash`, e.g. "#!/portfolio-item/ticket-one".
  * @return {{collection: string, slug: string}|null} Parsed segments, or
  *         `null` for any hash this block doesn't own at all (empty, a
  *         plain `#anchor`, or a hashbang with no `/{slug}` segment).

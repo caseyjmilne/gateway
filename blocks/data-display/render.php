@@ -13,16 +13,22 @@
  * against this feature's own worked example, Doc Groups -> Docs.
  *
  * Every child link is a real, unique, bookmarkable/shareable anchor --
- * `#!/{related model}/{slug}`, a "hashbang" fragment rather than a real
- * WordPress URL/route -- so an external page (or a saved bookmark) can
- * link straight to one specific child's own detail pane. `{slug}` is the
- * related model's own Permalink field value when it has one configured
- * (`Model_Fields::permalink_field_for()`), else the child's own bare id
- * -- unlike gateway/single-record's fully-routed template pages (real
- * rewrite rules, `Permalink_Routes`), a child here is always linkable
- * this way regardless of whether its model has a Permalink field, or a
- * full `root`/Template Page route, configured at all. See view.js's own
- * docblock for how that fragment is read back on load/hashchange.
+ * `#!/{related model slug}/{slug}`, a "hashbang" fragment rather than a
+ * real WordPress URL/route -- so an external page (or a saved bookmark)
+ * can link straight to one specific child's own detail pane.
+ * `{related model slug}` is the related model's own auto-generated
+ * permalink slug (`Model_Builder::slug_for_class()` -- the same one
+ * used for that model's own `#/records/{slug}` admin URL, e.g.
+ * `PortfolioItem` -> `portfolio-item`), never the raw class name, so
+ * this hashbang reads like a URL rather than exposing a PHP class name.
+ * The child's own `{slug}` is the related model's own Permalink FIELD
+ * value when it has one configured (`Model_Fields::permalink_field_for()`),
+ * else the child's own bare id -- unlike gateway/single-record's
+ * fully-routed template pages (real rewrite rules, `Permalink_Routes`),
+ * a child here is always linkable this way regardless of whether its
+ * model has a Permalink field, or a full `root`/Template Page route,
+ * configured at all. See view.js's own docblock for how that fragment
+ * is read back on load/hashchange.
  *
  * Everything is rendered server-side, up front, for every child across
  * every group -- there's no REST fetch on click, no pagination. A plain
@@ -82,7 +88,8 @@ if ( ! $relationship || 'hasMany' !== $relationship['type'] ) {
 	return;
 }
 
-$related_model = $relationship['related_model'];
+$related_model      = $relationship['related_model'];
+$related_model_slug = \Gateway\Model_Builder::slug_for_class( $related_model );
 
 $permalink_field = \Gateway\Model_Fields::permalink_field_for( $related_model );
 
@@ -149,7 +156,7 @@ foreach ( $parents as $parent ) {
 			// of this block's own is involved at all any more.
 			$sidebar_html .= sprintf(
 				'<li><a href="#!/%1$s/%2$s" class="gateway-data-display__child-link%3$s" data-child-id="%4$d" data-child-slug="%5$s" aria-current="%6$s">%7$s</a></li>',
-				rawurlencode( $related_model ),
+				rawurlencode( $related_model_slug ),
 				rawurlencode( $child_slug ),
 				$is_active ? ' is-active' : '',
 				(int) $child->id,
@@ -174,8 +181,9 @@ $wrapper_attributes = get_block_wrapper_attributes(
 		// DIFFERENT Collection's own Data Display block elsewhere on the
 		// same page (or to an unrelated feature entirely) is never
 		// mistaken for this instance's own -- see that file's own
-		// docblock.
-		'data-related-collection' => $related_model,
+		// docblock. The related model's own slug (not its raw class
+		// name), matching what's now built into the href above.
+		'data-related-collection' => $related_model_slug,
 	)
 );
 ?>
