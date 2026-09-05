@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
+import useResolvedModelClass from '../hooks/useResolvedModelClass.js';
 import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
 import PermalinkEditor from '../components/PermalinkEditor.jsx';
@@ -64,7 +65,12 @@ const MODEL_TYPE_LABELS = {
  * become "the" title.
  */
 export default function ModelDetail() {
-	const { className } = useParams();
+	const { modelSlug } = useParams();
+	// The slug is what the URL actually carries -- everything below still
+	// works in terms of the real class name, resolved once here (see
+	// that hook's own docblock for why this fetches the models list
+	// rather than adding a dedicated REST route just for this lookup).
+	const { className, error: slugError } = useResolvedModelClass( modelSlug );
 	const navigate = useNavigate();
 	const location = useLocation();
 	const renameNotice = location.state && location.state.renamed ? location.state : null;
@@ -115,6 +121,18 @@ export default function ModelDetail() {
 	const [ activeTab, setActiveTab ] = useState( 'general' );
 
 	useEffect( () => {
+		// Waits for the slug to resolve to a real class name first (see
+		// useResolvedModelClass()'s own docblock) -- `loading` simply
+		// stays true the whole time either way, so "Loading…" already
+		// covers both phases without a separate state of its own; a slug
+		// that never resolves (slugError set instead) is handled by the
+		// JSX below rendering that error and no longer showing "Loading…"
+		// once it's set, since this effect body never runs at all in
+		// that case.
+		if ( ! className ) {
+			return;
+		}
+
 		let cancelled = false;
 
 		setLoading( true );
@@ -176,11 +194,14 @@ export default function ModelDetail() {
 					} ),
 				}
 			);
-			// The class name (and therefore this page's own URL) may have
+			// The class name (and therefore this page's own URL, which is
+			// keyed by its SLUG -- see App.jsx's own docblock) may have
 			// changed -- navigate to wherever the model actually lives now
 			// rather than staying on a route that no longer resolves. A
-			// Plural-Title-only save lands back on this same route.
-			navigate( `/models/${ data.class }`, {
+			// Plural-Title-only save lands back on this same route (`rename()`
+			// still returns a real `slug` even when the class itself is
+			// unchanged -- see Model_Builder::rename()'s own docblock).
+			navigate( `/models/${ data.slug }`, {
 				replace: true,
 				state: { renamed: true, warnings: data.warnings || [] },
 			} );
@@ -217,7 +238,13 @@ export default function ModelDetail() {
 				<Link to="/">&larr; Back to Models</Link>
 			</p>
 
-			{ loading && <p>Loading…</p> }
+			{ loading && ! slugError && <p>Loading…</p> }
+
+			{ slugError && (
+				<div className="notice notice-error">
+					<p>{ slugError }</p>
+				</div>
+			) }
 
 			{ loadError && (
 				<div className="notice notice-error">

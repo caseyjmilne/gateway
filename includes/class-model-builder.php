@@ -125,9 +125,18 @@ class Model_Builder {
 	 *                              to TYPE_DATA_MODEL (the original,
 	 *                              only-ever-blank behavior) for any
 	 *                              caller that doesn't pass one explicitly.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
+	 * @param string|null $exclude_slug_class Internal only -- `rename()`'s
+	 *                              own still-registered old class, so its
+	 *                              own call into this method never rejects
+	 *                              a rename target whose slug happens to
+	 *                              coincide with the class BEING renamed
+	 *                              away from (see slug_for_class()'s own
+	 *                              docblock for how two differently
+	 *                              -formatted class names can share one
+	 *                              slug) as a false "collision."
+	 * @return array{class:string,slug:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
 	 */
-	public static function create( $title, $plural_title = '', $type = self::TYPE_DATA_MODEL ) {
+	public static function create( $title, $plural_title = '', $type = self::TYPE_DATA_MODEL, $exclude_slug_class = null ) {
 		$title = trim( (string) $title );
 
 		if ( '' === $title ) {
@@ -183,6 +192,31 @@ class Model_Builder {
 					/* translators: %s: table name */
 					__( 'A model already uses the table "%s".', 'gateway' ),
 					$table_name
+				),
+				array( 'status' => 409 )
+			);
+		}
+
+		$new_slug        = self::slug_for_class( $class_name );
+		$slug_collision  = self::find_slug_collision( $new_slug, $exclude_slug_class );
+
+		if ( $slug_collision ) {
+			// Reachable even with a class name (and therefore table) that
+			// are both otherwise free: "Portfolio_Item" and "PortfolioItem"
+			// are two DIFFERENT class names that slug_for_class() maps to
+			// the exact same URL slug -- see that method's own docblock
+			// for why that's deliberate, not a bug to fix by making them
+			// diverge. Left unresolved, the admin app's own `#/models/{slug}`
+			// route (Model_REST_Controller::describe_model()'s own `slug`)
+			// would have no way to tell the two models apart at all.
+			return new \WP_Error(
+				'gateway_model_slug_collision',
+				sprintf(
+					/* translators: 1: new model class name, 2: the URL slug both would share, 3: the existing model class name already using it */
+					__( 'A model named "%1$s" would use the same URL slug ("%2$s") as the existing model "%3$s" -- choose a different title.', 'gateway' ),
+					$class_name,
+					$new_slug,
+					$slug_collision
 				),
 				array( 'status' => 409 )
 			);
@@ -304,6 +338,7 @@ class Model_Builder {
 
 		$result = array(
 			'class'              => $class_name,
+			'slug'               => $new_slug,
 			'table'              => $table_name,
 			'migration_class'    => $migration_class,
 			'migration_version'  => $version,
@@ -347,7 +382,7 @@ class Model_Builder {
 	 * @param string $title        New free-text title.
 	 * @param string $plural_title New free-text plural label -- see
 	 *                              create()'s own docblock.
-	 * @return array{class:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
+	 * @return array{class:string,slug:string,table:string,migration_class:string,migration_version:int,plural_title:string,type:string,warnings?:string[]}|\WP_Error
 	 */
 	public static function rename( $old_class, $title, $plural_title = '' ) {
 		if ( ! Model_Registry::has( $old_class ) || ! class_exists( $old_class ) ) {
@@ -381,6 +416,7 @@ class Model_Builder {
 
 			return array(
 				'class'             => $old_class,
+				'slug'              => self::slug_for_class( $old_class ),
 				'table'             => $old_table,
 				'migration_class'   => $old_migration_class,
 				'migration_version' => self::registered_migration_version( $old_migration_class ),
@@ -417,7 +453,9 @@ class Model_Builder {
 		// own docblock for why the old one is only touched after this
 		// succeeds. $old_type carried through unchanged -- see this
 		// method's own docblock for why there's no way to change it here.
-		$created = self::create( $title, $plural_title, $old_type );
+		// $old_class excluded from create()'s own slug-collision check --
+		// see that parameter's own docblock for why.
+		$created = self::create( $title, $plural_title, $old_type, $old_class );
 
 		if ( is_wp_error( $created ) ) {
 			return $created;
@@ -640,6 +678,92 @@ class Model_Builder {
 		$clean = preg_replace( '/[^A-Za-z0-9 _-]+/', '', $title );
 
 		return \Illuminate\Support\Str::studly( $clean );
+	}
+
+	/**
+	 * A model's own class name, turned into the kebab-case slug the admin
+	 * app's own router uses in place of the raw class name (`#/models/doc`,
+	 * not `#/models/Doc`) -- "more correct for a URL," as requested
+	 * directly. `describe_model()` (Model_REST_Controller) is this
+	 * method's one real caller, exposing the result as `slug` on every
+	 * model the list/detail routes return; `create()`/`rename()` below
+	 * are its other two callers, using it purely to reject a collision
+	 * before ever touching disk (see their own call sites).
+	 *
+	 * Deliberately NOT `\Illuminate\Support\Str::kebab()` (== `snake($value,
+	 * '-')`): fed "Portfolio_Item", that inserts a SECOND separator at the
+	 * existing underscore's own camelCase-looking boundary on top of the
+	 * one already there, producing "portfolio_-item" -- an existing
+	 * underscore has to be collapsed into the same delimiter the
+	 * camelCase split also uses BEFORE that split runs, not preserved
+	 * alongside it, which is exactly what turns "Portfolio_Item" and
+	 * "PortfolioItem" into the identical slug the person who asked for
+	 * this named as the whole point ("Portfolio_Item=portfolio-item,
+	 * PortfolioItem=portfolio-item also").
+	 *
+	 * @param string $class_name Model class name, e.g. "Portfolio_Item".
+	 * @return string Kebab-case slug, e.g. "portfolio-item". Empty only
+	 *                for a class name with no letters/digits at all,
+	 *                which `class_name_from_title()`'s own validation
+	 *                already never allows into a REAL model's name.
+	 */
+	public static function slug_for_class( $class_name ) {
+		// An existing underscore is just another word separator here --
+		// collapsed into the SAME delimiter (a hyphen) the camelCase pass
+		// below also produces, so "Portfolio_Item" and "PortfolioItem"
+		// converge on one identical result rather than the underscore
+		// surviving as a second, different separator alongside it.
+		$slug = str_replace( '_', '-', $class_name );
+
+		// A lowercase/digit immediately followed by an uppercase letter is
+		// a camelCase word boundary ("PortfolioItem" -> "Portfolio-Item").
+		$slug = preg_replace( '/(?<=[a-z0-9])(?=[A-Z])/', '-', $slug );
+
+		// An acronym run followed by a new Capitalized word is ALSO a
+		// boundary, one word earlier than the rule above alone would
+		// place it ("HTMLParser" -> "HTML-Parser", not "H-T-M-L-Parser") --
+		// matches Str::studly()'s own "an acronym stays together" reading
+		// of a class name.
+		$slug = preg_replace( '/(?<=[A-Z])(?=[A-Z][a-z])/', '-', $slug );
+
+		$slug = strtolower( $slug );
+		// Anything left that isn't a lowercase letter or digit (stray
+		// punctuation a class name was never actually allowed to contain
+		// in the first place, belt-and-suspenders only) collapses to a
+		// single hyphen rather than surviving into the slug or leaving a
+		// double-hyphen behind.
+		$slug = preg_replace( '/[^a-z0-9]+/', '-', $slug );
+
+		return trim( $slug, '-' );
+	}
+
+	/**
+	 * Whether any ALREADY-registered model (other than `$exclude_class`,
+	 * for `rename()`'s own sake -- a model's own current class is not a
+	 * collision against itself) already maps to `$slug` via
+	 * `slug_for_class()` -- `create()`/`rename()`'s own shared check
+	 * before ever touching disk for a class name that would otherwise be
+	 * perfectly free.
+	 *
+	 * @param string      $slug          A candidate model's own computed slug.
+	 * @param string|null $exclude_class A class name to skip when checking --
+	 *                                     `rename()`'s own still-registered
+	 *                                     old class, mid-rename.
+	 * @return string|null The existing class name already using `$slug`,
+	 *                      or null if there's no collision.
+	 */
+	private static function find_slug_collision( $slug, $exclude_class = null ) {
+		foreach ( Model_Registry::all() as $existing_class ) {
+			if ( $existing_class === $exclude_class ) {
+				continue;
+			}
+
+			if ( self::slug_for_class( $existing_class ) === $slug ) {
+				return $existing_class;
+			}
+		}
+
+		return null;
 	}
 
 	/**

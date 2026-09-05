@@ -317,7 +317,7 @@ export default function ModelsList() {
 						{ models.map( ( model ) => (
 							<tr key={ model.class }>
 								<td>
-									<Link to={ `/models/${ model.class }` }>
+									<Link to={ `/models/${ model.slug }` }>
 										<code>{ model.class }</code>
 									</Link>
 								</td>

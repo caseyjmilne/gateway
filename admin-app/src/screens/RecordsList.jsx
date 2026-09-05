@@ -71,7 +71,7 @@ export default function RecordsList() {
 						{ models.map( ( model ) => (
 							<tr key={ model.class }>
 								<td>
-									<Link to={ `/records/${ model.class }` }>
+									<Link to={ `/records/${ model.slug }` }>
 										<code>{ model.class }</code>
 									</Link>
 								</td>

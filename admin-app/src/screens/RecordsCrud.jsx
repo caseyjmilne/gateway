@@ -4,6 +4,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { GripVertical } from 'lucide-react';
 import { apiFetch } from '../api.js';
 import useFieldTypes from '../hooks/useFieldTypes.js';
+import useResolvedModelClass from '../hooks/useResolvedModelClass.js';
 import useReorderSensors from '../hooks/useReorderSensors.js';
 import useSortableRow from '../hooks/useSortableRow.js';
 import RecordForm from '../components/RecordForm.jsx';
@@ -140,7 +141,12 @@ const POSITION_PER_PAGE = 100;
  * typing without hiding the value from the person typing it.
  */
 export default function RecordsCrud() {
-	const { className } = useParams();
+	const { modelSlug } = useParams();
+	// The slug is what the URL actually carries -- everything below still
+	// works in terms of the real class name, resolved once here (see
+	// that hook's own docblock for why this fetches the models list
+	// rather than adding a dedicated REST route just for this lookup).
+	const { className, error: slugError } = useResolvedModelClass( modelSlug );
 	const fieldTypes = useFieldTypes();
 
 	const [ model, setModel ] = useState( null );
@@ -230,6 +236,14 @@ export default function RecordsCrud() {
 	const basePath = `/models/${ encodeURIComponent( className ) }/records`;
 
 	useEffect( () => {
+		// Waits for the slug to resolve to a real class name first (see
+		// useResolvedModelClass()'s own docblock) -- a slug that never
+		// resolves (slugError set instead) is handled by the JSX below,
+		// since this effect body never runs at all in that case.
+		if ( ! className ) {
+			return;
+		}
+
 		let cancelled = false;
 
 		setModel( null );
@@ -1001,6 +1015,12 @@ export default function RecordsCrud() {
 				<Link to="/records">&larr; Back to Records</Link>
 			</p>
 
+			{ slugError && (
+				<div className="notice notice-error">
+					<p>{ slugError }</p>
+				</div>
+			) }
+
 			{ modelError && (
 				<div className="notice notice-error">
 					<p>{ modelError }</p>
@@ -1016,7 +1036,7 @@ export default function RecordsCrud() {
 					{ fields.length === 0 ? (
 						<p className="description">
 							This model has no fields yet -- add some on its{ ' ' }
-							<Link to={ `/models/${ model.class }` }>
+							<Link to={ `/models/${ model.slug }` }>
 								Models
 							</Link>{ ' ' }
 							screen first.

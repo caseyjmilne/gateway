@@ -9,12 +9,20 @@ import RecordsCrud from './screens/RecordsCrud.jsx';
  * HashRouter, not BrowserRouter: this app is loaded from one fixed
  * wp-admin URL (admin.php?page=gateway) that WordPress's own PHP routing
  * owns -- there's no server-side route for, say,
- * admin.php?page=gateway/models/Widget for an actual browser
+ * admin.php?page=gateway#/models/widget for an actual browser
  * navigation/refresh/bookmark to hit, and no WordPress rewrite rule this
  * plugin could add would change that. Routing via the URL's #hash
  * fragment instead keeps every route (the models list, a single model,
  * a model's records) bookmarkable and back-button-friendly without
  * needing any of that.
+ *
+ * `:modelSlug` (not `:className`, its own name until a direct request:
+ * "?page=gateway#/models/Doc ... I want to use the new permalink
+ * ?page=gateway#/models/doc") is a model's own kebab-case URL slug
+ * (`Model_Builder::slug_for_class()`), never the real class name --
+ * `useResolvedModelClass()` is what `ModelDetail`/`RecordsCrud` both use
+ * to turn it back into one before calling any REST route, every one of
+ * which still takes a real class name; only the URL itself changed.
  */
 export default function App() {
 	return (
@@ -24,9 +32,9 @@ export default function App() {
 				<MainTabs />
 				<Routes>
 					<Route path="/" element={ <ModelsList /> } />
-					<Route path="/models/:className" element={ <ModelDetail /> } />
+					<Route path="/models/:modelSlug" element={ <ModelDetail /> } />
 					<Route path="/records" element={ <RecordsList /> } />
-					<Route path="/records/:className" element={ <RecordsCrud /> } />
+					<Route path="/records/:modelSlug" element={ <RecordsCrud /> } />
 					<Route path="/database" element={ <DatabaseConfig /> } />
 				</Routes>
 			</div>

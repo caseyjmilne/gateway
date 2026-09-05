@@ -217,7 +217,7 @@ class Model_REST_Controller {
 	 * generate it, since that link isn't stored anywhere separately).
 	 *
 	 * @param string $class Registered model class name.
-	 * @return array{class:string,table:string,plural_title:string,type:string,fields:array,relationships:array,columns:?array,count:?int,migration:?array}|null
+	 * @return array{class:string,slug:string,table:string,plural_title:string,type:string,fields:array,relationships:array,columns:?array,count:?int,migration:?array}|null
 	 *              Null if $class is no longer a real, loaded class
 	 *              (shouldn't normally happen, but registration and the
 	 *              filesystem could in principle drift apart).
@@ -255,6 +255,14 @@ class Model_REST_Controller {
 
 		return array(
 			'class'         => $class,
+			// The kebab-case URL slug the admin app's own router uses in
+			// place of the raw class name (`#/models/doc`, not
+			// `#/models/Doc`) -- always mechanically derived from `$class`
+			// itself (Model_Builder::slug_for_class()'s own docblock), so
+			// it's included here rather than stored anywhere: this stays
+			// correct automatically even for a model registered before
+			// this field ever existed.
+			'slug'          => Model_Builder::slug_for_class( $class ),
 			'table'         => $table,
 			'plural_title'  => Model_Builder::get_plural_title( $class ),
 			'type'          => Model_Builder::get_model_type( $class ),
