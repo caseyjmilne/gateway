@@ -513,6 +513,26 @@
 	   one couldn't just use `middle`), is the simpler fix that actually
 	   applies here. */
 	vertical-align: middle;
+	/* wp-admin's own `.widefat td { line-height: 1.5em; }` -- meant for
+	   TD content that can wrap onto multiple lines -- otherwise inflates
+	   this table's own single-line text well past its actual glyph
+	   height, so the text itself renders slightly off-center within its
+	   own (taller) line box, independent of `vertical-align` above:
+	   that property centers the cell's content BLOCK within the row,
+	   but a line box's own extra leading isn't guaranteed to split
+	   perfectly evenly above/below the glyphs inside it. `normal` lets
+	   each cell's line-height follow its own font metrics instead,
+	   which is what actually lines the text up with the drag handle's
+	   own geometrically-centered icon (`position: absolute` + `translate`
+	   below, unaffected by any of this) -- kept as a narrow, single
+	   -property override rather than dropping `.widefat`/`.striped`
+	   altogether: those still give this table its native wp-admin list
+	   -table look (borders, striping) for free, the same reason this
+	   whole file leans on wp-admin's own stylesheet instead of building
+	   a parallel one -- it's specifically THIS one typographic default,
+	   sized for potentially multi-line content, that doesn't fit a
+	   single-line data row. */
+	line-height: normal;
 }
 
 .gateway-admin-app .gateway-records-crud table td:last-child {
