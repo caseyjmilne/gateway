@@ -107,6 +107,13 @@ class True_False_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function is_orderable() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * gateway/card-field-text prints `(string) $value` -- PHP casts a
 	 * boolean to "1" (true) or "" (an empty string, false), and an empty

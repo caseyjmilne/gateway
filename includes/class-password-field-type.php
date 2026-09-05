@@ -91,6 +91,17 @@ class Password_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * A secret value's relative sort position would leak exactly the
+	 * same thing its absence from a facet already protects against --
+	 * see is_filterable() immediately above.
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * A secret value has no legitimate reason to ever be printed as
 	 * plain, visible text on a public-facing card -- independent of, if
 	 * overlapping with, is_sensitive()'s own masking-on-admin-list-view

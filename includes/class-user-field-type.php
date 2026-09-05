@@ -156,6 +156,17 @@ class User_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * A bare user id (or, with Filter by Role's own `multiple` on, a
+	 * JSON-encoded array of them) was never a meaningful thing to sort
+	 * by -- same reasoning as a Relate to One field's own id.
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * A bare user id isn't a name -- printing it as plain text would show
 	 * a meaningless number where a person's name belongs (the same
 	 * reasoning `Relate_To_One_Field_Type`'s own docblock gives; unlike a

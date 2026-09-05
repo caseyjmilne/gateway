@@ -75,6 +75,13 @@ class Text_Area_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_orderable() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function is_text_renderable() {
 		return true;
 	}

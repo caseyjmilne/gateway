@@ -94,6 +94,13 @@ class OEmbed_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function is_orderable() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * The stored value is just a URL -- as safe/meaningful to print as
 	 * plain text as URL_Field_Type's own value already is.

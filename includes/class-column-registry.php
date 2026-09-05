@@ -268,6 +268,18 @@ class Column_Registry {
 	 * to look a different size up from at all, so that's the one case with
 	 * no Size control to offer.
 	 *
+	 * `isOrderable` is the same "a field type declares this about itself"
+	 * pattern once more, via `Field_Type::is_orderable()` -- what
+	 * `gateway/data-display`'s own Order By pickers (one for its Parent
+	 * collection, one for its Child/related collection) read to decide
+	 * which fields to offer at all, and what `Model_Fields::
+	 * resolve_orderby()` re-checks server-side before that block's own
+	 * render.php ever runs an `ORDER BY` against one -- `true` for the
+	 * synthetic `id` column and every built-in type `is_filterable()`
+	 * also is, `false` everywhere `is_filterable()` also is (see that
+	 * interface method's own docblock for why the two are separate
+	 * methods despite agreeing on every built-in type today).
+	 *
 	 * @param string $class_name Model class name.
 	 * @return array[] Column definitions, or [] if $class_name isn't a
 	 *                  real, registered model.
@@ -293,12 +305,19 @@ class Column_Registry {
 				// formatting -- an id is an identifier, not a quantity.
 				'isNumeric'        => false,
 				'isImage'          => false,
+				// A real, meaningful thing to sort by -- see
+				// Field_Type::is_orderable()'s own docblock for why this
+				// synthetic column is always true here, the same
+				// long-standing default every model's own id already got
+				// before this flag existed at all.
+				'isOrderable'      => true,
 			),
 		);
 
 		foreach ( Model_Fields::all( $class_name ) as $field ) {
 			$type_class          = Field_Type_Registry::get( $field['type'] );
 			$is_filterable       = $type_class && class_exists( $type_class ) && $type_class::is_filterable();
+			$is_orderable        = $type_class && class_exists( $type_class ) && $type_class::is_orderable();
 			$is_text_renderable  = $type_class && class_exists( $type_class ) && $type_class::is_text_renderable();
 			// gateway/card-field-text's own second eligibility signal --
 			// see Field_Type::is_html_renderable()'s own docblock for why
@@ -376,6 +395,11 @@ class Column_Registry {
 				'isImage'          => $is_image,
 				'returnFormat'     => $return_format,
 				'newLines'         => $new_lines,
+				// gateway/data-display's own Order By pickers (one for its
+				// Parent collection, one for its Child/related collection)
+				// read this to decide which fields to offer at all -- see
+				// Field_Type::is_orderable()'s own docblock.
+				'isOrderable'      => $is_orderable,
 			);
 		}
 
@@ -459,6 +483,11 @@ class Column_Registry {
 					'type'                => 'model_related_field',
 					'isFilterable'        => false,
 					'facetType'           => array(),
+					// Same reasoning as isFilterable above -- neither
+					// Facet_Query nor (now) gateway/data-display's own
+					// Order By pickers can filter/sort THROUGH a
+					// relationship, only against $class_name's own table.
+					'isOrderable'         => false,
 					// False only for a related WYSIWYG field today (see
 					// isHtmlRenderable below for that one instead) -- the
 					// "one level deep only" skip above already excludes a

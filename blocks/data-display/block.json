@@ -29,6 +29,22 @@
 		"sourceType": {
 			"type": "string",
 			"default": "collection"
+		},
+		"parentOrderBy": {
+			"type": "string",
+			"default": "id"
+		},
+		"parentOrder": {
+			"type": "string",
+			"default": "asc"
+		},
+		"childOrderBy": {
+			"type": "string",
+			"default": "id"
+		},
+		"childOrder": {
+			"type": "string",
+			"default": "asc"
 		}
 	},
 	"supports": {

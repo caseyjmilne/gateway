@@ -412,6 +412,64 @@ class Model_Fields {
 	}
 
 	/**
+	 * Validates a candidate `orderby` field name against what's actually
+	 * safe and meaningful to sort `$class_name` by right now -- the
+	 * `gateway/data-display` block's own equivalent of
+	 * `Records_REST_Controller::resolve_sort()`, for a genuinely
+	 * different situation that method's own per-model, admin-opted-in
+	 * `Model_Columns` "Sortable" gate doesn't fit: a Data Display block's
+	 * Order By pickers (one for its Parent collection, one for its
+	 * Child/related collection -- see that block's own edit.js/render.php)
+	 * are set directly by whoever is BUILDING the page in the block
+	 * editor, the same trusted, authenticated context `Position_Field_Type`'s
+	 * own always-allowed sort already treats as needing no separate
+	 * per-model opt-in either -- there's no public, unauthenticated
+	 * request parameter here for `Model_Columns`' own "only what a site
+	 * owner explicitly decided is safe to expose sortable" reasoning to
+	 * apply to. So this checks only what `Field_Type::is_orderable()`
+	 * itself already declares meaningful to sort by at all, not a second,
+	 * separate per-model configuration on top of it.
+	 *
+	 * `id` is always allowed -- every generated model has a real `id`
+	 * primary key, but it's never one of this class's own user-defined
+	 * fields (`id` is reserved, see `RESERVED_NAMES`), so it would never
+	 * be found by the loop below on its own. Falls back to `'id'` for a
+	 * missing, blank, or no-longer-valid field name (renamed, removed, or
+	 * retyped to something `is_orderable()` now rejects since the block
+	 * was last configured) rather than erroring -- a stale block
+	 * attribute should degrade to this method's own long-standing
+	 * default, not break the whole block.
+	 *
+	 * @param string $class_name      Model class name.
+	 * @param string $requested_field Candidate `orderby` field name (an
+	 *                                  `orderBy`/`childOrderBy` block
+	 *                                  attribute, typically).
+	 * @return string A field name safe to pass straight to `orderBy()` --
+	 *                  either `$requested_field` itself, or `'id'`.
+	 */
+	public static function resolve_orderby( $class_name, $requested_field ) {
+		$requested_field = (string) $requested_field;
+
+		if ( '' === $requested_field || 'id' === $requested_field ) {
+			return 'id';
+		}
+
+		foreach ( self::all( $class_name ) as $field ) {
+			if ( $field['name'] !== $requested_field ) {
+				continue;
+			}
+
+			$type_class = Field_Type_Registry::get( $field['type'] );
+
+			return ( $type_class && class_exists( $type_class ) && $type_class::is_orderable() )
+				? $requested_field
+				: 'id';
+		}
+
+		return 'id';
+	}
+
+	/**
 	 * Prepares a single field array (one of `all()`'s own return values,
 	 * or `add()`/`update()`'s) for a JSON REST response -- specifically,
 	 * casts `settings` to a real PHP object (`(object)`) rather than

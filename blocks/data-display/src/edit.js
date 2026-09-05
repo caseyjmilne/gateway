@@ -43,6 +43,74 @@ const LOOPABLE_TYPES = [ 'hasMany' ];
 // own INNER_BLOCKS_LAYOUT constant.
 const INNER_BLOCKS_LAYOUT = { type: 'default' };
 
+const ORDER_OPTIONS = [
+	{ label: __( 'Ascending', 'gateway' ), value: 'asc' },
+	{ label: __( 'Descending', 'gateway' ), value: 'desc' },
+];
+
+/**
+ * `Column_Registry::get_columns_for_collection()`'s own `isOrderable`
+ * (`Field_Type::is_orderable()`) is what narrows a collection's own
+ * fields down to the ones this block's Order By pickers should even
+ * offer -- the synthetic `id` column included (always `isOrderable`),
+ * every other field only when its own type is (see that interface
+ * method's own docblock for exactly which built-in types that excludes
+ * and why: Password, both Relate types, and every array-valued type
+ * like Checkbox/Post Object/User).
+ *
+ * @param {Object[]} fields `useAvailableColumns()`'s own returned list.
+ * @return {{label: string, value: string}[]}
+ */
+function buildOrderByOptions( fields ) {
+	return fields
+		.filter( ( field ) => field.isOrderable )
+		.map( ( field ) => ( { label: field.label, value: field.key } ) );
+}
+
+/**
+ * A permissive, best-effort comparator for the editor's OWN preview
+ * only -- the real front end (render.php) always runs the authoritative
+ * SQL `ORDER BY` (`Model_Fields::resolve_orderby()`); this just needs
+ * the preview to usually look right for whatever page-1-sized sample is
+ * already fetched, the same "not exhaustively correct for every locale/
+ * collation edge case" trade-off RecordsCrud.jsx's own identically
+ * -reasoned `compareForInstantSort()` already accepts for its own
+ * client-side instant resort.
+ */
+function comparePreviewValues( a, b ) {
+	if ( 'number' === typeof a && 'number' === typeof b ) {
+		return a - b;
+	}
+
+	return String( a ?? '' ).localeCompare( String( b ?? '' ), undefined, {
+		numeric: true,
+		sensitivity: 'base',
+	} );
+}
+
+/**
+ * Sorts a copy of `items` by `orderBy` (falling back to `id`, matching
+ * `Model_Fields::resolve_orderby()`'s own default) and `order`
+ * ('asc'/'desc') -- `getValue` lets a caller pull the value to compare
+ * from somewhere other than `item[orderBy]` directly (the parent groups
+ * below are `{parent, children}` wrapper objects, not raw records).
+ *
+ * @param {Object[]} items
+ * @param {string}   orderBy
+ * @param {string}   order
+ * @param {Function} [getValue]
+ * @return {Object[]} A new, sorted array -- `items` itself is untouched.
+ */
+function sortForPreview( items, orderBy, order, getValue ) {
+	const key          = orderBy || 'id';
+	const resolveValue = getValue || ( ( item ) => item[ key ] );
+	const sorted       = [ ...items ].sort( ( a, b ) =>
+		comparePreviewValues( resolveValue( a ), resolveValue( b ) )
+	);
+
+	return 'desc' === order ? sorted.reverse() : sorted;
+}
+
 /**
  * The real, editable template -- rendered for exactly one child record at
  * a time: whichever one is active on the sidebar (or the first child, when
@@ -68,7 +136,15 @@ function DataDisplayInnerBlocks() {
 }
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
-	const { collection, relationshipMethod, relatedCollection } = attributes;
+	const {
+		collection,
+		relationshipMethod,
+		relatedCollection,
+		parentOrderBy,
+		parentOrder,
+		childOrderBy,
+		childOrder,
+	} = attributes;
 
 	const [ activeChildId, setActiveChildId ] = useState( null );
 	const { replaceInnerBlocks } = useDispatch( blockEditorStore );
@@ -112,6 +188,16 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			relatedCollection: relationship ? relationship.related_model : '',
 		} );
 	};
+
+	// The Parent Order By picker's own field list -- collection's own
+	// fields, the same shape (and the same `isOrderable` flag) the
+	// EXISTING relatedFields fetch just below already gets for the Child
+	// Order By picker, just against `collection` instead of
+	// `relatedCollection`.
+	const { availableColumns: parentFields, isLoading: isLoadingParentFields } = useAvailableColumns( '', {
+		sourceType: 'collection',
+		collection,
+	} );
 
 	// Auto-seed a starting template the first time a relationship is
 	// chosen, or whenever it's changed to one pointing at a different
@@ -174,16 +260,28 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// for a single record. Purely a preview aid; the real front end
 	// (render.php) queries directly, with no REST round trip and no cap
 	// on how many groups/children it shows.
-	const [ groups, setGroups ] = useState( null );
+	//
+	// Fetched RAW, un-ordered by either parentOrderBy/childOrderBy --
+	// the REST endpoints this hits (GET /records, GET .../relationships/
+	// {method}) are the general-purpose ones RecordsCrud.jsx's own table
+	// also uses, whose own `orderby` support is gated by that SEPARATE,
+	// admin-opted-in Model_Columns "Sortable" config (see resolve_sort()'s
+	// own docblock) -- not the same, type-declared `is_orderable()` this
+	// block's own pickers are built on. Re-sorting the already-fetched
+	// sample CLIENT-SIDE below (`groups`, derived from this) sidesteps
+	// that mismatch entirely: the preview always reflects exactly what
+	// was actually picked, with no dependency on whether this model's
+	// Columns tab happens to also mark the same field sortable.
+	const [ rawGroups, setRawGroups ] = useState( null );
 
 	useEffect( () => {
 		if ( ! collection || ! relationshipMethod || isStaleRelationship ) {
-			setGroups( [] );
+			setRawGroups( [] );
 			return;
 		}
 
 		let isCurrent = true;
-		setGroups( null );
+		setRawGroups( null );
 
 		apiFetch( {
 			path: `/gateway/v1/models/${ collection }/records?per_page=${ PREVIEW_GROUP_COUNT }`,
@@ -206,12 +304,12 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			} )
 			.then( ( built ) => {
 				if ( isCurrent ) {
-					setGroups( built );
+					setRawGroups( built );
 				}
 			} )
 			.catch( () => {
 				if ( isCurrent ) {
-					setGroups( [] );
+					setRawGroups( [] );
 				}
 			} );
 
@@ -219,6 +317,29 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			isCurrent = false;
 		};
 	}, [ collection, relationshipMethod, isStaleRelationship ] );
+
+	// The actual preview: rawGroups, re-sorted client-side by whichever
+	// Order By/Order the Inspector currently has set -- see rawGroups'
+	// own docblock above for why this can't simply be REST `orderby`
+	// params on the fetch itself. Groups (parents) are sorted by
+	// parentOrderBy/parentOrder; each group's own children by
+	// childOrderBy/childOrder -- exactly mirroring render.php's own two
+	// independent orderBy() calls.
+	const groups = useMemo( () => {
+		if ( ! rawGroups ) {
+			return rawGroups;
+		}
+
+		return sortForPreview(
+			rawGroups,
+			parentOrderBy,
+			parentOrder,
+			( group ) => group.parent[ parentOrderBy || 'id' ]
+		).map( ( group ) => ( {
+			...group,
+			children: sortForPreview( group.children, childOrderBy, childOrder ),
+		} ) );
+	}, [ rawGroups, parentOrderBy, parentOrder, childOrderBy, childOrder ] );
 
 	// Every child, across every group, flattened -- what actually drives
 	// which one is active below. A group heading itself is never "active"
@@ -289,6 +410,48 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 					</Notice>
 				) }
 			</PanelBody>
+			{ collection && (
+				<PanelBody title={ __( 'Parent Order', 'gateway' ) } initialOpen={ false }>
+					<SelectControl
+						label={ __( 'Order By', 'gateway' ) }
+						value={ parentOrderBy }
+						options={ buildOrderByOptions( parentFields ) }
+						disabled={ isLoadingParentFields }
+						onChange={ ( value ) =>
+							setAttributes( { parentOrderBy: value } )
+						}
+					/>
+					<SelectControl
+						label={ __( 'Order', 'gateway' ) }
+						value={ parentOrder }
+						options={ ORDER_OPTIONS }
+						onChange={ ( value ) =>
+							setAttributes( { parentOrder: value } )
+						}
+					/>
+				</PanelBody>
+			) }
+			{ relatedCollection && (
+				<PanelBody title={ __( 'Child Order', 'gateway' ) } initialOpen={ false }>
+					<SelectControl
+						label={ __( 'Order By', 'gateway' ) }
+						value={ childOrderBy }
+						options={ buildOrderByOptions( relatedFields ) }
+						disabled={ isLoadingRelatedFields }
+						onChange={ ( value ) =>
+							setAttributes( { childOrderBy: value } )
+						}
+					/>
+					<SelectControl
+						label={ __( 'Order', 'gateway' ) }
+						value={ childOrder }
+						options={ ORDER_OPTIONS }
+						onChange={ ( value ) =>
+							setAttributes( { childOrder: value } )
+						}
+					/>
+				</PanelBody>
+			) }
 		</InspectorControls>
 	);
 

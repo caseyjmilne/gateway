@@ -43,17 +43,27 @@
  * the active one) -- real pagination/lazy-loading here is real, separate
  * work this version doesn't take on.
  *
- * Ordered oldest-first (`orderBy( 'id', 'asc' )`), deliberately NOT
- * newest-first the way Data Table/Data Cards' own activity-feed-shaped
- * grids default to -- this is a stable navigational index, not a feed:
- * newest-first would reorder existing sidebar entries every time a new
- * group/child is added, which is exactly the wrong feel for a sidebar a
- * visitor is expected to find the same entry in from one visit to the
- * next.
+ * Ordered by `parentOrderBy`/`parentOrder` (groups) and `childOrderBy`/
+ * `childOrder` (children within each group) -- two independent Order By
+ * pickers in this block's own Inspector, one per collection, each
+ * offering only that collection's own `Field_Type::is_orderable()`
+ * fields (`Model_Fields::resolve_orderby()` re-validates the stored
+ * attribute against the model's own CURRENT fields before it ever
+ * reaches a raw `orderBy()` call below -- a stale attribute, from a
+ * field since renamed/removed/retyped, degrades to that method's own
+ * `'id'` fallback rather than erroring). Defaults to `id`/`asc` for
+ * both -- oldest-first, deliberately NOT newest-first the way Data
+ * Table/Data Cards' own activity-feed-shaped grids default to: this is
+ * a stable navigational index, not a feed, and newest-first would
+ * reorder existing sidebar entries every time a new group/child is
+ * added, exactly the wrong feel for a sidebar a visitor is expected to
+ * find the same entry in from one visit to the next -- the same
+ * reasoning that made `id`/`asc` this block's own hardcoded, un
+ * -configurable behavior before this feature existed at all.
  *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: collection, relationshipMethod, relatedCollection.
+ * @var array    $attributes Block attributes: collection, relationshipMethod, relatedCollection, parentOrderBy, parentOrder, childOrderBy, childOrder.
  * @var string   $content    Inner block content (unused -- the real per-child rendering below replaces it).
  * @var WP_Block $block      Block instance.
  */
@@ -93,6 +103,20 @@ $related_model_slug = \Gateway\Model_Builder::slug_for_class( $related_model );
 
 $permalink_field = \Gateway\Model_Fields::permalink_field_for( $related_model );
 
+// See this file's own docblock -- both re-validated against $collection/
+// $related_model's own CURRENT fields (Model_Fields::resolve_orderby())
+// before ever reaching the raw orderBy() calls below.
+$parent_order_by = \Gateway\Model_Fields::resolve_orderby(
+	$collection,
+	isset( $attributes['parentOrderBy'] ) ? (string) $attributes['parentOrderBy'] : 'id'
+);
+$parent_order    = isset( $attributes['parentOrder'] ) && 'desc' === strtolower( (string) $attributes['parentOrder'] ) ? 'desc' : 'asc';
+$child_order_by  = \Gateway\Model_Fields::resolve_orderby(
+	$related_model,
+	isset( $attributes['childOrderBy'] ) ? (string) $attributes['childOrderBy'] : 'id'
+);
+$child_order     = isset( $attributes['childOrder'] ) && 'desc' === strtolower( (string) $attributes['childOrder'] ) ? 'desc' : 'asc';
+
 /**
  * A child's own unique slug for the `#!/{related model}/{slug}` link --
  * see this file's own docblock. A closure, not a top-level named
@@ -121,7 +145,7 @@ $template_blocks = ! empty( $block->parsed_block['innerBlocks'] ) ? $block->pars
 $parent_display_field = \Gateway\Records_REST_Controller::resolve_display_field( $collection );
 $child_display_field  = \Gateway\Records_REST_Controller::resolve_display_field( $related_model );
 
-$parents = $collection::query()->orderBy( 'id', 'asc' )->get();
+$parents = $collection::query()->orderBy( $parent_order_by, $parent_order )->get();
 
 $sidebar_html    = '';
 $all_children    = new \Illuminate\Database\Eloquent\Collection();
@@ -131,7 +155,7 @@ $has_any_children = false;
 foreach ( $parents as $parent ) {
 	$group_label = \Gateway\Records_REST_Controller::record_option( $parent, $parent_display_field )['label'];
 
-	$children = $parent->{ $method }()->orderBy( 'id', 'asc' )->get();
+	$children = $parent->{ $method }()->orderBy( $child_order_by, $child_order )->get();
 
 	$sidebar_html .= '<li class="gateway-data-display__group">';
 	$sidebar_html .= '<div class="gateway-data-display__group-heading">' . esc_html( $group_label ) . '</div>';

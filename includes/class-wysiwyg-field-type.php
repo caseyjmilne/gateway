@@ -108,6 +108,13 @@ class WYSIWYG_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function is_orderable() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * See this class's own docblock -- the stored value is genuine HTML,
 	 * not plain text; `is_html_renderable()` below is the flag that

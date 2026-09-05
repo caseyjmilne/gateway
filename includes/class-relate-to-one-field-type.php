@@ -96,6 +96,17 @@ class Relate_To_One_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * A bare foreign-key id was never a meaningful thing to sort by --
+	 * an arbitrary internal identifier, not a value, same reasoning
+	 * is_filterable() immediately above already gives.
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * A relate field's own stored value -- a bare foreign-key id -- isn't
 	 * a related record's own label; printing it as plain text would show
 	 * a meaningless number where a name belongs. Showing the related

@@ -173,6 +173,17 @@ class Page_Link_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * One JSON-encoded array in a single text column -- sorting BY that
+	 * raw serialized text is exactly as meaningless as faceting by it
+	 * already is (see is_filterable() immediately above).
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * An array value, same as Post_Object_Field_Type -- see that type's
 	 * own is_text_renderable() for the identical reasoning.
 	 */

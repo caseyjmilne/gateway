@@ -105,6 +105,18 @@ class Relate_To_Many_Field_Type implements Relationship_Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * There isn't even a column here to sort by (see blueprint_method()
+	 * above) -- a Relate to Many field's own value only ever exists as
+	 * pivot-table rows, never a scalar column a SQL ORDER BY could
+	 * target in the first place.
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * There isn't even a real column here (see blueprint_method() above)
 	 * -- a Relate to Many field's own "name" is the relationship's own
 	 * method name, so reading it as a plain attribute returns the

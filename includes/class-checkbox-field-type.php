@@ -129,6 +129,17 @@ class Checkbox_Field_Type implements Choice_Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * One JSON-encoded array in a single text column -- sorting BY that
+	 * raw serialized text is exactly as meaningless as faceting by it
+	 * already is (see is_filterable() immediately above).
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * gateway/card-field-text prints `(string) $value` -- casting an array
 	 * to a string in PHP emits an "Array to string conversion" warning and
 	 * prints the literal word "Array", never anything a visitor could

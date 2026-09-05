@@ -120,6 +120,62 @@ interface Field_Type {
 	public static function is_filterable();
 
 	/**
+	 * Whether a field of this type is ever a sensible thing to sort a
+	 * query BY -- what `Column_Registry::get_columns_for_collection()`
+	 * reads to decide a field's own `isOrderable` (consumed by
+	 * `gateway/data-display`'s own Order By pickers, one for its Parent
+	 * collection and one for its Child/related collection -- see that
+	 * block's own edit.js/render.php) and what `Model_Fields::
+	 * resolve_orderby()` re-checks server-side before ever letting a
+	 * stored `orderBy`/`orderByChild` block attribute reach a raw SQL
+	 * `ORDER BY` -- the same "a field type declares this about *itself*"
+	 * reasoning `is_filterable()` immediately above already establishes,
+	 * kept as its OWN method rather than simply reusing `is_filterable()`'s
+	 * own answer: the two questions ("is this worth filtering by" vs. "is
+	 * this worth sorting by") are conceptually distinct, even though
+	 * every built-in type today happens to answer both the same way.
+	 *
+	 * `false` for exactly the same built-in types `is_filterable()` is
+	 * false for, and for exactly the same underlying reasons -- see that
+	 * method's own docblock for the full list, restated here in ORDER BY
+	 * terms rather than facet terms: `Password_Field_Type` (a secret
+	 * value's relative sort position would leak exactly the same thing
+	 * its absence from a facet already protects against);
+	 * `Relate_To_One_Field_Type`/`File_Field_Type`/`Image_Field_Type`
+	 * (each a bare internal id -- a foreign key, or an attachment id --
+	 * sorting "by" one is exactly as meaningless as faceting by one);
+	 * `Relate_To_Many_Field_Type`/`Checkbox_Field_Type`/`Link_Field_Type`/
+	 * `Page_Link_Field_Type`/`Post_Object_Field_Type`/`User_Field_Type`
+	 * (Relate to Many has no real column at all, `blueprint_method() ===
+	 * ''`, nothing a SQL `ORDER BY` could even target; the other five all
+	 * store one JSON-encoded array in a single text column,
+	 * `eloquent_cast() === 'array'` -- sorting BY that raw serialized
+	 * text is exactly as meaningless as faceting by it would be, which is
+	 * exactly why `is_filterable()` is already `false` for every one of
+	 * them too). Every built-in type this method is `false` for today,
+	 * `is_filterable()` already is as well -- the two methods coincide
+	 * completely across the current built-in set, purely because nothing
+	 * built in yet has a value worth filtering by but not sorting by (or
+	 * the reverse); they stay two separate methods regardless, since nothing
+	 * guarantees a FUTURE type's own answer to "worth filtering by" and
+	 * "worth sorting by" would always agree.
+	 *
+	 * `true` for every other built-in type, including the synthetic `id`
+	 * column `Column_Registry::get_columns_for_collection()` always leads
+	 * with (a real, meaningful thing to sort by -- it's this whole
+	 * method's own long-standing default before this feature existed at
+	 * all) and `Position_Field_Type` (already unconditionally sortable
+	 * via `Records_REST_Controller::resolve_sort()`'s own separate,
+	 * pre-existing special case for the REST records-listing endpoint;
+	 * declaring `true` here as well is what lets `gateway/data-display`'s
+	 * own Order By picker offer it too, the same field a model's drag
+	 * -and-drop reordering already manages).
+	 *
+	 * @return bool
+	 */
+	public static function is_orderable();
+
+	/**
 	 * Whether a field of this type's own raw stored value is a sensible
 	 * thing to print as plain text -- what `Column_Registry::
 	 * get_columns_for_collection()` reads to decide a field's own

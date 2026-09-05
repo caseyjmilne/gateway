@@ -118,6 +118,18 @@ class Permalink_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * Alphabetical order by a record's own slug is a perfectly
+	 * meaningful sort -- unlike a Relate field's own bare id, a slug IS
+	 * the value, human-readable and unique by construction (same
+	 * reasoning is_filterable() immediately above already gives).
+	 */
+	public static function is_orderable() {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * A slug is safe, meaningful plain text -- `gateway/card-field-text`
 	 * printing a record's own permalink field (e.g. to build a link) is
 	 * a real, sensible use, unlike a Password/Relate field's own raw

@@ -104,6 +104,16 @@ class Image_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 *
+	 * A bare attachment id was never a meaningful thing to sort by --
+	 * same reasoning as a Relate to One field's own id.
+	 */
+	public static function is_orderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
 	 * A bare attachment id isn't the image itself -- printing it as plain
 	 * text would show a meaningless number where a picture belongs.
 	 */
