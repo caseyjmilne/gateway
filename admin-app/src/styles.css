@@ -204,6 +204,63 @@
 	margin: 0;
 }
 
+/* ModelDetail.jsx's own heading -- sized/spaced to match
+ * gateway-records-crud-heading/-model-badge below (same 22px badge, same
+ * margin-bottom) per a direct report that this title read smaller than
+ * RecordsCrud's own "Records" heading and sat ambiguously between the
+ * two tab rows around it -- see that component's own docblock. */
+.gateway-admin-app .gateway-model-detail-heading {
+	margin-bottom: 24px;
+}
+
+.gateway-admin-app .gateway-model-detail-badge {
+	font-size: 22px;
+	vertical-align: middle;
+}
+
+/* ModelDetail.jsx's own first-load placeholder -- see that component's
+ * own docblock for why this exists instead of a bare "Loading…" line.
+ * Reuses gateway-records-crud-skeleton-bar's own shimmer keyframes
+ * (defined further below) rather than a second, redundant animation. */
+.gateway-admin-app .gateway-model-detail-skeleton-bar {
+	display: inline-block;
+	height: 14px;
+	border-radius: 4px;
+	background: linear-gradient( 90deg, #e2e4e7 25%, #eef0f1 37%, #e2e4e7 63% );
+	background-size: 400% 100%;
+	animation: gateway-records-crud-skeleton-shimmer 1.4s ease infinite;
+}
+
+.gateway-admin-app .gateway-model-detail-skeleton-title {
+	display: block;
+	height: 22px;
+	width: 100px;
+	margin-bottom: 24px;
+}
+
+.gateway-admin-app .gateway-model-detail-skeleton-tabs {
+	display: flex;
+	gap: 24px;
+	margin-bottom: 1.25em;
+}
+
+.gateway-admin-app .gateway-model-detail-skeleton-tabs .gateway-model-detail-skeleton-bar {
+	width: 64px;
+}
+
+.gateway-admin-app .gateway-model-detail-skeleton-line {
+	display: block;
+	width: 320px;
+	max-width: 100%;
+	margin-bottom: 14px;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.gateway-admin-app .gateway-model-detail-skeleton-bar {
+		animation: none;
+	}
+}
+
 /* Text-based, underlined tab strip -- FieldEditor's own edit panel
  * (General/Validation/Presentation/Conditional Logic) originated this
  * look; ModelDetail's own top-level tab strip (General/Fields/

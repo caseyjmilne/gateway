@@ -38,6 +38,31 @@ const MODEL_TYPE_LABELS = {
  * Fields/Relationships; now every section is a tab, all four sharing one
  * consistent look.
  *
+ * The model class heading (`.gateway-model-detail-heading`/`-badge`) is
+ * deliberately sized and spaced to match `RecordsCrud.jsx`'s own
+ * `gateway-records-crud-heading`/`-model-badge` -- per a direct report
+ * that this screen's own title read visually smaller than that one's
+ * "Records" heading (both plain, unstyled `<h2><code>` before this) and
+ * sat with roughly the same gap above it (this page's OWN General/Fields/
+ * Relationships/Permalinks/Columns tab strip) as below it (WordPress's
+ * own primary Models/Records/Database tabs) -- ambiguous about which it
+ * actually belongs to. The explicit `margin-bottom` here (matching
+ * `gateway-records-crud-heading`'s own exact value) tightens that gap so
+ * the heading reads as belonging with the tab strip and content
+ * beneath it, not stuck equidistant between two unrelated tab rows.
+ *
+ * While `model` itself is still loading, a shimmering skeleton
+ * (`.gateway-model-detail-skeleton`, reusing RecordsCrud's own
+ * `@keyframes gateway-records-crud-skeleton-shimmer` rather than a
+ * second, redundant animation) stands in for this same heading/tab-strip
+ * shape instead of a bare "Loading…" line -- the same "never a full-page
+ * text swap, always a shaped placeholder" treatment RecordsCrud's own
+ * `SkeletonRows` already established for a background records reload,
+ * applied here to this screen's own FIRST load instead. Purely visual
+ * (`aria-hidden`); a `screen-reader-text`/`role="status"` line right
+ * after it is what actually announces "loading" to assistive tech, the
+ * same split that component uses.
+ *
  * Title alone drives naming (the class and table names) -- see
  * Model_Builder's own docblock. Plural Title is just a stored display
  * label with no effect on either, so editing it alone is a plain,
@@ -234,7 +259,30 @@ export default function ModelDetail() {
 
 	return (
 		<div className="gateway-model-detail">
-			{ loading && ! slugError && <p>Loading…</p> }
+			{ loading && ! slugError && (
+				<>
+					{ /* Purely visual -- a screen reader has no reason to read a
+					   * row of placeholder bars one at a time; the real
+					   * "loading" announcement is the screen-reader-only
+					   * status text right after it, the same split
+					   * RecordsCrud.jsx's own SkeletonRows/status-text pair
+					   * already uses. */ }
+					<div className="gateway-model-detail-skeleton" aria-hidden="true">
+						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-title" />
+						<div className="gateway-model-detail-skeleton-tabs">
+							<span className="gateway-model-detail-skeleton-bar" />
+							<span className="gateway-model-detail-skeleton-bar" />
+							<span className="gateway-model-detail-skeleton-bar" />
+							<span className="gateway-model-detail-skeleton-bar" />
+						</div>
+						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-line" />
+						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-line" />
+					</div>
+					<span className="screen-reader-text" role="status">
+						Loading…
+					</span>
+				</>
+			) }
 
 			{ slugError && (
 				<div className="notice notice-error">
@@ -259,8 +307,10 @@ export default function ModelDetail() {
 
 			{ model && (
 				<>
-					<h2>
-						<code>{ model.class }</code>
+					<h2 className="gateway-model-detail-heading">
+						<code className="gateway-model-detail-badge">
+							{ model.class }
+						</code>
 					</h2>
 
 					<div className="gateway-subtabs">
