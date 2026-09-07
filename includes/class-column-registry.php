@@ -206,16 +206,16 @@ class Column_Registry {
 	 * type declares this about itself (`Field_Type::is_filterable()`)
 	 * rather than this method hardcoding a per-type exclusion list of its
 	 * own that every new type would need to remember to be added to. Of
-	 * the ones that ARE filterable, a TextArea/Permalink/Date field is
-	 * still `['input']` only -- the same "a Select of every distinct
+	 * the ones that ARE filterable, a TextArea/Permalink/Date/Time field
+	 * is still `['input']` only -- the same "a Select of every distinct
 	 * value would be unusable" reasoning `post_content`/`post_excerpt`
-	 * already get, a Date field's own free-text "contains" search (e.g.
-	 * "2026-09" matching every date that month) being the one genuinely
-	 * useful facet UI for an unbounded, rarely-repeating set of calendar
-	 * dates; every other filterable type (Text, Number, Range, Email,
-	 * URL, and any future type that doesn't opt out) gets the full
-	 * `['input', 'select', 'checkboxes']` vocabulary, same default as
-	 * post meta.
+	 * already get, a Date/Time field's own free-text "contains" search
+	 * (e.g. "2026-09" matching every date that month) being the one
+	 * genuinely useful facet UI for an unbounded, rarely-repeating set of
+	 * calendar dates/times of day; every other filterable type (Text,
+	 * Number, Range, Email, URL, and any future type that doesn't opt
+	 * out) gets the full `['input', 'select', 'checkboxes']` vocabulary,
+	 * same default as post meta.
 	 * `Facet_Query::apply_collection_facets()` is what actually applies
 	 * one of these to an Eloquent query -- the Collection counterpart to
 	 * `apply_facets()`.
@@ -388,8 +388,12 @@ class Column_Registry {
 				// rarely-repeating set no visitor would actually want to
 				// pick a single exact match from -- a free-text "contains"
 				// search (e.g. "2026-09" matching every September 2026
-				// date) is the one meaningfully useful facet UI for it.
-				$facet_type = in_array( $field['type'], array( 'textarea', 'permalink', 'date' ), true )
+				// date) is the one meaningfully useful facet UI for it. A
+				// Time field's own value gets the exact same treatment,
+				// for the exact same reason -- an unbounded, rarely
+				// -repeating set of times of day, not a small fixed
+				// vocabulary a Select/Checkboxes facet would suit.
+				$facet_type = in_array( $field['type'], array( 'textarea', 'permalink', 'date', 'time' ), true )
 					? array( 'input' )
 					: array( 'input', 'select', 'checkboxes' );
 			}

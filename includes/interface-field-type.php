@@ -50,10 +50,10 @@ interface Field_Type {
 	 * A category with no registered type in it simply never renders a
 	 * heading in the picker -- Gateway has nothing in `'Layout'` today (no
 	 * repeater/group/tab constructs) -- `'Advanced'` itself is no longer
-	 * empty (`Permalink_Field_Type`/`Date_Field_Type` both file there),
-	 * but the six-category vocabulary stays fixed so a future type
-	 * effectively picks its own home rather than the picker needing a
-	 * seventh category invented for it.
+	 * empty (`Permalink_Field_Type`/`Date_Field_Type`/`Time_Field_Type`
+	 * all file there), but the six-category vocabulary stays fixed so a
+	 * future type effectively picks its own home rather than the picker
+	 * needing a seventh category invented for it.
 	 *
 	 * @return string
 	 */
@@ -378,7 +378,10 @@ interface Field_Type {
 	 * into the one set of keys a given type's `settings` may ever contain.
 	 *
 	 * `true` for `Text_Field_Type`, `Number_Field_Type`, `Range_Field_Type`,
-	 * `Email_Field_Type`, `URL_Field_Type`, and -- per a direct request
+	 * `Email_Field_Type`, `URL_Field_Type`, `Time_Field_Type` (a plain
+	 * literal value typed/picked once, the SAME shape as these -- unlike
+	 * `Date_Field_Type`'s own `'today'` sentinel below, no "current time"
+	 * option was ever asked for this type), and -- per a direct request
 	 * ("all of the choices field types need to have default value
 	 * option... the default can be either none or one of the choices
 	 * chosen from a select") -- every `Choice_Field_Type` implementer

@@ -430,7 +430,13 @@ const slugifyFieldName = ( value ) =>
  * (alongside `'true_false'`'s own) offering a `<select>` of
  * "None"/"Today's Date" instead of a free-text input -- see that
  * branch's own inline comment for why `'today'` is a sentinel, not a
- * literal date. The Type
+ * literal date. Time's own General tab, per a later, separate request
+ * ("we need a time picker field type, similar to ACF"), needs even
+ * less of a shape: its own Default Value is a plain literal value, so
+ * it reuses the SAME `<input type="number">`-style branch Number's own
+ * already does, just as `<input type="time">` instead -- no sentinel,
+ * no dedicated `<select>`, since (unlike Date) no "right now" option
+ * was asked for. The Type
  * picker (`TypeSelect.jsx`) also greys
  * out "Permalink" once this model already has one on some OTHER field
  * (`disabledTypeKeys`, computed from `Field_Type::max_one_per_model()` --
@@ -1693,6 +1699,21 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 									<input
 										type="number"
 										step="any"
+										className="regular-text"
+										{ ...register( 'settings.default' ) }
+									/>
+								) : 'time' === editType ? (
+									// Time_Field_Type's own Default Value is a
+									// plain literal value, the SAME shape as
+									// Text/Number's own -- see that type's own
+									// docblock for why no "current time"
+									// sentinel exists here the way Date's own
+									// 'today' does. A real native
+									// <input type="time"> here too, so a site
+									// owner picks the default the same way
+									// they'd pick any record's own value.
+									<input
+										type="time"
 										className="regular-text"
 										{ ...register( 'settings.default' ) }
 									/>

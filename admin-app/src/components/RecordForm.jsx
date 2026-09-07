@@ -71,7 +71,14 @@ function todayYMD() {
  * further below already renders for it, the browser's own built-in
  * calendar picker included for free. Its own Default Value IS special,
  * though -- see this component's own `settings.default` paragraph
- * further below for the `'today'` sentinel `todayYMD()` resolves.
+ * further below for the `'today'` sentinel `todayYMD()` resolves. "time"
+ * (Time_Field_Type) is the same free native-`<input>` story again -- a
+ * real `<input type="time">`, no dedicated render branch -- but its own
+ * `initialValues` branch IS special, for a different reason than Date's
+ * own sentinel: `Time_Field_Type::cast()` always stores/returns a full
+ * `"H:i:s"`, while a plain `<input type="time">` (no `step="1"`) only
+ * ever edits `"H:i"` -- see that branch's own inline comment for the
+ * truncate-on-the-way-in, pad-back-out-server-side split this needs.
  *
  * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
  * are two more special cases: Records_REST_Controller enriches a relate
@@ -340,7 +347,20 @@ function todayYMD() {
  * this -- unlike every type the generic fallback below already handles,
  * a literal `field.settings.default` string would be flatly wrong to
  * assign here (`RecordForm`'s own `<input type="date">` needs a real
- * `"Y-m-d"` value, not the word "today").
+ * `"Y-m-d"` value, not the word "today"). `time` (Time_Field_Type) is a
+ * FIFTH shape, per a later, separate request ("we need a time picker
+ * field type, similar to ACF") -- unlike Date, its own default IS the
+ * literal value applied (no sentinel), the SAME plain-literal shape
+ * Text/Number/Email/URL already have. It still needs its own dedicated
+ * `initialValues` branch, though, for an unrelated reason:
+ * `Time_Field_Type::cast()` always stores/returns a full `"H:i:s"`
+ * (seconds included), but a plain `<input type="time">` (no `step="1"`)
+ * only ever edits `"H:i"` -- assigning the full three-part value as-is
+ * would risk a mismatch between what this component thinks it just set
+ * and what the browser's own native control actually reports back, so
+ * that branch truncates whatever it's given (an existing record's own
+ * saved value, OR a freshly-applied literal default -- both equally
+ * "H:i:s"-shaped) down to `"H:i"` before ever assigning it.
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -581,6 +601,27 @@ export default function RecordForm( {
 					! initialValues && null === existing && 'today' === field.settings?.default
 						? todayYMD()
 						: ( null === existing ? '' : String( existing ) );
+			} else if ( 'time' === inputType ) {
+				// Same "Add New only" Default Value convention every
+				// other type has -- unlike "date"'s own `'today'`,
+				// Time_Field_Type's own default is a plain literal
+				// value, not a sentinel, so it flows through the same
+				// way Text/Number's own already does. What IS special
+				// here: Time_Field_Type::cast() always stores/returns a
+				// full "H:i:s" (seconds included), but a plain
+				// <input type="time"> (no step="1") only ever edits
+				// "H:i" -- handing it "14:30:00" as its own value risks
+				// a mismatch between what this component thinks it set
+				// and what the browser's own native control actually
+				// reports back. Truncated to "H:i" here for exactly
+				// that reason; the bare "H:i" this control reports back
+				// on submit is sent as-is, `cast()` itself pads it back
+				// out to "H:i:s" server-side.
+				const rawTime =
+					! initialValues && null === existing
+						? field.settings?.default
+						: existing;
+				initial[ field.name ] = rawTime ? String( rawTime ).slice( 0, 5 ) : '';
 			} else if ( 'permalink' === inputType ) {
 				initial[ field.name ] = null === existing ? '' : String( existing );
 				// `initialValues` (not `existing`, which only ever reads
@@ -841,12 +882,16 @@ export default function RecordForm( {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
 				// plain-string field type (text/number/textarea/wysiwyg/
-				// markdown/date/select/radio/buttons/...) -- none of those
-				// need converting either; "date" already resolved its own
-				// `'today'` Default Value sentinel down to a real "Y-m-d"
-				// string well before submit, in its own dedicated
+				// markdown/date/time/select/radio/buttons/...) -- none of
+				// those need converting either; "date" already resolved
+				// its own `'today'` Default Value sentinel down to a real
+				// "Y-m-d" string well before submit, in its own dedicated
 				// `initialValues` branch above, so by now it's exactly as
-				// plain a string as "text"'s own. "user" also falls through to here,
+				// plain a string as "text"'s own. "time" is likewise
+				// already a bare "H:i" string by now (that same branch's
+				// own truncation), sent through unchanged -- Time_Field_Type::cast()
+				// is what pads it back out to "H:i:s" server-side, never
+				// anything this component itself needs to do. "user" also falls through to here,
 				// unlike "image"/"file" above, even though its own form
 				// state can likewise start out as a richer `{id, name,
 				// email, avatar_url}` object: UserPicker.jsx itself
