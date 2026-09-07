@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import useResolvedModelClass from '../hooks/useResolvedModelClass.js';
 import FieldEditor from '../components/FieldEditor.jsx';
@@ -234,10 +234,6 @@ export default function ModelDetail() {
 
 	return (
 		<div className="gateway-model-detail">
-			<p>
-				<Link to="/">&larr; Back to Models</Link>
-			</p>
-
 			{ loading && ! slugError && <p>Loading…</p> }
 
 			{ slugError && (
