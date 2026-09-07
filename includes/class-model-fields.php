@@ -1118,6 +1118,14 @@ class Model_Fields {
 	 * same as `show_toggle`/`Post_Object_Field_Type`'s own `multiple`
 	 * above.
 	 *
+	 * `Date_Field_Type`'s own `default` (still the same shared `default`
+	 * key every other type's own Default Value already uses, not a
+	 * bundle of its own) gets a fixed-vocabulary exception of its own,
+	 * same treatment as `return_format`/`new_lines` below: the ONLY value
+	 * ever kept is the literal sentinel `'today'` -- never an arbitrary
+	 * stored date -- anything else dropped the same as leaving it blank.
+	 * See that type's own docblock for why.
+	 *
 	 * @param string $type         One of Field_Type_Registry::keys().
 	 * @param mixed  $raw_settings Raw, arbitrary-keyed input, e.g. a REST
 	 *                              request body's own `settings` object --
@@ -1430,6 +1438,19 @@ class Model_Fields {
 			// {id, title, permalink, post_type, status} per post) --
 			// every other type here simply never offers it.
 			if ( 'return_format' === $key && ! in_array( $value, array( 'array', 'url', 'id', 'object' ), true ) ) {
+				continue;
+			}
+
+			// Date_Field_Type's own Default Value is a fixed sentinel, not
+			// a literal date -- see that type's own docblock: per a direct
+			// request ("option to set 'today' as default... option to
+			// have no date set by default"), the ONLY two meaningful
+			// states are "default to today" and "no default at all," not
+			// an arbitrary stored date. 'today' is the only value kept;
+			// anything else is dropped the same as leaving it blank,
+			// mirroring every other fixed-vocabulary key here
+			// ('return_format'/'new_lines' immediately around this one).
+			if ( 'default' === $key && Date_Field_Type::class === $type_class && 'today' !== $value ) {
 				continue;
 			}
 

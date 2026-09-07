@@ -420,7 +420,17 @@ const slugifyFieldName = ( value ) =>
  * archives means exactly but see if you can replicate that capability" --
  * when on, `PageLinkPicker.jsx`'s own search additionally offers each
  * allowed post type's own archive URL, grouped under its own "Archives"
- * heading (`Post_REST_Controller::search_page_links()`). The Type
+ * heading (`Post_REST_Controller::search_page_links()`). Date's own
+ * General tab, per a direct request ("we need to add a date picker
+ * field, it should work like ACF's... option to set 'today' as the
+ * default... option to have no date set by default"), needs no shape
+ * of its own here at all -- it renders through the SAME `editSupportsDefault
+ * && ! editHasChoices` block every plain-value type's Default Value
+ * already does, just with its own `'date' === editType` branch
+ * (alongside `'true_false'`'s own) offering a `<select>` of
+ * "None"/"Today's Date" instead of a free-text input -- see that
+ * branch's own inline comment for why `'today'` is a sentinel, not a
+ * literal date. The Type
  * picker (`TypeSelect.jsx`) also greys
  * out "Permalink" once this model already has one on some OTHER field
  * (`disabledTypeKeys`, computed from `Field_Type::max_one_per_model()` --
@@ -1648,6 +1658,33 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								/>
 								<span className="gateway-toggle-slider" aria-hidden="true" />
 								<span>Default Value</span>
+							</label>
+						) : 'date' === editType ? (
+							// Date_Field_Type's own Default Value is a FOURTH
+							// shape again -- neither a literal typed value nor
+							// a choices <select> nor a boolean switch, but a
+							// fixed "None"/"Today" choice, per a direct
+							// request ("option to set 'today' as the
+							// default... option to have no date set by
+							// default"). 'today' is a SENTINEL, not a literal
+							// stored date -- RecordForm resolves it to this
+							// browser's own actual current date the moment a
+							// brand new "Add New" form is opened, never a
+							// date baked in now. Model_Fields::sanitize_settings()
+							// enforces the same two-value vocabulary
+							// server-side -- see that method's own docblock.
+							<label>
+								<span>Default Value</span>
+								<select
+									className="regular-text"
+									{ ...register( 'settings.default' ) }
+								>
+									<option value="">— None —</option>
+									<option value="today">Today&rsquo;s Date</option>
+								</select>
+								<span className="description">
+									Appears when creating a new record.
+								</span>
 							</label>
 						) : (
 							<label>

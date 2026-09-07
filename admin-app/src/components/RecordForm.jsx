@@ -12,6 +12,25 @@ import PostObjectPicker from './PostObjectPicker.jsx';
 import PageLinkPicker from './PageLinkPicker.jsx';
 
 /**
+ * Today's date, in this BROWSER's own local timezone, as the exact
+ * "Y-m-d" string a native `<input type="date">` needs -- what
+ * Date_Field_Type's own `'today'` Default Value sentinel resolves to
+ * (see this component's own docblock, the `settings.default` paragraph).
+ * Deliberately built from `getFullYear()`/`getMonth()`/`getDate()`
+ * (each already local-timezone-aware) rather than `toISOString()`
+ * (always UTC -- would silently report the WRONG calendar date for
+ * roughly half the world at any given moment, e.g. 11pm Pacific on the
+ * 6th already being the 7th in UTC).
+ *
+ * @return {string} e.g. "2026-09-07".
+ */
+function todayYMD() {
+	const now = new Date();
+	const pad = ( n ) => String( n ).padStart( 2, '0' );
+	return `${ now.getFullYear() }-${ pad( now.getMonth() + 1 ) }-${ pad( now.getDate() ) }`;
+}
+
+/**
  * A form with one input per model field, used both for "Add New" and for
  * editing an existing record in place -- which `<input type="...">` each
  * field renders as comes from `fieldTypes` (Gateway\Field_Type_Registry,
@@ -46,7 +65,13 @@ import PageLinkPicker from './PageLinkPicker.jsx';
  * plus a live preview from WordPress's own oEmbed proxy) instead of a
  * bare `<input type="url">`. "range" is a real `<input>` type, but a
  * bare slider with no visible number is barely usable, so it gets its
- * own small live readout alongside it.
+ * own small live readout alongside it. "date" (Date_Field_Type) needs no
+ * dedicated render branch at all -- a real, native `<input type="date">`
+ * is exactly what the generic `<input type={ inputType }>` fallback
+ * further below already renders for it, the browser's own built-in
+ * calendar picker included for free. Its own Default Value IS special,
+ * though -- see this component's own `settings.default` paragraph
+ * further below for the `'today'` sentinel `todayYMD()` resolves.
  *
  * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
  * are two more special cases: Records_REST_Controller enriches a relate
@@ -298,7 +323,24 @@ import PageLinkPicker from './PageLinkPicker.jsx';
  * determine if the value is true by default") -- its own default is a
  * real JS boolean, coerced with the same `Boolean()` its own real saved
  * value already gets, so no array/string handling of its own is needed
- * at all; see its own dedicated `initialValues` branch above.
+ * at all; see its own dedicated `initialValues` branch above. `date`
+ * (Date_Field_Type) is a FOURTH shape again, per a direct request
+ * ("option to set 'today' as the default. Also option to have no date
+ * set by default") -- its own `field.settings.default` is never the
+ * literal value applied, only ever `'today'` or absent (`Model_Fields::
+ * sanitize_settings()` enforces that same fixed vocabulary server-side
+ * too): `'today'` means "resolve to whatever date it actually is right
+ * now, in THIS BROWSER's own local timezone" (`todayYMD()`, a small
+ * `Date`-object helper below -- deliberately not `toISOString()`, which
+ * reports UTC's own current date and would be off by one for roughly
+ * half the world at any given moment), computed fresh every time a brand
+ * new "Add New" form is opened, never a date baked in at save time the
+ * way a real stored default would be. Its own dedicated `initialValues`
+ * branch (immediately after "boolean" above) is what actually resolves
+ * this -- unlike every type the generic fallback below already handles,
+ * a literal `field.settings.default` string would be flatly wrong to
+ * assign here (`RecordForm`'s own `<input type="date">` needs a real
+ * `"Y-m-d"` value, not the word "today").
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -528,6 +570,17 @@ export default function RecordForm( {
 					! initialValues && null === existing
 						? Boolean( field.settings?.default )
 						: Boolean( existing );
+			} else if ( 'date' === inputType ) {
+				// Same "Add New only" Default Value convention every
+				// other type has, but its own configured default is
+				// never the literal value assigned -- see this
+				// component's own docblock, the `settings.default`
+				// paragraph, for why `'today'` is a sentinel `todayYMD()`
+				// resolves fresh here rather than a stored date.
+				initial[ field.name ] =
+					! initialValues && null === existing && 'today' === field.settings?.default
+						? todayYMD()
+						: ( null === existing ? '' : String( existing ) );
 			} else if ( 'permalink' === inputType ) {
 				initial[ field.name ] = null === existing ? '' : String( existing );
 				// `initialValues` (not `existing`, which only ever reads
@@ -788,8 +841,12 @@ export default function RecordForm( {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
 				// plain-string field type (text/number/textarea/wysiwyg/
-				// markdown/select/radio/buttons/...) -- none of those need
-				// converting either. "user" also falls through to here,
+				// markdown/date/select/radio/buttons/...) -- none of those
+				// need converting either; "date" already resolved its own
+				// `'today'` Default Value sentinel down to a real "Y-m-d"
+				// string well before submit, in its own dedicated
+				// `initialValues` branch above, so by now it's exactly as
+				// plain a string as "text"'s own. "user" also falls through to here,
 				// unlike "image"/"file" above, even though its own form
 				// state can likewise start out as a richer `{id, name,
 				// email, avatar_url}` object: UserPicker.jsx itself

@@ -48,11 +48,12 @@ interface Field_Type {
 	 * without breaking anything.
 	 *
 	 * A category with no registered type in it simply never renders a
-	 * heading in the picker -- Gateway has nothing in `'Advanced'`/
-	 * `'Layout'` today (no date/color/map pickers, no repeater/group/tab
-	 * constructs), but the six-category vocabulary stays fixed so a
-	 * future type effectively picks its own home rather than the picker
-	 * needing a seventh category invented for it.
+	 * heading in the picker -- Gateway has nothing in `'Layout'` today (no
+	 * repeater/group/tab constructs) -- `'Advanced'` itself is no longer
+	 * empty (`Permalink_Field_Type`/`Date_Field_Type` both file there),
+	 * but the six-category vocabulary stays fixed so a future type
+	 * effectively picks its own home rather than the picker needing a
+	 * seventh category invented for it.
 	 *
 	 * @return string
 	 */
@@ -399,6 +400,19 @@ interface Field_Type {
 	 * than either a text/number input or a choices `<select>`; see that
 	 * class's own docblock for why `Model_Fields::sanitize_settings()`
 	 * needs no special-casing at all to store it correctly.
+	 *
+	 * Also `true` for `Date_Field_Type`, per a direct request ("provide
+	 * option to set 'today' as the default. Also option to have no date
+	 * set by default") -- a FOURTH shape again: a `<select>` offering
+	 * "— None —" or "Today's Date," the latter storing the fixed sentinel
+	 * `'today'` rather than a literal date -- `Model_Fields::
+	 * sanitize_settings()` DOES need one small special case for this one
+	 * (unlike True/False's own boolean, whose generic string-sanitizing
+	 * already behaves correctly for free): `'today'` is the only value
+	 * ever kept, anything else dropped same as blank. See that class's
+	 * own docblock for the full reasoning, including why no THIRD
+	 * "specific fixed date" option exists here the way ACF's own
+	 * equivalent setting offers.
 	 *
 	 * `false` still for a Relate field (a default related record raises
 	 * its own set of questions -- does it still exist, is it still valid

@@ -206,12 +206,16 @@ class Column_Registry {
 	 * type declares this about itself (`Field_Type::is_filterable()`)
 	 * rather than this method hardcoding a per-type exclusion list of its
 	 * own that every new type would need to remember to be added to. Of
-	 * the ones that ARE filterable, a TextArea field is still free text,
-	 * `['input']` only, the same "a Select of every distinct value would
-	 * be unusable" reasoning `post_content`/`post_excerpt` already get;
-	 * every other filterable type (Text, Number, Range, Email, URL, and
-	 * any future type that doesn't opt out) gets the full `['input',
-	 * 'select', 'checkboxes']` vocabulary, same default as post meta.
+	 * the ones that ARE filterable, a TextArea/Permalink/Date field is
+	 * still `['input']` only -- the same "a Select of every distinct
+	 * value would be unusable" reasoning `post_content`/`post_excerpt`
+	 * already get, a Date field's own free-text "contains" search (e.g.
+	 * "2026-09" matching every date that month) being the one genuinely
+	 * useful facet UI for an unbounded, rarely-repeating set of calendar
+	 * dates; every other filterable type (Text, Number, Range, Email,
+	 * URL, and any future type that doesn't opt out) gets the full
+	 * `['input', 'select', 'checkboxes']` vocabulary, same default as
+	 * post meta.
 	 * `Facet_Query::apply_collection_facets()` is what actually applies
 	 * one of these to an Eloquent query -- the Collection counterpart to
 	 * `apply_facets()`.
@@ -375,8 +379,17 @@ class Column_Registry {
 				// construction (Records_REST_Controller::resolve_permalink_value()
 				// enforces that unconditionally) -- a Select/Checkboxes
 				// facet listing every distinct slug would be exactly as
-				// unusable as it already is for TextArea/post content.
-				$facet_type = in_array( $field['type'], array( 'textarea', 'permalink' ), true )
+				// unusable as it already is for TextArea/post content. A
+				// Date field's own value is a free-form calendar date, not
+				// unique by construction the way a slug is, but the same
+				// underlying problem still applies: a Select/Checkboxes
+				// facet would list one option per distinct date this
+				// collection happens to already have, an unbounded and
+				// rarely-repeating set no visitor would actually want to
+				// pick a single exact match from -- a free-text "contains"
+				// search (e.g. "2026-09" matching every September 2026
+				// date) is the one meaningfully useful facet UI for it.
+				$facet_type = in_array( $field['type'], array( 'textarea', 'permalink', 'date' ), true )
 					? array( 'input' )
 					: array( 'input', 'select', 'checkboxes' );
 			}
