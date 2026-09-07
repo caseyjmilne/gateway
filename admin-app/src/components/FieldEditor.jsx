@@ -436,7 +436,11 @@ const slugifyFieldName = ( value ) =>
  * it reuses the SAME `<input type="number">`-style branch Number's own
  * already does, just as `<input type="time">` instead -- no sentinel,
  * no dedicated `<select>`, since (unlike Date) no "right now" option
- * was asked for. The Type
+ * was asked for. Date Time's own General tab, per a further, separate
+ * request ("we need a datetime picker that combines date picker with
+ * time picker together"), is the SAME shape once more, just as
+ * `<input type="datetime-local">` -- again no sentinel, since no
+ * "right now" option was asked for this type either. The Type
  * picker (`TypeSelect.jsx`) also greys
  * out "Permalink" once this model already has one on some OTHER field
  * (`disabledTypeKeys`, computed from `Field_Type::max_one_per_model()` --
@@ -1714,6 +1718,23 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 									// they'd pick any record's own value.
 									<input
 										type="time"
+										className="regular-text"
+										{ ...register( 'settings.default' ) }
+									/>
+								) : 'datetime' === editType ? (
+									// Datetime_Field_Type's own Default Value
+									// is the SAME plain-literal shape again --
+									// see that type's own docblock for why no
+									// "right now" sentinel exists here either.
+									// A real native <input type="datetime-local">,
+									// so whatever it stores is already in the
+									// exact "T"-separated, seconds-free shape
+									// RecordForm's own control needs back --
+									// no conversion needed in either direction
+									// for this one, unlike an EXISTING record's
+									// own space-separated saved value.
+									<input
+										type="datetime-local"
 										className="regular-text"
 										{ ...register( 'settings.default' ) }
 									/>

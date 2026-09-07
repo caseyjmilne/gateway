@@ -79,6 +79,12 @@ function todayYMD() {
  * `"H:i:s"`, while a plain `<input type="time">` (no `step="1"`) only
  * ever edits `"H:i"` -- see that branch's own inline comment for the
  * truncate-on-the-way-in, pad-back-out-server-side split this needs.
+ * "datetime" (Datetime_Field_Type) is the same free native-`<input>`
+ * story yet again -- `<input type="datetime-local">`, no dedicated
+ * render branch -- combining BOTH of the other two's own gaps: its own
+ * `initialValues` branch bridges Time's own seconds-truncation AND a
+ * space-vs-`"T"` separator swap in one string operation -- see that
+ * branch's own inline comment.
  *
  * "relate_one"/"relate_many" (Relate_To_One_Field_Type/Relate_To_Many_Field_Type)
  * are two more special cases: Records_REST_Controller enriches a relate
@@ -360,7 +366,20 @@ function todayYMD() {
  * and what the browser's own native control actually reports back, so
  * that branch truncates whatever it's given (an existing record's own
  * saved value, OR a freshly-applied literal default -- both equally
- * "H:i:s"-shaped) down to `"H:i"` before ever assigning it.
+ * "H:i:s"-shaped) down to `"H:i"` before ever assigning it. `datetime`
+ * (Datetime_Field_Type) is a SIXTH shape, per a further, separate
+ * request ("we need a datetime picker that combines date picker with
+ * time picker together") -- the SAME plain-literal default Time's own
+ * already is (no sentinel), but its own dedicated `initialValues` branch
+ * bridges TWO gaps at once instead of Time's one: `Datetime_Field_Type::cast()`
+ * always stores/returns a full space-separated `"Y-m-d H:i:s"`, while a
+ * plain `<input type="datetime-local">` (no `step="1"`) only ever edits
+ * a `"T"`-separated, seconds-free `"Y-m-dTH:i"` -- one string operation
+ * (swap the first space for `"T"`, truncate to 16 characters) handles
+ * both an existing record's own saved value and a freshly-applied
+ * literal default alike, the second already being in that exact
+ * "T"-separated shape to begin with (so the operation is a safe no-op
+ * for it).
  *
  * `settings.character_limit` (`Field_Type::supports_character_limit()`,
  * Text/Text Area only -- FieldEditor's own Validation tab) passes
@@ -622,6 +641,33 @@ export default function RecordForm( {
 						? field.settings?.default
 						: existing;
 				initial[ field.name ] = rawTime ? String( rawTime ).slice( 0, 5 ) : '';
+			} else if ( 'datetime' === inputType ) {
+				// Same "Add New only" Default Value convention every other
+				// type has -- Datetime_Field_Type's own default is a plain
+				// literal value too, no sentinel (see this component's own
+				// docblock, the `settings.default` paragraph). The bridge
+				// needed here is Time's own seconds-truncation PLUS a
+				// separator swap: Datetime_Field_Type::cast() always
+				// stores/returns a full space-separated "Y-m-d H:i:s", but
+				// a plain <input type="datetime-local"> (no step="1") only
+				// ever edits a "T"-separated, seconds-free "Y-m-dTH:i" --
+				// one string operation (swap the first space for "T", then
+				// truncate to 16 characters) turns
+				// "2026-09-07 14:30:00" into exactly "2026-09-07T14:30". A
+				// literal Default Value is ALREADY in that same "T"-separated,
+				// seconds-free shape (straight from that same kind of
+				// control in FieldEditor), so the identical operation is a
+				// safe no-op for it -- one branch handles both sources.
+				// Whatever bare "Y-m-dTH:i" the control reports back on
+				// submit is sent through completely unconverted; `cast()`
+				// is what turns it back into "Y-m-d H:i:s" server-side.
+				const rawDatetime =
+					! initialValues && null === existing
+						? field.settings?.default
+						: existing;
+				initial[ field.name ] = rawDatetime
+					? String( rawDatetime ).replace( ' ', 'T' ).slice( 0, 16 )
+					: '';
 			} else if ( 'permalink' === inputType ) {
 				initial[ field.name ] = null === existing ? '' : String( existing );
 				// `initialValues` (not `existing`, which only ever reads
@@ -882,16 +928,19 @@ export default function RecordForm( {
 				// Covers "checkboxes" (already a string array) and
 				// "boolean" (already a real bool) as-is, alongside every
 				// plain-string field type (text/number/textarea/wysiwyg/
-				// markdown/date/time/select/radio/buttons/...) -- none of
-				// those need converting either; "date" already resolved
-				// its own `'today'` Default Value sentinel down to a real
-				// "Y-m-d" string well before submit, in its own dedicated
-				// `initialValues` branch above, so by now it's exactly as
-				// plain a string as "text"'s own. "time" is likewise
-				// already a bare "H:i" string by now (that same branch's
-				// own truncation), sent through unchanged -- Time_Field_Type::cast()
-				// is what pads it back out to "H:i:s" server-side, never
-				// anything this component itself needs to do. "user" also falls through to here,
+				// markdown/date/time/datetime/select/radio/buttons/...) --
+				// none of those need converting either; "date" already
+				// resolved its own `'today'` Default Value sentinel down
+				// to a real "Y-m-d" string well before submit, in its own
+				// dedicated `initialValues` branch above, so by now it's
+				// exactly as plain a string as "text"'s own. "time"/
+				// "datetime" are likewise already a bare "H:i"/"Y-m-dTH:i"
+				// string by now (those same branches' own truncation and,
+				// for "datetime", separator swap), sent through unchanged
+				// -- Time_Field_Type::cast()/Datetime_Field_Type::cast()
+				// are what pad/reshape them back into "H:i:s"/"Y-m-d H:i:s"
+				// server-side, never anything this component itself needs
+				// to do. "user" also falls through to here,
 				// unlike "image"/"file" above, even though its own form
 				// state can likewise start out as a richer `{id, name,
 				// email, avatar_url}` object: UserPicker.jsx itself
