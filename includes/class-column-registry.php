@@ -412,6 +412,13 @@ class Column_Registry {
 				// Nor is it an email address -- gateway/card-field-email's
 				// own Field picker never offers it either.
 				'isEmailRenderable'    => false,
+				// gateway/card-facet-has-value's own SOLE eligibility gate
+				// (see that flag's own docblock, on the per-field loop
+				// below) -- an id is a real, database-guaranteed NOT NULL
+				// auto-increment column, never meaningfully "unset," which
+				// is exactly why a Has Value facet is pointless for it (per
+				// a direct request: "not ID because it always has value").
+				'isHasValueEligible'   => false,
 			),
 		);
 
@@ -438,6 +445,18 @@ class Column_Registry {
 			// exclude a field from gateway/card-field-text's own picker
 			// too -- true only for Email_Field_Type today).
 			$is_email_renderable    = $type_class && class_exists( $type_class ) && $type_class::is_email_renderable();
+			// gateway/card-facet-has-value's own eligibility signal --
+			// unlike every isXxxRenderable flag above, NOT gated on any
+			// per-type declaration (a direct request: "any fields the user
+			// makes from the available field types is suitable" -- Password,
+			// Image, Relate To One, every type qualifies). The one real
+			// exclusion is structural, not type-based: `blueprint_method()`
+			// returning '' means this type owns no real column of its own
+			// to check at all (true only for Relate_To_Many_Field_Type today
+			// -- a belongsToMany relationship lives entirely in a pivot
+			// table), so there's nothing here for a Has Value facet to run
+			// `LENGTH(...) > 0` against.
+			$is_has_value_eligible  = $type_class && class_exists( $type_class ) && '' !== (string) $type_class::blueprint_method();
 			$is_numeric             = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
 			// Reuses the EXISTING supports_media_settings() flag rather
 			// than a new one -- it's already true for exactly one
@@ -528,6 +547,9 @@ class Column_Registry {
 				// gateway/card-field-email's own Field picker reads this --
 				// see Field_Type::is_email_renderable()'s own docblock.
 				'isEmailRenderable'    => $is_email_renderable,
+				// gateway/card-facet-has-value's own Field picker reads
+				// this -- see the computation above for the full "why."
+				'isHasValueEligible'   => $is_has_value_eligible,
 				'isNumeric'            => $is_numeric,
 				'isImage'              => $is_image,
 				'returnFormat'         => $return_format,
@@ -647,6 +669,13 @@ class Column_Registry {
 					// Field picker offers a related model's own Email field
 					// the exact same "one level deep only" way.
 					'isEmailRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_email_renderable(),
+					// gateway/card-facet-has-value has no related-field
+					// support -- always false here, matching Facet_Query's
+					// own long-standing "never filterable" treatment of
+					// related fields in general (see its own README notes).
+					// A real, separate piece of undone work, not a
+					// permanent design decision.
+					'isHasValueEligible'   => false,
 					'isNumeric'            => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
 					'isImage'              => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
 					'returnFormat'         => $related_field['settings']['return_format'] ?? 'array',
@@ -805,6 +834,12 @@ class Column_Registry {
 				// see ORDERABLE_CORE_COLUMNS' own docblock for why it's a
 				// narrower list than FILTERABLE_CORE_COLUMNS above.
 				'isOrderable'  => isset( self::ORDERABLE_CORE_COLUMNS[ $key ] ),
+				// gateway/card-facet-has-value's/gateway/facet-has-value's
+				// own eligibility gate -- every core column EXCEPT 'ID'
+				// qualifies (a direct request: "not ID because it always
+				// has value"), regardless of how filterable/orderable it
+				// otherwise is.
+				'isHasValueEligible' => 'ID' !== $key,
 			);
 		}
 
@@ -846,6 +881,13 @@ class Column_Registry {
 				'isFilterable' => false,
 				'facetType'    => array(),
 				'isOrderable'  => false,
+				// A real, meaningful "set or not" concept (a real
+				// `_thumbnail_id` meta key, present or absent) -- but
+				// `Facet_Query::apply_facets()` has no 'thumbnail'-type
+				// branch to run that check through today, unlike its real
+				// 'meta'/'core'/'taxonomy' branches -- real, separate,
+				// undone work, not a permanent exclusion.
+				'isHasValueEligible' => false,
 			),
 		);
 	}
@@ -881,6 +923,13 @@ class Column_Registry {
 				'isFilterable' => true,
 				'facetType'    => array( 'select', 'checkboxes' ),
 				'isOrderable'  => false,
+				// Term membership isn't a "field value" a Has Value facet's
+				// LENGTH()/EXISTS-style check has any coherent meaning
+				// against -- a post either has terms in this taxonomy or it
+				// doesn't, which is what the taxonomy's own Select/
+				// Checkboxes facet (every real term, explicitly chosen)
+				// already lets a visitor narrow by.
+				'isHasValueEligible' => false,
 			);
 		}
 
@@ -986,6 +1035,14 @@ class Column_Registry {
 				// meta_value_num choice this class has no reliable way to
 				// make, so no meta column is offered as Order By yet.
 				'isOrderable'  => false,
+				// Unlike ordering, "has a value at all" needs no type-aware
+				// choice -- a meta row's own `meta_value` is always plain
+				// text (`wp_postmeta.meta_value` is a LONGTEXT column
+				// regardless of what a site conceptually treats a given key
+				// as), and WordPress simply has no row at all for a post
+				// that never had this meta key set -- so every meta column
+				// qualifies unconditionally.
+				'isHasValueEligible' => true,
 			);
 		}
 

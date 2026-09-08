@@ -28,8 +28,17 @@ class Facet_Query {
 	 * Comparison operators safe to interpolate directly into SQL. Never
 	 * trust a facet's `compare` value without checking it against this --
 	 * it's the only thing standing between a facet and a raw SQL fragment.
+	 *
+	 * `HAS_VALUE` is not a real SQL operator -- it's never interpolated the
+	 * way every other member here is, and carries no comparison value at
+	 * all (see validate_facets()' own docblock). It's included in this
+	 * list anyway since sanitize_compare() is the one shared "is this a
+	 * real, recognized compare" gate every caller already relies on;
+	 * apply_facets()/apply_collection_facets()/filter_posts_where() each
+	 * branch on it specially before ever reaching the code that treats
+	 * every other member as literal SQL.
 	 */
-	const ALLOWED_COMPARE = array( '=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE' );
+	const ALLOWED_COMPARE = array( '=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'HAS_VALUE' );
 
 	/**
 	 * wp_posts columns safe to interpolate directly into SQL -- matches
@@ -91,6 +100,36 @@ class Facet_Query {
 		$core_facets = array();
 
 		foreach ( $facets as $facet ) {
+			if ( 'HAS_VALUE' === $facet['compare'] ) {
+				if ( 'meta' === $facet['type'] ) {
+					// A meta row's own `meta_value` is always plain text
+					// (see Column_Registry::get_meta_columns()' own
+					// `isHasValueEligible` docblock) -- comparing it to ''
+					// with `!=` needs no NUMERIC/CHAR type distinction the
+					// way the generic branch below does, and this same
+					// clause's own implicit INNER JOIN already excludes a
+					// post that never had this meta key set at all, with
+					// no separate "key doesn't exist" case to handle.
+					$meta_query[] = array(
+						'key'     => $facet['key'],
+						'value'   => '',
+						'compare' => '!=',
+					);
+				} elseif ( self::sanitize_core_column( $facet['key'] ) ) {
+					$core_facets[] = array(
+						'key'     => $facet['key'],
+						'compare' => 'HAS_VALUE',
+						'value'   => '',
+					);
+				}
+
+				// Never a taxonomy facet -- validate_facets() never marks a
+				// taxonomy column isHasValueEligible (see that flag's own
+				// docblock in Column_Registry::get_taxonomy_columns()), so
+				// this can never actually reach here for one.
+				continue;
+			}
+
 			$compare  = self::sanitize_compare( $facet['compare'] );
 			$is_multi = is_array( $facet['value'] );
 
@@ -199,6 +238,24 @@ class Facet_Query {
 				continue;
 			}
 
+			if ( 'HAS_VALUE' === $facet['compare'] ) {
+				// LENGTH() rather than a plain `!= ''` comparison: every
+				// core column this can ever apply to (ALLOWED_CORE_COLUMNS,
+				// minus 'ID' -- see Column_Registry::get_core_columns()'
+				// own isHasValueEligible) is a wp_posts TEXT/VARCHAR column
+				// (never NULL there -- WordPress' own schema defaults every
+				// one of them to ''), so LENGTH() > 0 and `!= ''` are
+				// equivalent here; LENGTH() is used anyway to stay
+				// consistent with apply_collection_facets()'s own identical
+				// choice, made there specifically to sidestep MySQL's
+				// numeric-string coercion for a Collection's own (sometimes
+				// genuinely numeric) columns. No value to prepare/interpolate
+				// at all -- $column is the only moving part, already
+				// allow-listed above.
+				$where .= " AND LENGTH({$wpdb->posts}.{$column}) > 0"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+				continue;
+			}
+
 			$compare = self::sanitize_compare( $facet['compare'] );
 
 			$value = in_array( $compare, array( 'LIKE', 'NOT LIKE' ), true )
@@ -233,6 +290,28 @@ class Facet_Query {
 	public static function apply_collection_facets( $query, array $facets ) {
 		foreach ( $facets as $facet ) {
 			$key = $facet['key'];
+
+			if ( 'HAS_VALUE' === $facet['compare'] ) {
+				// LENGTH() > 0, not `whereNotNull($key)->where($key, '!=', '')`:
+				// a numeric column (Number/Range, a Relate To One's own FK,
+				// True/False's boolean column, ...) compared against the
+				// STRING '' gets silently coerced by MySQL -- '' becomes 0
+				// for that comparison, so a real, meaningful `0` (or `false`)
+				// value would wrongly compare EQUAL to '' and get excluded
+				// by mistake (exactly the "0 is set, null isn't" case a
+				// direct request called out explicitly). LENGTH(), by
+				// contrast, always casts its argument to a string FIRST
+				// (LENGTH(0) is 1, LENGTH(NULL) is NULL) -- immune to that
+				// coercion regardless of the column's own real type, so no
+				// per-field-type branching is needed here at all. $key is
+				// never attacker-controlled -- validate_facets() only ever
+				// lets through a key that's a real, existing column
+				// (Model_Fields' own name-sanitization already limits it to
+				// safe identifier characters), the same trust `where( $key,
+				// ... )` calls below already place in it unescaped.
+				$query->whereRaw( 'LENGTH(`' . $key . '`) > 0' );
+				continue;
+			}
 
 			if ( is_array( $facet['value'] ) ) {
 				$values = array_values( array_filter( $facet['value'], 'strlen' ) );
@@ -340,6 +419,19 @@ class Facet_Query {
 	 * box checked) -- normalizing the array form by dropping empty/non
 	 * -string entries, and dropping the whole facet if that empties it too.
 	 *
+	 * A `compare` of `HAS_VALUE` (gateway/card-facet-has-value/gateway/
+	 * facet-has-value) is a genuinely different shape, handled as its own
+	 * branch rather than falling through the rules above: it carries no
+	 * `value` at all (there's nothing to compare against -- see this
+	 * class's own `ALLOWED_COMPARE` docblock), so the "empty value means
+	 * drop it" rule would incorrectly discard every one of these; and its
+	 * own field eligibility is `isHasValueEligible`, not `isFilterable` --
+	 * deliberately broader (a direct request: "any fields the user makes
+	 * from the available field types is suitable"), since a Has Value
+	 * check needs none of the value-comparison machinery `isFilterable`
+	 * exists to gate (e.g. a Password field is never `isFilterable`, but
+	 * "is a password actually set" is still a perfectly meaningful check).
+	 *
 	 * @param array $raw_facets        Untrusted facets, each with at least 'key' and 'value'.
 	 * @param array $available_columns Column_Registry::get_columns() results, keyed by column 'key'.
 	 * @return array[] Validated facets: [ 'key', 'type', 'compare', 'value' (string|string[]) ][].
@@ -354,7 +446,29 @@ class Facet_Query {
 
 			$key = is_string( $requested_facet['key'] ) ? trim( $requested_facet['key'] ) : '';
 
-			if ( '' === $key || ! isset( $available_columns[ $key ] ) || empty( $available_columns[ $key ]['isFilterable'] ) ) {
+			if ( '' === $key || ! isset( $available_columns[ $key ] ) ) {
+				continue;
+			}
+
+			if ( 'HAS_VALUE' === ( $requested_facet['compare'] ?? '' ) ) {
+				if ( empty( $available_columns[ $key ]['isHasValueEligible'] ) ) {
+					continue;
+				}
+
+				// No real 'value' to carry -- '1' is a non-empty placeholder
+				// only, never read by apply_facets()/apply_collection_facets()'s
+				// own HAS_VALUE branches (both build their query condition
+				// from 'key' alone).
+				$facets[] = array(
+					'key'     => $key,
+					'type'    => $available_columns[ $key ]['type'],
+					'compare' => 'HAS_VALUE',
+					'value'   => '1',
+				);
+				continue;
+			}
+
+			if ( empty( $available_columns[ $key ]['isFilterable'] ) ) {
 				continue;
 			}
 

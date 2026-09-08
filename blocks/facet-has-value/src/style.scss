@@ -1,0 +1,26 @@
+/**
+ * Styles for the gateway/facet-has-value block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). The
+ * wrapper reuses gateway/facet's own `.gateway-facet` class (see
+ * render.php's own docblock -- needed for view.js's own `findDataTableElement()`
+ * lookup, which walks up from any element carrying it), but that class's
+ * own compiled CSS lives in a SEPARATE stylesheet (gateway/facet's own)
+ * that's only ever enqueued when a real gateway/facet block is also
+ * present on the page -- so the handful of rules this block actually
+ * needs are duplicated here too, the same "direct copy, renamed"
+ * precedent gateway/card-facet's own style.scss already set.
+ */
+
+.gateway-facet-has-value {
+	margin-bottom: 1em;
+	font-size: 16px;
+
+	.gateway-facet__checkbox-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35em;
+		font-weight: 600;
+	}
+}

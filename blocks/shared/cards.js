@@ -71,6 +71,25 @@ export function collectActiveFacets( gridEl ) {
 			return;
 		}
 
+		// gateway/card-facet-has-value's own single checkbox -- unlike
+		// 'checkboxes' below (a fixed list of real values, OR-matched),
+		// this one carries no value at all: checked means "only show
+		// records where this field has a value" (Facet_Query::
+		// apply_collection_facets()/apply_facets()'s own HAS_VALUE
+		// branches), unchecked means no filter, the same "nothing active"
+		// skip every other branch here already uses.
+		if ( 'hasvalue' === uiType ) {
+			const checkbox = facetEl.querySelector(
+				'.gateway-card-facet-has-value__checkbox'
+			);
+
+			if ( checkbox && checkbox.checked ) {
+				facets.push( { key, compare: 'HAS_VALUE', value: '1' } );
+			}
+
+			return;
+		}
+
 		let value;
 
 		if ( 'checkboxes' === uiType ) {
