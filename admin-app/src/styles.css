@@ -658,6 +658,19 @@
 	   button above already centers it, reading as slightly offset from
 	   the label text right next to it. */
 	display: block;
+	/* `display: block` above only zeroes out the svg's own reserved
+	   descender strip -- `align-items: center` is still centering the
+	   icon against the LABEL's own line box, not against where the
+	   label's actual glyph ink sits within it. A line box's leading isn't
+	   guaranteed to split evenly above/below the glyphs (it follows the
+	   font's own ascent/descent metrics, which vary by OS/browser), so a
+	   short, all-caps, no-descender label like "ID"/"Title" can still
+	   read visibly off-center against a geometrically-centered icon next
+	   to it -- reported as the icon sitting a couple pixels too high.
+	   A small manual nudge down is the practical fix once font metrics
+	   are the cause: no single line-height value lines up a text
+	   baseline with an SVG's geometric center for every font. */
+	margin-top: 2px;
 }
 
 .gateway-admin-app .gateway-records-crud-sort-icon--active {

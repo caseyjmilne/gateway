@@ -109,12 +109,7 @@ export default function DatabaseConfig() {
 				separate from $wpdb -- for Laravel-style Eloquent models to
 				use. Use this screen to confirm it can connect, and to set a
 				custom port if the database isn&rsquo;t reachable on the
-				default 3306 (common when it runs in a container that maps
-				MySQL to a different host port). Connection attempts time out
-				after 3 seconds. The status below is normally a cached
-				result -- Gateway only re-checks periodically on its own;
-				click &ldquo;Test Connection&rdquo; for a live check right
-				now.
+				default 3306.
 			</p>
 
 			{ loadError && (
