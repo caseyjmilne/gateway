@@ -15,7 +15,9 @@
 		"gateway/data-cards/postType",
 		"gateway/data-cards/collection",
 		"gateway/data-cards/limit",
-		"gateway/data-cards/pageSize"
+		"gateway/data-cards/pageSize",
+		"gateway/data-cards/orderBy",
+		"gateway/data-cards/order"
 	],
 	"supports": {
 		"html": false,
