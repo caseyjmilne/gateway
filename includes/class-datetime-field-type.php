@@ -166,6 +166,13 @@ class Datetime_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function is_email_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * Deliberately `null` -- see this class's own docblock, same "plain
 	 * string in, plain string back out" reasoning `Date_Field_Type`/

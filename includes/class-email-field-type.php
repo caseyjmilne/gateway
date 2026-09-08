@@ -14,6 +14,18 @@
  * Presentation -- there's nothing about being an email address
  * specifically that changes any of that.
  *
+ * `is_text_renderable()` stays `true` -- per a direct request ("make
+ * sure it is possible to render with Field: Text"), this field's own
+ * raw value is still perfectly safe/meaningful plain text, so
+ * `gateway/card-field-text` keeps offering it exactly like any other
+ * plain string field. `is_email_renderable()` is a SEPARATE, additive
+ * flag (see that interface method's own docblock for the full
+ * reasoning) -- `true` only here -- that a second, purpose-built block,
+ * `gateway/card-field-email`, uses to find its own eligible fields: the
+ * one thing that block adds on top of plain text display is an optional
+ * `mailto:` link (off by default, per a direct request), which only
+ * ever makes sense for a genuine email address.
+ *
  * @package Gateway
  */
 
@@ -105,6 +117,13 @@ class Email_Field_Type implements Field_Type {
 	 */
 	public static function is_markdown_renderable() {
 		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_email_renderable() {
+		return true;
 	}
 
 	/**

@@ -276,6 +276,37 @@ interface Field_Type {
 	public static function is_markdown_renderable();
 
 	/**
+	 * Whether this type's own stored value is specifically an email
+	 * address -- the same "declare it about yourself" reasoning
+	 * `is_text_renderable()`/`is_numeric()` already use, this time
+	 * deciding which fields `gateway/card-field-email`'s own Field
+	 * picker offers at all (and rejects a stale/hand-crafted `fieldKey`
+	 * for on the front end, the same way `is_numeric()` already protects
+	 * `gateway/card-field-number`).
+	 *
+	 * Unlike `is_markdown_renderable()` immediately above -- a THIRD,
+	 * mutually-exclusive content-shape flag that deliberately keeps a
+	 * Markdown field OUT of `is_text_renderable()`'s own answer -- this
+	 * one is additive, the same way `is_numeric()` sits alongside
+	 * `is_text_renderable()` for Number/Range rather than replacing it:
+	 * an email address is ALSO perfectly safe, meaningful plain text
+	 * (per a direct request, "make sure it is possible to render with
+	 * Field: Text"), so `Email_Field_Type::is_text_renderable()` stays
+	 * `true` -- this flag exists purely so a SECOND, purpose-built block
+	 * (`gateway/card-field-email`, which adds one thing
+	 * `gateway/card-field-text` has no reason to: an optional `mailto:`
+	 * link, off by default) can find eligible fields of its own, the
+	 * same relationship `is_numeric()`/`gateway/card-field-number`
+	 * already has to `gateway/card-field-text`.
+	 *
+	 * `true` only for `Email_Field_Type`; `false` for every other
+	 * built-in type.
+	 *
+	 * @return bool
+	 */
+	public static function is_email_renderable();
+
+	/**
 	 * The Eloquent native cast name (`$casts`, e.g. "array"/"boolean") a
 	 * generated model's own column for this type needs declared against
 	 * it, or `null` for the default (no cast -- what every plain scalar

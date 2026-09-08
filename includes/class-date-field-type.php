@@ -181,6 +181,13 @@ class Date_Field_Type implements Field_Type {
 
 	/**
 	 * @inheritDoc
+	 */
+	public static function is_email_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
 	 *
 	 * Deliberately `null`, not Eloquent's own native `'date'` cast -- see
 	 * this class's own docblock for why: a `Carbon` instance would

@@ -255,4 +255,11 @@ class Markdown_Field_Type implements Field_Type {
 	public static function is_markdown_renderable() {
 		return true;
 	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public static function is_email_renderable() {
+		return false;
+	}
 }

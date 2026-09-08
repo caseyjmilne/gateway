@@ -320,6 +320,9 @@ class Column_Registry {
 				// anything gateway/card-field-markdown's own Field picker
 				// would ever offer.
 				'isMarkdownRenderable' => false,
+				// Nor is it an email address -- gateway/card-field-email's
+				// own Field picker never offers it either.
+				'isEmailRenderable'    => false,
 			),
 		);
 
@@ -339,6 +342,13 @@ class Column_Registry {
 			// either of the two immediately above (true only for
 			// Markdown_Field_Type today).
 			$is_markdown_renderable = $type_class && class_exists( $type_class ) && $type_class::is_markdown_renderable();
+			// gateway/card-field-email's own eligibility signal -- see
+			// Field_Type::is_email_renderable()'s own docblock for why
+			// this is a separate, ADDITIVE flag alongside is_text_renderable
+			// (unlike is_markdown_renderable above, this one doesn't
+			// exclude a field from gateway/card-field-text's own picker
+			// too -- true only for Email_Field_Type today).
+			$is_email_renderable    = $type_class && class_exists( $type_class ) && $type_class::is_email_renderable();
 			$is_numeric             = $type_class && class_exists( $type_class ) && $type_class::is_numeric();
 			// Reuses the EXISTING supports_media_settings() flag rather
 			// than a new one -- it's already true for exactly one
@@ -426,6 +436,9 @@ class Column_Registry {
 				// this to decide which fields to offer at all -- see
 				// Field_Type::is_markdown_renderable()'s own docblock.
 				'isMarkdownRenderable' => $is_markdown_renderable,
+				// gateway/card-field-email's own Field picker reads this --
+				// see Field_Type::is_email_renderable()'s own docblock.
+				'isEmailRenderable'    => $is_email_renderable,
 				'isNumeric'            => $is_numeric,
 				'isImage'              => $is_image,
 				'returnFormat'         => $return_format,
@@ -541,6 +554,10 @@ class Column_Registry {
 					// way gateway/card-field-text already offers a related
 					// WYSIWYG/plain-text field.
 					'isMarkdownRenderable' => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_markdown_renderable(),
+					// Same treatment again -- gateway/card-field-email's own
+					// Field picker offers a related model's own Email field
+					// the exact same "one level deep only" way.
+					'isEmailRenderable'    => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_email_renderable(),
 					'isNumeric'            => $related_type_class && class_exists( $related_type_class ) && $related_type_class::is_numeric(),
 					'isImage'              => $related_type_class && class_exists( $related_type_class ) && $related_type_class::supports_media_settings(),
 					'returnFormat'         => $related_field['settings']['return_format'] ?? 'array',

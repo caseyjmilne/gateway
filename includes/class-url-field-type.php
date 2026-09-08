@@ -108,6 +108,13 @@ class URL_Field_Type implements Field_Type {
 	/**
 	 * @inheritDoc
 	 */
+	public static function is_email_renderable() {
+		return false;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public static function eloquent_cast() {
 		return null;
 	}
