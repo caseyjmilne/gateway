@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
+import { SkeletonBar } from './Skeleton.jsx';
 
 /**
  * A small field-editor-style Relationship Editor for one model: pick
@@ -208,7 +209,16 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 			<h4>Add Relationship</h4>
 
 			{ loadingModels ? (
-				<p>Loading…</p>
+				<>
+					<div className="gateway-field-editor-row" aria-hidden="true">
+						<SkeletonBar className="gateway-relationship-editor-skeleton-select" />
+						<SkeletonBar className="gateway-relationship-editor-skeleton-select" />
+						<SkeletonBar className="gateway-relationship-editor-skeleton-button" />
+					</div>
+					<span className="screen-reader-text" role="status">
+						Loading models…
+					</span>
+				</>
 			) : otherModels.length === 0 ? (
 				<p className="description">
 					No other models yet -- create at least one more model

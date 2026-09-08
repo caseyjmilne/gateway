@@ -6,6 +6,7 @@ import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
 import PermalinkEditor from '../components/PermalinkEditor.jsx';
 import ColumnsEditor from '../components/ColumnsEditor.jsx';
+import { SkeletonBar } from '../components/Skeleton.jsx';
 
 // Gateway\Model_Builder::TYPE_CONTENT_TYPE/TYPE_DATA_MODEL's own values --
 // same fixed, hardcoded vocabulary ModelsList.jsx's own create-form
@@ -52,13 +53,14 @@ const MODEL_TYPE_LABELS = {
  * beneath it, not stuck equidistant between two unrelated tab rows.
  *
  * While `model` itself is still loading, a shimmering skeleton
- * (`.gateway-model-detail-skeleton`, reusing RecordsCrud's own
- * `@keyframes gateway-records-crud-skeleton-shimmer` rather than a
- * second, redundant animation) stands in for this same heading/tab-strip
- * shape instead of a bare "Loading…" line -- the same "never a full-page
- * text swap, always a shaped placeholder" treatment RecordsCrud's own
- * `SkeletonRows` already established for a background records reload,
- * applied here to this screen's own FIRST load instead. Purely visual
+ * (`.gateway-model-detail-skeleton`, built from `Skeleton.jsx`'s own
+ * shared `SkeletonBar` -- see that module's own docblock for why this
+ * app has one canonical shimmer definition rather than a redundant copy
+ * per screen) stands in for this same heading/tab-strip shape instead of
+ * a bare "Loading…" line -- the same "never a full-page text swap,
+ * always a shaped placeholder" treatment RecordsCrud.jsx's own row
+ * skeleton already established for a background records reload, applied
+ * here to this screen's own FIRST load instead. Purely visual
  * (`aria-hidden`); a `screen-reader-text`/`role="status"` line right
  * after it is what actually announces "loading" to assistive tech, the
  * same split that component uses.
@@ -268,15 +270,15 @@ export default function ModelDetail() {
 					   * RecordsCrud.jsx's own SkeletonRows/status-text pair
 					   * already uses. */ }
 					<div className="gateway-model-detail-skeleton" aria-hidden="true">
-						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-title" />
+						<SkeletonBar className="gateway-model-detail-skeleton-title" />
 						<div className="gateway-model-detail-skeleton-tabs">
-							<span className="gateway-model-detail-skeleton-bar" />
-							<span className="gateway-model-detail-skeleton-bar" />
-							<span className="gateway-model-detail-skeleton-bar" />
-							<span className="gateway-model-detail-skeleton-bar" />
+							<SkeletonBar />
+							<SkeletonBar />
+							<SkeletonBar />
+							<SkeletonBar />
 						</div>
-						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-line" />
-						<span className="gateway-model-detail-skeleton-bar gateway-model-detail-skeleton-line" />
+						<SkeletonBar className="gateway-model-detail-skeleton-line" />
+						<SkeletonBar className="gateway-model-detail-skeleton-line" />
 					</div>
 					<span className="screen-reader-text" role="status">
 						Loading…

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import Modal from '../components/Modal.jsx';
+import { SkeletonTableRows } from '../components/Skeleton.jsx';
 
 // Everything BUT letters/digits/underscores is stripped from Title as it's
 // typed -- see this screen's own docblock for why. Applied on every
@@ -300,9 +301,13 @@ export default function ModelsList() {
 				</div>
 			) }
 
-			{ loadingModels ? (
-				<p>Loading…</p>
-			) : models.length === 0 ? (
+			{ loadingModels && (
+				<span className="screen-reader-text" role="status">
+					Loading models…
+				</span>
+			) }
+
+			{ ! loadingModels && models.length === 0 ? (
 				<p className="description">No models yet.</p>
 			) : (
 				<table className="widefat striped">
@@ -313,26 +318,30 @@ export default function ModelsList() {
 							<th>Status</th>
 						</tr>
 					</thead>
-					<tbody>
-						{ models.map( ( model ) => (
-							<tr key={ model.class }>
-								<td>
-									<Link to={ `/models/${ model.slug }` }>
-										<code>{ model.class }</code>
-									</Link>
-								</td>
-								<td>
-									<code>{ model.table }</code>
-								</td>
-								<td>
-									{ model.migration &&
-									model.migration.has_run
-										? '✅ Ready'
-										: '⚠️ Migration not run' }
-								</td>
-							</tr>
-						) ) }
-					</tbody>
+					{ loadingModels ? (
+						<SkeletonTableRows rowCount={ 3 } columnCount={ 3 } />
+					) : (
+						<tbody>
+							{ models.map( ( model ) => (
+								<tr key={ model.class }>
+									<td>
+										<Link to={ `/models/${ model.slug }` }>
+											<code>{ model.class }</code>
+										</Link>
+									</td>
+									<td>
+										<code>{ model.table }</code>
+									</td>
+									<td>
+										{ model.migration &&
+										model.migration.has_run
+											? '✅ Ready'
+											: '⚠️ Migration not run' }
+									</td>
+								</tr>
+							) ) }
+						</tbody>
+					) }
 				</table>
 			) }
 		</div>

@@ -10,6 +10,7 @@ import useSortableRow from '../hooks/useSortableRow.js';
 import RecordForm from '../components/RecordForm.jsx';
 import Modal from '../components/Modal.jsx';
 import DndSortableGroup from '../components/DndSortableGroup.jsx';
+import { SkeletonTableRows } from '../components/Skeleton.jsx';
 import { getRecordPermalink } from '../utils/permalink.js';
 
 const PER_PAGE = 20;
@@ -181,15 +182,13 @@ export default function RecordsCrud() {
 	const [ search, setSearch ] = useState( '' );
 
 	// True once this MODEL's own records have loaded successfully at
-	// least once -- reset to false on a genuine model switch (below), so
-	// a brand new model's own first load still gets the classic full-page
-	// "Loading…" treatment (there's no existing table shape worth holding
-	// onto yet). Every load AFTER that first one keeps the table -- and
-	// its headers -- mounted throughout instead of tearing the whole
-	// thing down to a bare "Loading…" and rebuilding it a moment later,
-	// which is what made even a single-column sort click look like the
-	// entire screen had reloaded. See `rowsPending` below for what
-	// actually shows in the row area meanwhile.
+	// least once -- reset to false on a genuine model switch (below).
+	// Distinguishes this model's own very first load (nothing real to
+	// show at all yet -- see `showRowSkeleton` further below, which
+	// covers this case unconditionally) from a later reload, purely for
+	// the screen-reader status text's own wording ("Loading records…"
+	// vs. "Refreshing records…") and `rowsPending`'s own narrower
+	// "did THIS particular reload opt in" question.
 	const [ hasLoadedOnce, setHasLoadedOnce ] = useState( false );
 
 	// Whether the table's own ROWS specifically should show a skeleton
@@ -203,7 +202,10 @@ export default function RecordsCrud() {
 	// of records -- a page change, a sort that can't be resolved instantly
 	// (jumping back to page 1 from elsewhere), or a refresh after
 	// add/edit/delete -- sets this explicitly right before calling
-	// `loadRecords()`.
+	// `loadRecords()`. This model's own very first load never needs to
+	// set this itself -- `showRowSkeleton` below already treats
+	// `! hasLoadedOnce` as reason enough on its own (nothing real exists
+	// to leave on screen yet either way).
 	const [ rowsPending, setRowsPending ] = useState( false );
 
 	// Which column the table is currently sorted by -- 'id'/'desc' is
@@ -633,6 +635,15 @@ export default function RecordsCrud() {
 		'asc' === order &&
 		'' === search &&
 		total <= records.length;
+
+	// Whether the table's own ROW area should show shimmering placeholder
+	// bars instead of real records right now -- covers BOTH this model's
+	// own very first load (`! hasLoadedOnce`, nothing real to show yet at
+	// all) and a later background reload that explicitly opted in via
+	// `rowsPending` (see that state's own docblock for why an instant
+	// client-side resort never does). Collapsed into one constant since
+	// every render below reads the identical compound condition.
+	const showRowSkeleton = loadingRecords && ( ! hasLoadedOnce || rowsPending );
 
 	const effectivePerPage = positionField ? POSITION_PER_PAGE : perPage;
 	const totalPages = Math.max( 1, Math.ceil( total / effectivePerPage ) );
@@ -1096,29 +1107,30 @@ export default function RecordsCrud() {
 								</div>
 							) }
 
-							{ hasLoadedOnce && loadingRecords && rowsPending && (
+							{ showRowSkeleton && (
 								<span className="screen-reader-text" role="status">
-									Refreshing records…
+									{ hasLoadedOnce ? 'Refreshing records…' : 'Loading records…' }
 								</span>
 							) }
 
-							{ ! hasLoadedOnce && loadingRecords ? (
-								<p>Loading…</p>
-							) : 0 === records.length && ! loadingRecords ? (
+							{ 0 === records.length && ! loadingRecords ? (
 								<p className="description">
 									{ search
 										? 'No records match your search.'
 										: 'No records yet.' }
 								</p>
 							) : (
-								// `rowsPending` decides what fills the ROW area
-								// while a background reload is in flight -- see
-								// that state's own docblock. Never a bare
-								// "Loading…" swap for the whole block any more:
-								// the table (headers included) stays mounted
-								// throughout every load after the first.
+								// `showRowSkeleton` decides what fills the ROW
+								// area while a load is in flight -- see that
+								// constant's own docblock. Never a bare
+								// "Loading…" swap for the whole block, even on
+								// this model's own very first load: the table
+								// (real headers included, already known from
+								// `model`/`columnsConfig` by this point) mounts
+								// immediately, with shimmering placeholder rows
+								// standing in for the data itself.
 								<DndSortableGroup
-									enabled={ canReorder && ! ( loadingRecords && rowsPending ) }
+									enabled={ canReorder && ! showRowSkeleton }
 									sensors={ dragSensors }
 									onDragEnd={ handleDragEnd }
 									itemIds={ records.map( ( record ) => record.id ) }
@@ -1156,12 +1168,13 @@ export default function RecordsCrud() {
 												<th></th>
 											</tr>
 										</thead>
-										{ loadingRecords && rowsPending ? (
-											<SkeletonRows
-												rowCount={ Math.min(
-													Math.max( records.length, 1 ),
-													10
-												) }
+										{ showRowSkeleton ? (
+											<SkeletonTableRows
+												rowCount={
+													hasLoadedOnce
+														? Math.min( Math.max( records.length, 1 ), 10 )
+														: 5
+												}
 												columnCount={
 													( canReorder ? 1 : 0 ) +
 													1 +
@@ -1400,34 +1413,5 @@ function SortableRecordRow( { record, children } ) {
 			</td>
 			{ children }
 		</tr>
-	);
-}
-
-/**
- * Stands in for `<tbody>` while a background reload's own `rowsPending`
- * is true (see that state's own docblock) -- `rowCount` placeholder
- * `<tr>`s, each `columnCount` cells wide (matching whatever the REAL
- * rows would currently have: the drag-handle column when `canReorder`,
- * one per displayed field, plus the leading id and trailing actions
- * columns), so the table never visibly changes shape while this is
- * showing in place of real data. `aria-hidden` -- this is a purely
- * visual placeholder, not content a screen reader has any reason to
- * read row-by-row; the separate `role="status"` text rendered just
- * above the table (see the caller) is what actually announces "still
- * loading" to one instead.
- */
-function SkeletonRows( { rowCount, columnCount } ) {
-	return (
-		<tbody className="gateway-records-crud-skeleton" aria-hidden="true">
-			{ Array.from( { length: rowCount } ).map( ( _unused, rowIndex ) => (
-				<tr key={ rowIndex }>
-					{ Array.from( { length: columnCount } ).map( ( _unused2, colIndex ) => (
-						<td key={ colIndex }>
-							<span className="gateway-records-crud-skeleton-bar" />
-						</td>
-					) ) }
-				</tr>
-			) ) }
-		</tbody>
 	);
 }

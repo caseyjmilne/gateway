@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
+import { SkeletonBar } from '../components/Skeleton.jsx';
 
 const EMPTY_CONFIG = {
 	host: '',
@@ -122,6 +123,12 @@ export default function DatabaseConfig() {
 				</div>
 			) }
 
+			{ loadingConfig && (
+				<span className="screen-reader-text" role="status">
+					Loading connection settings…
+				</span>
+			) }
+
 			<form onSubmit={ handleTest }>
 				<table className="form-table" role="presentation">
 					<tbody>
@@ -130,19 +137,21 @@ export default function DatabaseConfig() {
 								<label htmlFor="gateway-db-host">Host</label>
 							</th>
 							<td>
-								<input
-									id="gateway-db-host"
-									type="text"
-									className="regular-text"
-									value={
-										loadingConfig
-											? 'Loading…'
-											: config.unix_socket
-											? config.unix_socket
-											: config.host
-									}
-									readOnly
-								/>
+								{ loadingConfig ? (
+									<SkeletonBar className="gateway-database-config-skeleton-input" />
+								) : (
+									<input
+										id="gateway-db-host"
+										type="text"
+										className="regular-text"
+										value={
+											config.unix_socket
+												? config.unix_socket
+												: config.host
+										}
+										readOnly
+									/>
+								) }
 							</td>
 						</tr>
 						<tr>
@@ -174,13 +183,17 @@ export default function DatabaseConfig() {
 								</label>
 							</th>
 							<td>
-								<input
-									id="gateway-db-database"
-									type="text"
-									className="regular-text"
-									value={ loadingConfig ? '' : config.database }
-									readOnly
-								/>
+								{ loadingConfig ? (
+									<SkeletonBar className="gateway-database-config-skeleton-input" />
+								) : (
+									<input
+										id="gateway-db-database"
+										type="text"
+										className="regular-text"
+										value={ config.database }
+										readOnly
+									/>
+								) }
 							</td>
 						</tr>
 						<tr>
@@ -190,13 +203,17 @@ export default function DatabaseConfig() {
 								</label>
 							</th>
 							<td>
-								<input
-									id="gateway-db-username"
-									type="text"
-									className="regular-text"
-									value={ loadingConfig ? '' : config.username }
-									readOnly
-								/>
+								{ loadingConfig ? (
+									<SkeletonBar className="gateway-database-config-skeleton-input" />
+								) : (
+									<input
+										id="gateway-db-username"
+										type="text"
+										className="regular-text"
+										value={ config.username }
+										readOnly
+									/>
+								) }
 							</td>
 						</tr>
 					</tbody>

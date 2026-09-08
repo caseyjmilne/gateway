@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api.js';
+import { SkeletonTableRows } from '../components/Skeleton.jsx';
 
 /**
  * Records home screen: every model, with its row count, linking to that
@@ -52,9 +53,13 @@ export default function RecordsList() {
 				</div>
 			) }
 
-			{ loading ? (
-				<p>Loading…</p>
-			) : models.length === 0 ? (
+			{ loading && (
+				<span className="screen-reader-text" role="status">
+					Loading models…
+				</span>
+			) }
+
+			{ ! loading && models.length === 0 ? (
 				<p className="description">
 					No models yet -- create one under{ ' ' }
 					<Link to="/">Models</Link> first.
@@ -67,20 +72,24 @@ export default function RecordsList() {
 							<th>Rows</th>
 						</tr>
 					</thead>
-					<tbody>
-						{ models.map( ( model ) => (
-							<tr key={ model.class }>
-								<td>
-									<Link to={ `/records/${ model.slug }` }>
-										<code>{ model.class }</code>
-									</Link>
-								</td>
-								<td>
-									{ null === model.count ? '—' : model.count }
-								</td>
-							</tr>
-						) ) }
-					</tbody>
+					{ loading ? (
+						<SkeletonTableRows rowCount={ 3 } columnCount={ 2 } />
+					) : (
+						<tbody>
+							{ models.map( ( model ) => (
+								<tr key={ model.class }>
+									<td>
+										<Link to={ `/records/${ model.slug }` }>
+											<code>{ model.class }</code>
+										</Link>
+									</td>
+									<td>
+										{ null === model.count ? '—' : model.count }
+									</td>
+								</tr>
+							) ) }
+						</tbody>
+					) }
 				</table>
 			) }
 		</div>

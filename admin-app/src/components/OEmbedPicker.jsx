@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchOembedPreview } from '../api.js';
+import { SkeletonBlock } from './Skeleton.jsx';
 
 // ACF's own oEmbed field falls back to 640×390 when Embed Size is left
 // blank -- mirrored here so a field with no configured size still gets
@@ -97,9 +98,12 @@ export default function OEmbedPicker( { field, value, onChange } ) {
 				onChange={ ( event ) => onChange( event.target.value ) }
 			/>
 			{ loading && (
-				<p className="description gateway-oembed-picker-status">
-					Loading preview…
-				</p>
+				<>
+					<SkeletonBlock className="gateway-oembed-picker-skeleton" />
+					<span className="screen-reader-text" role="status">
+						Loading preview…
+					</span>
+				</>
 			) }
 			{ error && (
 				<span className="gateway-oembed-picker-error">{ error }</span>
