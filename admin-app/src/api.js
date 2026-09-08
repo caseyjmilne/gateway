@@ -13,6 +13,13 @@
  * `npm run dev` -- where window.GatewayAdmin is never set -- can still load
  * the app; calls will simply fail with a clear "Request failed" error
  * instead of a broken page.
+ *
+ * `nonce` in particular can go stale well before this page is ever
+ * reloaded -- see `Admin_Page::enqueue_assets()`'s own docblock for the
+ * Heartbeat-based fix that keeps `window.GatewayAdmin.nonce` fresh in
+ * place for as long as this tab stays open, and `apiFetch()`'s own
+ * `rest_cookie_invalid_nonce` branch below for the one-time-reload
+ * safety net underneath that fix.
  */
 const config =
 	typeof window !== 'undefined' && window.GatewayAdmin
@@ -26,6 +33,17 @@ const config =
 // Root -- exported plainly rather than through a function, the same
 // "just a config value" treatment `config` itself already gets internally.
 export const HOME_URL = config.homeUrl;
+
+// Guards the one-time automatic reload below against looping forever --
+// see apiFetch()'s own "rest_cookie_invalid_nonce" branch for why a
+// SINGLE reload is the right response to that specific error, but a
+// second one arriving right after (a genuinely broken login state, not
+// just a stale nonce) must surface as a real error instead of silently
+// reloading over and over. Cleared the moment any request actually
+// succeeds, so a LATER, unrelated staleness (hours or days from now, in
+// this same tab) still gets its own one-shot reload rather than being
+// permanently blocked by a flag from earlier in the session.
+const NONCE_RELOAD_KEY = 'gatewayNonceReloaded';
 
 export async function apiFetch( path, options = {} ) {
 	const response = await fetch( `${ config.apiUrl }${ path }`, {
@@ -46,12 +64,42 @@ export async function apiFetch( path, options = {} ) {
 	}
 
 	if ( ! response.ok ) {
+		// WordPress core's own `rest_cookie_invalid_nonce` -- thrown
+		// whenever this request's own `X-WP-Nonce` header fails
+		// `wp_verify_nonce()`, entirely independent of whether the
+		// user's actual login session is still valid (it almost always
+		// still is -- see Admin_Page::enqueue_assets()'s own docblock
+		// for the full "why," and the Heartbeat-based fix that should
+		// already prevent this in the first place). Per a direct
+		// report ("Sometimes we randomly get 'Cookie check failed'...
+		// User is still logged in and the error is not expected"), this
+		// is a safety net for whatever residual case still slips past
+		// that fix (a blocked/failed Heartbeat tick, say): a plain
+		// reload -- this app is a HashRouter SPA, so the current route
+		// survives it -- fetches a brand new nonce via a normal PHP
+		// page render and picks up exactly where the user left off,
+		// with no confusing raw error message ever shown at all.
+		if (
+			data &&
+			'rest_cookie_invalid_nonce' === data.code &&
+			! window.sessionStorage.getItem( NONCE_RELOAD_KEY )
+		) {
+			window.sessionStorage.setItem( NONCE_RELOAD_KEY, '1' );
+			window.location.reload();
+			// The reload above is already in flight -- this promise
+			// simply never settles rather than surfacing an error the
+			// page is about to navigate away from regardless.
+			return new Promise( () => {} );
+		}
+
 		const message =
 			data && data.message
 				? data.message
 				: `Request failed (${ response.status }).`;
 		throw new Error( message );
 	}
+
+	window.sessionStorage.removeItem( NONCE_RELOAD_KEY );
 
 	return data;
 }

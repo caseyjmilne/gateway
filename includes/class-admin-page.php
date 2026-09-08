@@ -89,6 +89,48 @@ class Admin_Page {
 		// of this plugin's own.
 		wp_enqueue_editor();
 
+		// Keeps `GatewayAdmin.nonce` (below) from ever actually going
+		// stale while this page's own tab stays open -- per a direct
+		// report: "Sometimes we randomly get 'Cookie check failed' in
+		// the app usually after a period away from the site. User is
+		// still logged in and the error is not expected." That message
+		// is WordPress core's own `rest_cookie_invalid_nonce` error
+		// (`rest_cookie_check_errors()`), thrown whenever a REST
+		// request's own `X-WP-Nonce` header fails `wp_verify_nonce(...,
+		// 'wp_rest')` -- entirely independent of whether the user's
+		// actual LOGIN session/cookie is still valid (which is exactly
+		// why the site correctly still shows them as logged in when
+		// this happens). A `wp_create_nonce()` value is only valid for
+		// two ~12-hour "ticks" (~24 hours total) after being generated --
+		// this app is a single-page app that never reloads on its own,
+		// so the ONE nonce baked into `GatewayAdmin.nonce` at the moment
+		// this page was first loaded is the only one it would EVER have
+		// used, no matter how many hours/days that browser tab stayed
+		// open, without this.
+		//
+		// `wp_enqueue_script( 'heartbeat' )` plus the inline listener
+		// below is the exact mechanism every other nonce-refreshing
+		// WP-admin screen already relies on (this is what keeps the
+		// block editor's own `wp.apiFetch` REST calls working
+		// indefinitely too) -- WordPress core's own Heartbeat AJAX
+		// handler automatically includes a freshly-generated `rest-nonce`
+		// in EVERY tick's response for a still-logged-in user (no PHP of
+		// ours needs to add it), and the client-side Heartbeat API
+		// itself already fires a tick immediately whenever a
+		// backgrounded tab becomes visible again -- precisely the
+		// "after a period away from the site" moment the report
+		// describes, refreshing the nonce before this app would ever
+		// get a chance to use the stale one.
+		wp_enqueue_script( 'heartbeat' );
+		wp_add_inline_script(
+			'heartbeat',
+			'jQuery( document ).on( "heartbeat-tick", function ( event, data ) {'
+			. 'if ( data && data["rest-nonce"] && window.GatewayAdmin ) {'
+			. 'window.GatewayAdmin.nonce = data["rest-nonce"];'
+			. '}'
+			. '} );'
+		);
+
 		wp_enqueue_script(
 			self::HANDLE,
 			GATEWAY_ADMIN_APP_URL . '/build/app.js',
