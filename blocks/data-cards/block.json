@@ -36,6 +36,14 @@
 			"items": {
 				"type": "object"
 			}
+		},
+		"orderBy": {
+			"type": "string",
+			"default": ""
+		},
+		"order": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"providesContext": {

@@ -133,6 +133,13 @@ export async function fetchCardsPage( { gridEl, page, search = '' } ) {
 	const templateId = gridEl.getAttribute( 'data-template-id' );
 	const pageSize = gridEl.getAttribute( 'data-page-size' ) || '';
 	const limit = gridEl.getAttribute( 'data-limit' ) || '0';
+	// '' (the block's own "use the default" state -- see gateway/data-cards/
+	// render.php's own docblock) means neither param is sent at all, so
+	// Data_Cards_REST_Controller re-resolves the exact same default
+	// Data_Cards_Renderer::get_query_args()/get_collection_page() already
+	// applied on the initial, server-rendered page.
+	const orderBy = gridEl.getAttribute( 'data-order-by' ) || '';
+	const order = gridEl.getAttribute( 'data-order' ) || '';
 
 	const url = new URL( restUrl, window.location.href );
 	url.searchParams.set( 'template_id', templateId || '' );
@@ -142,6 +149,14 @@ export async function fetchCardsPage( { gridEl, page, search = '' } ) {
 
 	if ( search ) {
 		url.searchParams.set( 'search', search );
+	}
+
+	if ( orderBy ) {
+		url.searchParams.set( 'order_by', orderBy );
+	}
+
+	if ( order ) {
+		url.searchParams.set( 'order', order );
 	}
 
 	// Gathered fresh on every fetch, not just ones a facet itself

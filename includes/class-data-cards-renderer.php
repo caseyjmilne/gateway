@@ -106,9 +106,18 @@ class Data_Cards_Renderer {
 	 * @param int    $page      Zero-based page index.
 	 * @param int    $page_size Items per page.
 	 * @param string $search    Free-text search term, or '' for none.
+	 * @param string $order_by  Block's configured Order By field (a
+	 *                          `WP_Post` property name, e.g. 'post_title'),
+	 *                          or '' to leave `WP_Query`'s own native
+	 *                          default ('date') in place -- re-validated
+	 *                          here via `Column_Registry::resolve_post_orderby()`,
+	 *                          never trusted as-is.
+	 * @param string $order     'asc'/'desc', or '' for the default ('desc',
+	 *                          matching `WP_Query`'s own native default
+	 *                          order for its default 'date' orderby).
 	 * @return array WP_Query arguments.
 	 */
-	public static function get_query_args( $post_type, $page, $page_size, $search = '' ) {
+	public static function get_query_args( $post_type, $page, $page_size, $search = '', $order_by = '', $order = '' ) {
 		$query_args = array(
 			'post_type'      => $post_type,
 			'post_status'    => 'publish',
@@ -123,6 +132,18 @@ class Data_Cards_Renderer {
 
 		if ( '' !== $search ) {
 			$query_args['s'] = $search;
+		}
+
+		// A block that never configured an Order By (or one whose stored
+		// field no longer resolves -- see resolve_post_orderby()'s own
+		// docblock) leaves 'orderby'/'order' out entirely, so WP_Query's
+		// own native default ('date' DESC) keeps applying exactly as it
+		// did before this block ever offered a choice.
+		$resolved_order_by = Column_Registry::resolve_post_orderby( $post_type, (string) $order_by );
+
+		if ( '' !== $resolved_order_by ) {
+			$query_args['orderby'] = $resolved_order_by;
+			$query_args['order']   = 'asc' === strtolower( (string) $order ) ? 'ASC' : 'DESC';
 		}
 
 		/**
@@ -169,10 +190,24 @@ class Data_Cards_Renderer {
 	 *                                 rather than lazy-loaded (an N+1 query per record) once
 	 *                                 render_items_for_collection() gets to it.
 	 * @param string $search          Free-text search term, or '' for none.
+	 * @param string $order_by        Block's configured Order By field, or ''
+	 *                                for the default ('id') -- re-validated
+	 *                                here via `Model_Fields::resolve_orderby()`
+	 *                                (the same resolver gateway/data-display
+	 *                                already uses), never trusted as-is.
+	 * @param string $order           'asc'/'desc', or '' for the default
+	 *                                ('desc') -- matching this method's own
+	 *                                previous, hardcoded `orderBy( 'id', 'desc' )`.
 	 * @return array { records: \Illuminate\Support\Collection, pager_meta: array }
 	 */
-	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array(), array $template_blocks = array(), $search = '' ) {
-		$query = $collection::query()->orderBy( 'id', 'desc' );
+	public static function get_collection_page( $collection, $page, $page_size, $limit, array $facets = array(), array $template_blocks = array(), $search = '', $order_by = '', $order = '' ) {
+		// resolve_orderby() itself falls back to 'id' for an empty/invalid
+		// request, so an unconfigured block ends up with the exact same
+		// `orderBy( 'id', 'desc' )` this method always ran.
+		$resolved_order_by = Model_Fields::resolve_orderby( $collection, (string) $order_by );
+		$resolved_order    = 'asc' === strtolower( (string) $order ) ? 'asc' : 'desc';
+
+		$query = $collection::query()->orderBy( $resolved_order_by, $resolved_order );
 
 		$related_relationships = self::collect_related_field_relationships( $collection, $template_blocks );
 

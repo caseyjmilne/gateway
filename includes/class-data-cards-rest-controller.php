@@ -109,6 +109,23 @@ class Data_Cards_REST_Controller {
 						// (Facet_Query::validate_facets()), which is the
 						// real trust boundary here, not this callback.
 					),
+					'order_by'    => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						// Not the real trust boundary either -- get_items()
+						// below re-resolves this against
+						// Column_Registry::resolve_post_orderby(), which
+						// only ever recognizes a real WP_Post property this
+						// post type currently offers as Order By, exactly
+						// as gateway/data-cards/render.php already does for
+						// this same attribute on the initial page render.
+					),
+					'order'       => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
 				),
 			)
 		);
@@ -164,6 +181,20 @@ class Data_Cards_REST_Controller {
 						'default' => '',
 						// Deliberately no sanitize_callback -- same reasoning
 						// as the post-type route's own 'facets' arg above.
+					),
+					'order_by'    => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						// Re-resolved by get_collection_items() below via
+						// Model_Fields::resolve_orderby() -- same "not the
+						// real trust boundary" reasoning as the post-type
+						// route's own 'order_by' arg above.
+					),
+					'order'       => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
 					),
 				),
 			)
@@ -223,7 +254,10 @@ class Data_Cards_REST_Controller {
 
 		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
-		$query_args = Data_Cards_Renderer::get_query_args( $post_type, $page, $page_size, $search );
+		$order_by = (string) $request->get_param( 'order_by' );
+		$order    = (string) $request->get_param( 'order' );
+
+		$query_args = Data_Cards_Renderer::get_query_args( $post_type, $page, $page_size, $search, $order_by, $order );
 		$query_args = Facet_Query::apply_facets( $query_args, $facets );
 		$query      = new \WP_Query( $query_args );
 
@@ -278,7 +312,10 @@ class Data_Cards_REST_Controller {
 
 		$facets = is_array( $raw_facets ) ? Facet_Query::validate_facets( $raw_facets, $available_columns ) : array();
 
-		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets, $template_blocks, $search );
+		$order_by = (string) $request->get_param( 'order_by' );
+		$order    = (string) $request->get_param( 'order' );
+
+		$page_result = Data_Cards_Renderer::get_collection_page( $collection, $page, $page_size, $limit, $facets, $template_blocks, $search, $order_by, $order );
 		$html        = Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 
 		return rest_ensure_response( array_merge( array( 'html' => $html ), $page_result['pager_meta'] ) );

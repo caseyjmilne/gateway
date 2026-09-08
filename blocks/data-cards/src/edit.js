@@ -8,6 +8,7 @@ import PostTypeControl from '../../shared/controls/post-type-control';
 import CollectionControl from '../../shared/controls/collection-control';
 import LimitControl from '../../shared/controls/limit-control';
 import PageSizeControl from '../../shared/controls/page-size-control';
+import OrderControl from '../../shared/controls/order-control';
 import FacetsPanel from '../../shared/controls/facets-panel';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useReconcileFieldList } from '../../shared/hooks/use-reconcile-field-list';
@@ -110,7 +111,7 @@ function buildRequiredBlock( name ) {
 }
 
 export default function Edit( { attributes, setAttributes, clientId } ) {
-	const { sourceType, postType, collection, facets } = attributes;
+	const { sourceType, postType, collection, facets, orderBy, order } = attributes;
 	// `className: 'gateway-data-cards-block'` -- matching render.php's own
 	// `get_block_wrapper_attributes()` call -- so this element is findable
 	// by that class in the editor too, not just the front end: shared/
@@ -186,6 +187,21 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 		( column ) => column.isFilterable
 	);
 
+	// gateway/data-cards' own Order By picker -- Column_Registry's own
+	// `isOrderable` flag, computed for a Collection's fields via
+	// `Field_Type::is_orderable()` (the exact same flag/reasoning gateway/
+	// data-display's own Order By pickers already use) and, for a post
+	// type, via the narrower ORDERABLE_CORE_COLUMNS allowlist (see that
+	// const's own docblock for why it's smaller than isFilterable's own
+	// list). 'ID'/'Date' below are this source type's own REAL current
+	// default -- see order-control.js's own docblock for why that's shown
+	// as a label rather than baked into the attribute's own default.
+	const orderByOptions = availableColumns
+		.filter( ( column ) => column.isOrderable )
+		.map( ( column ) => ( { label: column.label, value: column.key } ) );
+	const defaultOrderByLabel = 'collection' === sourceType ? __( 'ID', 'gateway' ) : __( 'Date', 'gateway' );
+	const defaultOrder = 'desc';
+
 	// Drops a facet whose field is no longer filterable for the (possibly
 	// new) post type -- same reconciliation gateway/datatable/edit.js
 	// already runs against its own displayed columns, applied against
@@ -220,6 +236,15 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 					<PageSizeControl
 						value={ attributes.pageSize }
 						onChange={ ( value ) => setAttributes( { pageSize: value } ) }
+					/>
+					<OrderControl
+						orderBy={ orderBy }
+						order={ order }
+						orderByOptions={ orderByOptions }
+						defaultOrderByLabel={ defaultOrderByLabel }
+						defaultOrder={ defaultOrder }
+						onOrderByChange={ ( value ) => setAttributes( { orderBy: value } ) }
+						onOrderChange={ ( value ) => setAttributes( { order: value } ) }
 					/>
 				</PanelBody>
 				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>

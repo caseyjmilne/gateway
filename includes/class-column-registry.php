@@ -64,6 +64,40 @@ class Column_Registry {
 	);
 
 	/**
+	 * Which core (WP_Post field) columns gateway/data-cards' own Order By
+	 * picker offers for a postType-sourced grid, mapped to the actual
+	 * `WP_Query` `orderby` token each one needs -- NOT the same string as
+	 * the column's own `key` (a `WP_Post` property name): `get_query_args()`
+	 * passes this value straight through as `orderby`, so it has to be one
+	 * of `WP_Query`'s own recognized tokens ('title', 'date', ...), not
+	 * 'post_title'/'post_date'/etc.
+	 *
+	 * Deliberately narrower than FILTERABLE_CORE_COLUMNS above: every key
+	 * here is a plain, single-column `WP_Query` sort with no extra
+	 * arguments needed. `post_content`/`post_excerpt`/`post_status` are
+	 * left out -- `WP_Query` has no native `orderby` support for any of the
+	 * three (ordering by post status would need a hand-written `CASE`
+	 * expression, not a token). Meta/taxonomy columns are left out for the
+	 * same reason `is_orderable()` excludes some Collection field types:
+	 * ordering by a meta value needs `meta_key` + a type-aware
+	 * `meta_value`/`meta_value_num` choice this class has no reliable way
+	 * to make for an arbitrary, possibly-unregistered meta key -- real,
+	 * undone work, not a deliberate permanent exclusion the way
+	 * post_content/excerpt/status are.
+	 */
+	const ORDERABLE_CORE_COLUMNS = array(
+		'ID'            => 'ID',
+		'post_title'    => 'title',
+		'post_date'     => 'date',
+		'post_modified' => 'modified',
+		'post_author'   => 'author',
+		'post_name'     => 'name',
+		'post_parent'   => 'parent',
+		'menu_order'    => 'menu_order',
+		'comment_count' => 'comment_count',
+	);
+
+	/**
 	 * Hook cache invalidation into WordPress.
 	 */
 	public static function init() {
@@ -159,6 +193,50 @@ class Column_Registry {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Resolve gateway/data-cards' own configured Order By field for a
+	 * postType-sourced grid into the real `WP_Query` `orderby` token it
+	 * needs -- the `Model_Fields::resolve_orderby()` counterpart for posts,
+	 * same "never trust the editor's own picker alone" discipline: a
+	 * stale/hand-crafted `orderBy` attribute (the field stopped existing,
+	 * or ORDERABLE_CORE_COLUMNS stopped including it) never reaches a real
+	 * `WP_Query` call.
+	 *
+	 * Unlike `resolve_orderby()`, an empty/invalid request resolves to
+	 * `''`, not a fallback field -- `''` is the caller's own signal to
+	 * leave `orderby`/`order` out of the query args entirely and let
+	 * `WP_Query`'s native default (`orderby => 'date'`) apply, exactly the
+	 * behavior a postType-sourced grid already had before this method
+	 * existed. `Model_Fields::resolve_orderby()` can't do the same --
+	 * Eloquent's query builder has no built-in default order the way
+	 * `WP_Query` does, so THAT resolver falls back to sorting by `id`
+	 * instead (see its own docblock).
+	 *
+	 * @param string $post_type       Post type slug.
+	 * @param string $requested_field Requested column key (a `WP_Post`
+	 *                                 property name, e.g. 'post_title'),
+	 *                                 or '' for "use the default".
+	 * @return string A `WP_Query`-native `orderby` token (e.g. 'title'),
+	 *                or '' to leave `orderby` unset.
+	 */
+	public static function resolve_post_orderby( $post_type, $requested_field ) {
+		$requested_field = (string) $requested_field;
+
+		if ( '' === $requested_field ) {
+			return '';
+		}
+
+		foreach ( self::get_columns( $post_type ) as $column ) {
+			if ( $column['key'] === $requested_field ) {
+				return ! empty( $column['isOrderable'] ) && isset( self::ORDERABLE_CORE_COLUMNS[ $requested_field ] )
+					? self::ORDERABLE_CORE_COLUMNS[ $requested_field ]
+					: '';
+			}
+		}
+
+		return '';
 	}
 
 	/**
@@ -712,6 +790,10 @@ class Column_Registry {
 				'type'         => 'core',
 				'isFilterable' => ! empty( $facet_type ),
 				'facetType'    => $facet_type,
+				// gateway/data-cards' own Order By picker reads this --
+				// see ORDERABLE_CORE_COLUMNS' own docblock for why it's a
+				// narrower list than FILTERABLE_CORE_COLUMNS above.
+				'isOrderable'  => isset( self::ORDERABLE_CORE_COLUMNS[ $key ] ),
 			);
 		}
 
@@ -752,6 +834,7 @@ class Column_Registry {
 				'type'         => 'thumbnail',
 				'isFilterable' => false,
 				'facetType'    => array(),
+				'isOrderable'  => false,
 			),
 		);
 	}
@@ -786,6 +869,7 @@ class Column_Registry {
 				'type'         => 'taxonomy',
 				'isFilterable' => true,
 				'facetType'    => array( 'select', 'checkboxes' ),
+				'isOrderable'  => false,
 			);
 		}
 
@@ -886,6 +970,11 @@ class Column_Registry {
 					$key,
 					$post_type
 				),
+				// See ORDERABLE_CORE_COLUMNS' own docblock -- ordering by an
+				// arbitrary meta key needs a type-aware meta_value/
+				// meta_value_num choice this class has no reliable way to
+				// make, so no meta column is offered as Order By yet.
+				'isOrderable'  => false,
 			);
 		}
 

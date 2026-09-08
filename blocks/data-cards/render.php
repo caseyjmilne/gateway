@@ -38,7 +38,7 @@
  *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: sourceType, postType, collection, limit, pageSize, facets.
+ * @var array    $attributes Block attributes: sourceType, postType, collection, limit, pageSize, facets, orderBy, order.
  * @var string   $content    Unused -- rendered explicitly instead, in
  *                            natural document order, AFTER Data_Cards_Renderer::
  *                            set_current() below -- see the dispatch loop's
@@ -54,6 +54,21 @@ $limit     = absint( $attributes['limit'] ?? 0 );
 // 10 -- matching this block's own block.json attribute default; only a
 // fallback for a genuinely absent/stripped attribute.
 $page_size = max( 1, absint( $attributes['pageSize'] ?? 10 ) );
+
+// '' (the block.json default for both) means "leave this source type's own
+// existing default order alone" -- Data_Cards_Renderer::get_query_args()/
+// get_collection_page() each resolve that the same way they already did
+// before this block ever offered a choice (see their own docblocks). Kept
+// as the raw, not-yet-validated attribute here (re-validated again, once
+// more, on every REST-driven later page -- see Data_Cards_REST_Controller)
+// and handed to gateway/data-cards-body below purely so its own data-*
+// attributes can tell shared/cards.js's fetchCardsPage() what to ask for.
+$order_by = isset( $attributes['orderBy'] ) && is_string( $attributes['orderBy'] ) ? trim( $attributes['orderBy'] ) : '';
+$order    = isset( $attributes['order'] ) && is_string( $attributes['order'] ) ? strtolower( trim( $attributes['order'] ) ) : '';
+
+if ( ! in_array( $order, array( 'asc', 'desc' ), true ) ) {
+	$order = '';
+}
 
 // Find the gateway/data-cards-body child to read its own authored template
 // (its innerBlocks -- arbitrary user-authored content) directly off the
@@ -108,7 +123,7 @@ if ( 'collection' === $source_type ) {
 		// search -- the always-fresh state for a real, full-page render.
 		// Later pages/searches are fetched by the front end via
 		// Data_Cards_REST_Controller's own Collection route.
-		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets, $template_blocks );
+		$page_result = \Gateway\Data_Cards_Renderer::get_collection_page( $collection, 0, $page_size, $limit, $facets, $template_blocks, '', $order_by, $order );
 		$html        = \Gateway\Data_Cards_Renderer::render_items_for_collection( $page_result['records'], $template_blocks );
 		$pager_meta  = $page_result['pager_meta'];
 		$rest_url    = rest_url( 'gateway/v1/data-cards-collection/' . $collection );
@@ -133,6 +148,8 @@ if ( 'collection' === $source_type ) {
 				'collection'  => $collection,
 				'page_size'   => $page_size,
 				'limit'       => $limit,
+				'order_by'    => $order_by,
+				'order'       => $order,
 			),
 			$pager_meta
 		)
@@ -163,7 +180,7 @@ if ( 'collection' === $source_type ) {
 	// Page 0 (zero-based, see Data_Cards_Renderer's own docblock), no search --
 	// the always-fresh state for a real, full-page render. Later pages/searches
 	// are fetched by the front end via Data_Cards_REST_Controller.
-	$query_args = \Gateway\Data_Cards_Renderer::get_query_args( $post_type, 0, $page_size, '' );
+	$query_args = \Gateway\Data_Cards_Renderer::get_query_args( $post_type, 0, $page_size, '', $order_by, $order );
 	$query_args = \Gateway\Facet_Query::apply_facets( $query_args, $facets );
 	$query      = new WP_Query( $query_args );
 
@@ -193,6 +210,8 @@ if ( 'collection' === $source_type ) {
 				'collection'  => '',
 				'page_size'   => $page_size,
 				'limit'       => $limit,
+				'order_by'    => $order_by,
+				'order'       => $order,
 			),
 			$pager_meta
 		)

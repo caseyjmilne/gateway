@@ -58,6 +58,8 @@ $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => 'gateway-d
 	data-collection="<?php echo esc_attr( $state['collection'] ?? '' ); ?>"
 	data-page-size="<?php echo esc_attr( $state['page_size'] ); ?>"
 	data-limit="<?php echo esc_attr( $state['limit'] ); ?>"
+	data-order-by="<?php echo esc_attr( $state['order_by'] ?? '' ); ?>"
+	data-order="<?php echo esc_attr( $state['order'] ?? '' ); ?>"
 	data-template-id="<?php echo esc_attr( $state['template_id'] ); ?>"
 	data-rest-url="<?php echo esc_url( $state['rest_url'] ); ?>"
 	data-page="<?php echo esc_attr( $state['page'] ); ?>"
