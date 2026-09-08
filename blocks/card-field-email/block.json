@@ -5,7 +5,7 @@
 	"title": "Field: Email",
 	"category": "widgets",
 	"icon": "email",
-	"description": "Displays one Email field's value from the current record, with an optional mailto: link. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
+	"description": "Displays one Email field's value from the current record, with an optional mailto: link. Only meaningful inside a Model-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
 	"keywords": [ "field", "email", "mailto", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",

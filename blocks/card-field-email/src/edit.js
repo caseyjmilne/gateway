@@ -120,14 +120,14 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ ! isCollection && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'This block only displays a value when the Data Cards block’s Source is set to Collection.',
+								'This block only displays a value when the Data Cards block’s Source is set to Model.',
 								'gateway'
 							) }
 						</Notice>
 					) }
 					{ isCollection && ! collection && (
 						<Notice status="info" isDismissible={ false }>
-							{ __( 'Choose a Collection on the Data Cards block first.', 'gateway' ) }
+							{ __( 'Choose a Model on the Data Cards block first.', 'gateway' ) }
 						</Notice>
 					) }
 					{ isCollection && collection && (
@@ -143,7 +143,7 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ isCollection && collection && ! isLoading && renderableColumns.length === 0 && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'This Collection has no Email fields yet -- add one on its own Fields tab first.',
+								'This Model has no Email fields yet -- add one on its own Fields tab first.',
 								'gateway'
 							) }
 						</Notice>
@@ -151,7 +151,7 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ isCollection && collection && fieldKey && ! isFieldConfigured && ! isLoading && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'This field no longer exists (or is no longer an Email field) on the selected Collection. Choose another.',
+								'This field no longer exists (or is no longer an Email field) on the selected Model. Choose another.',
 								'gateway'
 							) }
 						</Notice>

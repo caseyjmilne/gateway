@@ -267,7 +267,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						emptyMessage={
 							'collection' === sourceType
 								? __(
-										'No fields are available to use as facets for this Collection yet.',
+										'No fields are available to use as facets for this Model yet.',
 										'gateway'
 								  )
 								: undefined

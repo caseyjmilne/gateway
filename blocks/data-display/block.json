@@ -5,7 +5,7 @@
 	"title": "Data Display",
 	"category": "gateway",
 	"icon": "list-view",
-	"description": "A docs-style browser: every record of a Collection listed down the left as group headings, its own hasMany children listed under each -- click a child to load its own detail template into the main pane on the right.",
+	"description": "A docs-style browser: every record of a Model listed down the left as group headings, its own hasMany children listed under each -- click a child to load its own detail template into the main pane on the right.",
 	"keywords": [ "docs", "documentation", "sidebar", "browser", "relationship", "collection" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",

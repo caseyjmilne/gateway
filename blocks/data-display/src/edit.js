@@ -517,7 +517,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				<div { ...blockProps }>
 					<p className="gateway-data-display__placeholder">
 						{ __(
-							'Choose a Collection in the Inspector to get started.',
+							'Choose a Model in the Inspector to get started.',
 							'gateway'
 						) }
 					</p>

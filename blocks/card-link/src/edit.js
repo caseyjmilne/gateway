@@ -101,20 +101,20 @@ export default function Edit( { context } ) {
 			{ ! isCollection && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'This block only links to a permalink when the Data Cards block’s Source is set to Collection.',
+						'This block only links to a permalink when the Data Cards block’s Source is set to Model.',
 						'gateway'
 					) }
 				</Notice>
 			) }
 			{ isCollection && ! collection && (
 				<Notice status="info" isDismissible={ false }>
-					{ __( 'Choose a Collection on the Data Cards block first.', 'gateway' ) }
+					{ __( 'Choose a Model on the Data Cards block first.', 'gateway' ) }
 				</Notice>
 			) }
 			{ isCollection && collection && ! isLoading && ! isAvailable && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'This Collection has no Permalink available yet -- add a Permalink field to it, and set its Root and Template Page on the Permalinks tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
+						'This Model has no Permalink available yet -- add a Permalink field to it, and set its Root and Template Page on the Permalinks tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
 						'gateway'
 					) }
 				</Notice>

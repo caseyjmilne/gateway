@@ -107,7 +107,7 @@ export default function Edit( { attributes: { collection, previewRecordId }, set
 				/>
 				<p className="description">
 					{ __(
-						'Root and Template Page are configured on this Collection’s own Permalinks tab, under Gateway › Models.',
+						'Root and Template Page are configured on this Model’s own Permalinks tab, under Gateway › Models.',
 						'gateway'
 					) }
 				</p>
@@ -129,7 +129,7 @@ export default function Edit( { attributes: { collection, previewRecordId }, set
 				<div { ...blockProps }>
 					<p className="gateway-single-record__placeholder">
 						{ __(
-							'Choose a Collection in the Inspector, then design this template below with Gateway blocks (e.g. Card Field Text, Related Items) -- the real record a visitor requested fills them in on the front end.',
+							'Choose a Model in the Inspector, then design this template below with Gateway blocks (e.g. Card Field Text, Related Items) -- the real record a visitor requested fills them in on the front end.',
 							'gateway'
 						) }
 					</p>
@@ -177,7 +177,7 @@ function SingleRecordInnerBlocks( {
 			{ hasNoRecords && (
 				<Notice status="info" isDismissible={ false }>
 					{ __(
-						'This Collection has no records yet -- add one under Gateway › Records to see a live preview here. You can still design the template below.',
+						'This Model has no records yet -- add one under Gateway › Records to see a live preview here. You can still design the template below.',
 						'gateway'
 					) }
 				</Notice>

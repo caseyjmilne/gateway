@@ -5,7 +5,7 @@
 	"title": "Related Items",
 	"category": "widgets",
 	"icon": "editor-ul",
-	"description": "Loops over one of the current Collection record's own hasMany/belongsToMany relationships (e.g. an Event's own Tickets), repeating a template you design once per related record.",
+	"description": "Loops over one of the current Model record's own hasMany/belongsToMany relationships (e.g. an Event's own Tickets), repeating a template you design once per related record.",
 	"keywords": [ "relationship", "related", "loop", "repeater", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",

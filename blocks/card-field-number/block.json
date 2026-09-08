@@ -5,7 +5,7 @@
 	"title": "Field: Number",
 	"category": "widgets",
 	"icon": "editor-ol",
-	"description": "Displays one Number field's value from the current record, with Currency/Percent/decimal formatting. Only meaningful inside a Collection-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
+	"description": "Displays one Number field's value from the current record, with Currency/Percent/decimal formatting. Only meaningful inside a Model-sourced Data Cards card template, a Related Items loop, a Data Display detail template, or a Single Record template.",
 	"keywords": [ "field", "number", "currency", "percent", "format", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",

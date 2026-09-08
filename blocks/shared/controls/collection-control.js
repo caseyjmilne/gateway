@@ -34,7 +34,7 @@ export default function CollectionControl( { value, onChange } ) {
 				if ( isCurrent ) {
 					setError(
 						fetchError?.message ||
-							__( 'Could not load Collections.', 'gateway' )
+							__( 'Could not load Models.', 'gateway' )
 					);
 				}
 			} )
@@ -61,7 +61,7 @@ export default function CollectionControl( { value, onChange } ) {
 		return (
 			<p className="description">
 				{ __(
-					'No Collections yet -- create a model under Gateway > Models first.',
+					'No Models yet -- create one under Gateway > Models first.',
 					'gateway'
 				) }
 			</p>
@@ -75,7 +75,7 @@ export default function CollectionControl( { value, onChange } ) {
 
 	return (
 		<SelectControl
-			label={ __( 'Collection', 'gateway' ) }
+			label={ __( 'Model', 'gateway' ) }
 			value={ value }
 			options={ options }
 			onChange={ onChange }
