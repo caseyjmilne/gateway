@@ -84,6 +84,18 @@ class Column_Registry {
 	 * to make for an arbitrary, possibly-unregistered meta key -- real,
 	 * undone work, not a deliberate permanent exclusion the way
 	 * post_content/excerpt/status are.
+	 *
+	 * `comment_count` is ALSO left out, even though `WP_Query` itself
+	 * supports it natively -- unlike every field above, gateway/data-cards'
+	 * own editor preview has to run this exact order through the REST API
+	 * (`wp/v2/<post_type>`, via `getEntityRecords()`) to show real,
+	 * correctly-ordered results rather than a fake client-side resort (see
+	 * gateway/data-cards-body/src/edit.js's own docblock), and that
+	 * endpoint's own `orderby` enum has never included `comment_count` --
+	 * requesting it 400s. Every other key here IS in that enum (confirmed
+	 * against WP core's own `WP_REST_Posts_Controller::
+	 * register_collection_params()`), so this exclusion is the one
+	 * consequence of that same requirement, not an oversight.
 	 */
 	const ORDERABLE_CORE_COLUMNS = array(
 		'ID'            => 'ID',
@@ -94,7 +106,6 @@ class Column_Registry {
 		'post_name'     => 'name',
 		'post_parent'   => 'parent',
 		'menu_order'    => 'menu_order',
-		'comment_count' => 'comment_count',
 	);
 
 	/**

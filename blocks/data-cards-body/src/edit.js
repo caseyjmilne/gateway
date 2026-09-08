@@ -13,6 +13,7 @@ import {
 import { Spinner } from '@wordpress/components';
 import { store as coreStore } from '@wordpress/core-data';
 import { useAvailableColumns } from '../../shared/use-available-columns';
+import { POST_ORDERBY_REST_TOKENS } from '../../shared/orderable-post-columns';
 
 /**
  * A card's default starting content on first insert -- Featured Image +
@@ -144,6 +145,15 @@ export default function Edit( {
 		// pageLength attribute already defaults to; only a fallback for a
 		// genuinely absent context value, not a second source of truth.
 		'gateway/data-cards/pageSize': pageSize = 10,
+		// '' means "use this source type's own real default" -- see
+		// gateway/data-cards/render.php's own docblock. Never translated
+		// or resolved here in JS beyond that: both preview fetches below
+		// simply omit their own orderby/order param when this is '',
+		// which leaves each fetch's own native default (getEntityRecords()'s
+		// own 'date' descending; Records_REST_Controller's own id-desc
+		// fallback) in place -- exactly the real front end's own behavior.
+		'gateway/data-cards/orderBy': orderBy = '',
+		'gateway/data-cards/order': order = '',
 	},
 } ) {
 	const [ activeBlockContextId, setActiveBlockContextId ] = useState();
@@ -263,6 +273,17 @@ export default function Edit( {
 		replaceInnerBlocks,
 	] );
 
+	// Translated from this block's own column key (a WP_Post property name,
+	// e.g. 'post_title') to the REST-native token getEntityRecords()'s own
+	// `orderby` query arg actually needs ('title') -- see
+	// orderable-post-columns.js's own docblock for why this can't just be
+	// the raw key. An unrecognized/'' orderBy resolves to `undefined`,
+	// which getEntityRecords() (via addQueryArgs()) simply omits from the
+	// request -- exactly the "leave the endpoint's own native default in
+	// place" behavior the real front end's own get_query_args() already
+	// has for the identical case.
+	const postOrderByToken = POST_ORDERBY_REST_TOKENS[ orderBy ];
+
 	const { posts, blocks } = useSelect(
 		( select ) => {
 			const { getEntityRecords } = select( coreStore );
@@ -275,16 +296,27 @@ export default function Edit( {
 				// Data_Cards_REST_Controller. Skipped entirely for a
 				// Collection source -- core-data has no notion of a
 				// Gateway model, that's fetched separately below.
+				//
+				// orderby/order are passed straight to the wp/v2 REST
+				// collection endpoint itself (via getEntityRecords()), so
+				// this preview runs the exact same real, server-side
+				// ordered query the front end's own WP_Query does --
+				// never a client-side resort of an already-wrong sample,
+				// per a direct request ("it needs to run query and show
+				// results in the editor").
 				posts: isCollection
 					? null
 					: getEntityRecords( 'postType', postType, {
 							per_page: pageSize,
 							offset: 0,
+							...( postOrderByToken
+								? { orderby: postOrderByToken, order: order || 'desc' }
+								: {} ),
 					  } ),
 				blocks: getBlocks( clientId ),
 			};
 		},
-		[ isCollection, postType, pageSize, clientId ]
+		[ isCollection, postType, pageSize, postOrderByToken, order, clientId ]
 	);
 
 	// The Collection counterpart of `posts` above -- fetched directly via
@@ -311,9 +343,18 @@ export default function Edit( {
 		let isCurrent = true;
 		setRecords( null );
 
-		apiFetch( {
-			path: `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }`,
-		} )
+		// orderby/order (the SAME raw field-name/direction this block's own
+		// attributes already store, no translation needed -- unlike the
+		// postType branch above, Records_REST_Controller::resolve_sort()
+		// takes a plain column key directly) are appended only when set,
+		// so an unconfigured block's request is byte-identical to before
+		// this feature existed and gets that controller's own default
+		// (id desc) exactly as it always did.
+		const path = orderBy
+			? `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }&orderby=${ encodeURIComponent( orderBy ) }&order=${ encodeURIComponent( order || 'desc' ) }`
+			: `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }`;
+
+		apiFetch( { path } )
 			.then( ( response ) => {
 				if ( isCurrent ) {
 					setRecords( response.records || [] );
@@ -328,7 +369,7 @@ export default function Edit( {
 		return () => {
 			isCurrent = false;
 		};
-	}, [ isCollection, collection, pageSize ] );
+	}, [ isCollection, collection, pageSize, orderBy, order ] );
 
 	// Each item's own id (for the click-to-activate/preview-caching
 	// mechanism below) plus the actual block context to provide -- 'record'

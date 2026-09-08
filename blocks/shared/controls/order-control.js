@@ -5,25 +5,35 @@
  * their own two SelectControls inline; this is the same shape, pulled out
  * once a second consumer needed it).
  *
- * Both fields default to `''` -- "leave this source type's own existing
- * default order alone" (see gateway/data-cards/render.php's own docblock)
- * -- rather than a real field/direction value, per a direct request:
- * "Default can be left how it is... Whatever the default is show it in the
- * settings so the user is aware." Silently defaulting the ATTRIBUTE itself
- * to, say, `orderBy: 'id', order: 'desc'` would only describe the
- * Collection source type's own default -- gateway/data-cards' postType
- * branch defaults to `orderby: 'date'` instead (WP_Query's own native
- * default, never touched by this block before now) -- and would bake
- * today's default into every block permanently, unable to later track a
- * site owner's own change to what "default" means. Leaving both `''` and
- * showing the CURRENT default's own real value only as the first option's
- * label accomplishes both halves of that request at once: nothing changes
- * for an existing or freshly-inserted block, and the default is spelled
- * out right in the picker rather than left for a site owner to guess.
+ * Both attributes default to `''` -- "leave this source type's own
+ * existing default order alone" (see gateway/data-cards/render.php's own
+ * docblock) -- rather than a real field/direction value, per a direct
+ * request: "Default can be left how it is... Whatever the default is show
+ * it in the settings so the user is aware." Baking today's default
+ * straight into the ATTRIBUTE's own default would describe only ONE
+ * source type's default (gateway/data-cards' postType branch defaults to
+ * `orderby: 'date'`, its Collection branch to `id` -- a single shared
+ * attribute default can't be both), and would freeze it permanently,
+ * unable to later track a site owner's own change to what "default"
+ * means.
+ *
+ * The picker itself still only ever shows ONE real option selected,
+ * though -- an earlier version added a separate "Default (ID)" choice
+ * alongside the real "ID" option already in the list, which read as a
+ * confusing duplicate. Fixed by never showing `''` itself: `value` here
+ * substitutes in `defaultOrderByValue`/`defaultOrder` (the field/direction
+ * this source type's default ACTUALLY resolves to right now) whenever the
+ * attribute itself is still `''`, so the picker always shows a single,
+ * real, correct selection -- accomplishing the same "show the user what
+ * the default is" without a second entry for it. Picking that same
+ * already-shown option is harmless: it stores the real value instead of
+ * `''`, which every resolver on the PHP side (`Model_Fields::
+ * resolve_orderby()`/`Column_Registry::resolve_post_orderby()`) already
+ * treats identically to the default it just happens to match.
  */
 
 import { SelectControl } from '@wordpress/components';
-import { __, sprintf } from '@wordpress/i18n';
+import { __ } from '@wordpress/i18n';
 
 const ORDER_OPTIONS = [
 	{ label: __( 'Ascending', 'gateway' ), value: 'asc' },
@@ -38,9 +48,10 @@ const ORDER_OPTIONS = [
  *                                              whichever fields are actually orderable for the
  *                                              block's current source (see each caller's own
  *                                              `isOrderable`-filtered list).
- * @param {string}   props.defaultOrderByLabel Friendly label for the field this source type
- *                                              actually sorts by when `orderBy` is `''` (e.g.
- *                                              'ID' for a Collection, 'Date' for a post type).
+ * @param {string}   props.defaultOrderByValue The real field key this source type actually
+ *                                              sorts by when `orderBy` is `''` (e.g. 'id' for a
+ *                                              Collection, 'post_date' for a post type) -- must
+ *                                              be one of `orderByOptions`' own values.
  * @param {string}   props.defaultOrder        'asc'/'desc' -- the real direction this source
  *                                              type actually sorts by when `order` is `''`.
  * @param {Function} props.onOrderByChange
@@ -50,49 +61,23 @@ export default function OrderControl( {
 	orderBy,
 	order,
 	orderByOptions,
-	defaultOrderByLabel,
+	defaultOrderByValue,
 	defaultOrder,
 	onOrderByChange,
 	onOrderChange,
 } ) {
-	const orderByChoices = [
-		{
-			label: sprintf(
-				/* translators: %s: the field currently used by default, e.g. "ID". */
-				__( 'Default (%s)', 'gateway' ),
-				defaultOrderByLabel
-			),
-			value: '',
-		},
-		...orderByOptions,
-	];
-
-	const orderChoices = [
-		{
-			label: sprintf(
-				/* translators: %s: "Ascending" or "Descending". */
-				__( 'Default (%s)', 'gateway' ),
-				'asc' === defaultOrder
-					? __( 'Ascending', 'gateway' )
-					: __( 'Descending', 'gateway' )
-			),
-			value: '',
-		},
-		...ORDER_OPTIONS,
-	];
-
 	return (
 		<>
 			<SelectControl
 				label={ __( 'Order By', 'gateway' ) }
-				value={ orderBy || '' }
-				options={ orderByChoices }
+				value={ orderBy || defaultOrderByValue }
+				options={ orderByOptions }
 				onChange={ onOrderByChange }
 			/>
 			<SelectControl
 				label={ __( 'Order', 'gateway' ) }
-				value={ order || '' }
-				options={ orderChoices }
+				value={ order || defaultOrder }
+				options={ ORDER_OPTIONS }
 				onChange={ onOrderChange }
 			/>
 		</>

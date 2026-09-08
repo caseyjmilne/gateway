@@ -52,7 +52,9 @@
 		"gateway/data-cards/collection": "collection",
 		"gateway/data-cards/limit": "limit",
 		"gateway/data-cards/pageSize": "pageSize",
-		"gateway/data-cards/facets": "facets"
+		"gateway/data-cards/facets": "facets",
+		"gateway/data-cards/orderBy": "orderBy",
+		"gateway/data-cards/order": "order"
 	},
 	"supports": {
 		"html": false,

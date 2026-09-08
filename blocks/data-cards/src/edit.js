@@ -193,13 +193,15 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// data-display's own Order By pickers already use) and, for a post
 	// type, via the narrower ORDERABLE_CORE_COLUMNS allowlist (see that
 	// const's own docblock for why it's smaller than isFilterable's own
-	// list). 'ID'/'Date' below are this source type's own REAL current
-	// default -- see order-control.js's own docblock for why that's shown
-	// as a label rather than baked into the attribute's own default.
+	// list). 'id'/'post_date' below are this source type's own REAL
+	// current default field's own key (not just its label) -- order
+	// -control.js's own `value` substitutes it in whenever `orderBy` is
+	// still `''`, so the picker always shows one real, correct selection
+	// rather than a separate "Default" entry duplicating it.
 	const orderByOptions = availableColumns
 		.filter( ( column ) => column.isOrderable )
 		.map( ( column ) => ( { label: column.label, value: column.key } ) );
-	const defaultOrderByLabel = 'collection' === sourceType ? __( 'ID', 'gateway' ) : __( 'Date', 'gateway' );
+	const defaultOrderByValue = 'collection' === sourceType ? 'id' : 'post_date';
 	const defaultOrder = 'desc';
 
 	// Drops a facet whose field is no longer filterable for the (possibly
@@ -237,15 +239,22 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						value={ attributes.pageSize }
 						onChange={ ( value ) => setAttributes( { pageSize: value } ) }
 					/>
-					<OrderControl
-						orderBy={ orderBy }
-						order={ order }
-						orderByOptions={ orderByOptions }
-						defaultOrderByLabel={ defaultOrderByLabel }
-						defaultOrder={ defaultOrder }
-						onOrderByChange={ ( value ) => setAttributes( { orderBy: value } ) }
-						onOrderChange={ ( value ) => setAttributes( { order: value } ) }
-					/>
+					{ /* Hidden until there's at least one real orderable field to
+					   show pre-selected (still loading, or -- for a
+					   Collection source -- no model chosen yet): showing the
+					   picker with nothing matching its own `value` would just
+					   read as a blank, broken select. */ }
+					{ orderByOptions.length > 0 && (
+						<OrderControl
+							orderBy={ orderBy }
+							order={ order }
+							orderByOptions={ orderByOptions }
+							defaultOrderByValue={ defaultOrderByValue }
+							defaultOrder={ defaultOrder }
+							onOrderByChange={ ( value ) => setAttributes( { orderBy: value } ) }
+							onOrderChange={ ( value ) => setAttributes( { order: value } ) }
+						/>
+					) }
 				</PanelBody>
 				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
