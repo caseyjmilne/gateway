@@ -228,6 +228,18 @@
 	vertical-align: middle;
 }
 
+/* RecordsList.jsx's own heading -- same margin-bottom as the two rules
+ * immediately above/below, and for the same reason (per a direct
+ * request, "title 'Records' should be closer to table than tabs"): sits
+ * ambiguously between WordPress's own primary tabs above and the table
+ * it's actually titling below without this. No badge of its own (this
+ * page has no single model's own class name to show, unlike
+ * ModelDetail's/RecordsCrud's), so just the spacing rule, not a
+ * font-size override. */
+.gateway-admin-app .gateway-records-list-heading {
+	margin-bottom: 24px;
+}
+
 /* ModelDetail.jsx's own first-load placeholder -- see that component's
  * own docblock for why this exists instead of a bare "Loading…" line.
  * Layout only -- the shimmering bars themselves are Skeleton.jsx's own

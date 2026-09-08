@@ -9,6 +9,18 @@ import { SkeletonTableRows } from '../components/Skeleton.jsx';
  * endpoint the Models screen's own list uses -- since Model_REST_Controller::
  * describe_model() already includes each model's count() alongside
  * everything else; no separate endpoint needed just for this list.
+ *
+ * No explanatory description under the heading -- removed per a direct
+ * request ("remove notice 'Pick a model to add, edit, or delete its
+ * records.'"); the table right below it (Model/Rows, each linking
+ * straight to that model's own records) is self-explanatory without it.
+ * `.gateway-records-list-heading`'s own `margin-bottom` (a further
+ * direct request, "title 'Records' should be closer to table than
+ * tabs") is the same value ModelDetail.jsx's/RecordsCrud.jsx's own
+ * heading classes already use, for the identical reason: tightening the
+ * gap to what the heading is actually titling (the table right beneath
+ * it) rather than leaving it sitting equidistant between that and
+ * WordPress's own primary Models/Records/Database tabs above.
  */
 export default function RecordsList() {
 	const [ models, setModels ] = useState( [] );
@@ -42,10 +54,7 @@ export default function RecordsList() {
 
 	return (
 		<div className="gateway-records-list">
-			<h2>Records</h2>
-			<p className="description">
-				Pick a model to add, edit, or delete its records.
-			</p>
+			<h2 className="gateway-records-list-heading">Records</h2>
 
 			{ error && (
 				<div className="notice notice-error">
