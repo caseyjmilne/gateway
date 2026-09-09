@@ -1,1 +1,1 @@
-.gateway-data-cards-grid{list-style:none;margin:0;padding:0}.gateway-data-cards-grid__item{list-style:none}
+.gateway-data-cards-grid{list-style:none;margin:0;padding:0}.gateway-data-cards-grid__item{display:flex;flex-direction:column;list-style:none}.gateway-data-cards-grid__item>*{flex:1 1 auto;min-height:0;min-width:0}.gateway-data-cards-grid__item>.wp-block-gateway-card-link{display:flex;flex-direction:column}.gateway-data-cards-grid__item>.wp-block-gateway-card-link>*{flex:1 1 auto;min-height:0;min-width:0}

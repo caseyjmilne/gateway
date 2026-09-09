@@ -25,9 +25,67 @@
 // alongside this one, matching core/post-template's own per-item <li>
 // convention exactly.
 .gateway-data-cards-grid__item {
-	// Intentionally minimal: the card's actual visual design comes
-	// entirely from whatever blocks the user drops into the template
-	// (their own spacing/color/typography choices) -- this block
-	// shouldn't impose an opinion on top of that.
+	// Intentionally minimal beyond the height-equalizing rules below: the
+	// card's actual visual design comes entirely from whatever blocks the
+	// user drops into the template (their own spacing/color/typography
+	// choices) -- this block shouldn't impose an opinion on top of that.
 	list-style: none;
+
+	// Equal-height cards, entirely via CSS, regardless of what block the
+	// site owner actually builds each card out of -- reported directly:
+	// cards of different content length ended up different heights, which
+	// "doesn't look good."
+	//
+	// This grid is real CSS Grid (block.json's own `supports.layout`), and
+	// a grid container's own default `align-items` is already `stretch` --
+	// every <li> here ALREADY gets stretched to match its row's tallest
+	// sibling, with nothing above overriding that. The visible bug is one
+	// level down: the <li>'s own child (typically a Stack -- `core/group`
+	// with a vertical layout -- or this plugin's own `gateway/card-link`
+	// wrapping that Stack, to make the whole card clickable) is an
+	// ordinary block-level/inline element that only ever takes its OWN
+	// content's natural height; it never fills the now-taller <li> box
+	// around it. Confirmed directly: simply having the Stack already be a
+	// flex container (Gutenberg's own Stack layout already sets
+	// `display: flex; flex-direction: column;`) is NOT enough on its own --
+	// being a flex CONTAINER only lays out that element's OWN children;
+	// making the element ITSELF grow to fill ITS OWN parent's height needs
+	// `flex-grow`/`flex: 1` applied from the PARENT's side, which is what
+	// was still missing. This is the same well-known "Query Loop grid
+	// cards aren't equal height" limitation Gutenberg itself has, fixed
+	// the same general way.
+	display: flex;
+	flex-direction: column;
+
+	// The card's own top-level content -- a Stack, gateway/card-link,
+	// literally anything else a site owner builds -- stretches to fill
+	// this grid cell's full height.
+	> * {
+		flex: 1 1 auto;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	// gateway/card-link specifically (confirmed the common case: it's
+	// often the FIRST/direct child here, wrapping the real Stack) -- an
+	// <a> doesn't become a flex container just by being sized via `> *`
+	// above, so its own single child needs the exact same treatment one
+	// level deeper. Scoped to this one, real, known wrapper block rather
+	// than every nesting depth unconditionally: a depth-unlimited version
+	// of this rule would also catch a Stack's own NORMAL children (Title,
+	// Excerpt, Image, ...) once they happen to sit two levels down,
+	// forcing them to stretch and compete for space instead of sitting at
+	// their own natural size the way a site owner actually designed them.
+	// Repeat this same pair for any future wrapper-style block that needs
+	// the identical treatment.
+	> .wp-block-gateway-card-link {
+		display: flex;
+		flex-direction: column;
+
+		> * {
+			flex: 1 1 auto;
+			min-width: 0;
+			min-height: 0;
+		}
+	}
 }
