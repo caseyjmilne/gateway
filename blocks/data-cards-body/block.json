@@ -17,7 +17,8 @@
 		"gateway/data-cards/limit",
 		"gateway/data-cards/pageSize",
 		"gateway/data-cards/orderBy",
-		"gateway/data-cards/order"
+		"gateway/data-cards/order",
+		"gateway/data-cards/facets"
 	],
 	"supports": {
 		"html": false,

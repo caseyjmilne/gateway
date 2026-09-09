@@ -71,6 +71,73 @@ class Facet_Query {
 	 */
 	public static function init() {
 		add_filter( 'posts_where', array( __CLASS__, 'filter_posts_where' ), 10, 2 );
+		add_action( 'rest_api_init', array( __CLASS__, 'register_editor_preview_query_filter' ) );
+	}
+
+	/**
+	 * Lets a postType-sourced gateway/data-cards block's own editor preview
+	 * (gateway/data-cards-body/src/edit.js, via `getEntityRecords()`) apply
+	 * the parent block's configured Filters -- the wp/v2 REST collection
+	 * endpoint that preview actually fetches through has no native way to
+	 * filter by an arbitrary meta/core column at all (unlike `orderby`,
+	 * which IS a real, native param -- see that file's own docblock), so
+	 * this registers `rest_{$post_type}_query`, WordPress core's own
+	 * documented extension point for exactly this, on every REST-visible
+	 * post type.
+	 *
+	 * Reported directly: a Data Cards grid's Filters setting had no effect
+	 * on the editor's own preview at all (correct on the front end, which
+	 * never goes through this endpoint -- see Data_Cards_Renderer::
+	 * get_query_args()/apply_facets() instead).
+	 */
+	public static function register_editor_preview_query_filter() {
+		foreach ( get_post_types( array( 'show_in_rest' => true ) ) as $post_type ) {
+			add_filter( "rest_{$post_type}_query", array( __CLASS__, 'apply_editor_preview_facets' ), 10, 2 );
+		}
+	}
+
+	/**
+	 * The `rest_{$post_type}_query` callback itself -- reads a `gateway_facets`
+	 * request param (a JSON-encoded array, same shape/validation as every
+	 * other `facets` param this class already handles), re-validates it
+	 * against this post type's OWN current columns (Column_Registry::
+	 * get_columns()), and layers it onto the WP_Query args exactly like
+	 * apply_facets() already does for the real front end.
+	 *
+	 * A completely inert no-op for every OTHER wp/v2 request on the site --
+	 * `gateway_facets` is read via `get_param()` without ever being
+	 * declared in this route's own args schema (WP_REST_Request happily
+	 * reads any undeclared param; it's simply never populated/validated by
+	 * core), so a request that never sends it (which is every request
+	 * except this one editor preview) reaches the `empty()` check below and
+	 * returns `$args` completely untouched. Never trusted further than
+	 * that either: the SAME `isFilterable`/`isHasValueEligible` gate
+	 * validate_facets() already enforces for the real, published front end
+	 * applies here too -- this never lets a visitor filter by anything a
+	 * real gateway/facet(-has-value) block couldn't already filter by.
+	 *
+	 * @param array            $args    WP_Query arguments being built for this request.
+	 * @param \WP_REST_Request $request Current request.
+	 * @return array Modified query args.
+	 */
+	public static function apply_editor_preview_facets( $args, $request ) {
+		$raw_facets = json_decode( (string) $request->get_param( 'gateway_facets' ), true );
+
+		if ( empty( $raw_facets ) || ! is_array( $raw_facets ) ) {
+			return $args;
+		}
+
+		$post_type = isset( $args['post_type'] ) && is_string( $args['post_type'] ) ? $args['post_type'] : 'post';
+
+		$available_columns = array();
+
+		foreach ( Column_Registry::get_columns( $post_type ) as $column ) {
+			$available_columns[ $column['key'] ] = $column;
+		}
+
+		$facets = self::validate_facets( $raw_facets, $available_columns );
+
+		return self::apply_facets( $args, $facets );
 	}
 
 	/**

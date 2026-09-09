@@ -194,10 +194,20 @@ class Records_REST_Controller {
 		list( $orderby, $order ) = self::resolve_sort( $class, $request );
 
 		$apply_search = self::search_filter( $class, (string) $request->get_param( 'search' ) );
+		// Optional, undeclared (same as every other param this route reads --
+		// see this method's own docblock for why none of them get a formal
+		// 'args' schema): a JSON-encoded Facet_Query::validate_facets()-style
+		// list, same shape/validation Data_Cards_REST_Controller's own
+		// 'facets' param already uses. Added specifically so gateway/data
+		// -cards-body's own editor preview (this exact endpoint) can apply
+		// the parent gateway/data-cards block's configured Filters, the same
+		// way it already applies orderby/order -- this admin screen's own
+		// RecordsCrud.jsx never sends one, so its own behavior is unaffected.
+		$apply_facets = self::facets_filter( $class, (string) $request->get_param( 'facets' ) );
 
 		try {
-			$total   = $apply_search( $class::query() )->count();
-			$records = $apply_search( $class::query() )->orderBy( $orderby, $order )->forPage( $page, $per_page )->get();
+			$total   = $apply_facets( $apply_search( $class::query() ) )->count();
+			$records = $apply_facets( $apply_search( $class::query() ) )->orderBy( $orderby, $order )->forPage( $page, $per_page )->get();
 		} catch ( \Throwable $e ) {
 			return new \WP_Error( 'gateway_records_query_failed', $e->getMessage(), array( 'status' => 500 ) );
 		}
@@ -304,6 +314,53 @@ class Records_REST_Controller {
 					}
 				}
 			);
+		};
+	}
+
+	/**
+	 * search_filter()'s own counterpart for a `facets` request param --
+	 * same "return a closure, not a mutated builder" shape (so
+	 * `list_records()` can apply it to its own two separate `$total`/
+	 * `$records` builder chains), same re-validation discipline: the raw,
+	 * client-supplied JSON is decoded and run through Facet_Query::
+	 * validate_facets() against this model's OWN current columns before
+	 * ever reaching a real query, exactly like every other consumer of
+	 * that method (Data_Cards_REST_Controller's own 'facets' param
+	 * included) -- never a client-supplied key/compare trusted as-is.
+	 *
+	 * @param string $class_name      Model class name.
+	 * @param string $raw_facets_json The request's own raw `facets` param (a JSON-encoded array), or '' for none.
+	 * @return \Closure(\Illuminate\Database\Eloquent\Builder):\Illuminate\Database\Eloquent\Builder
+	 */
+	private static function facets_filter( $class_name, $raw_facets_json ) {
+		$noop = function ( $builder ) {
+			return $builder;
+		};
+
+		if ( '' === trim( $raw_facets_json ) ) {
+			return $noop;
+		}
+
+		$raw_facets = json_decode( $raw_facets_json, true );
+
+		if ( ! is_array( $raw_facets ) || empty( $raw_facets ) ) {
+			return $noop;
+		}
+
+		$available_columns = array();
+
+		foreach ( Column_Registry::get_columns_for_collection( $class_name ) as $column ) {
+			$available_columns[ $column['key'] ] = $column;
+		}
+
+		$facets = Facet_Query::validate_facets( $raw_facets, $available_columns );
+
+		if ( empty( $facets ) ) {
+			return $noop;
+		}
+
+		return function ( $builder ) use ( $facets ) {
+			return Facet_Query::apply_collection_facets( $builder, $facets );
 		};
 	}
 

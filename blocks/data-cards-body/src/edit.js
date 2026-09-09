@@ -154,6 +154,12 @@ export default function Edit( {
 		// fallback) in place -- exactly the real front end's own behavior.
 		'gateway/data-cards/orderBy': orderBy = '',
 		'gateway/data-cards/order': order = '',
+		// The parent's own configured Filters (top-level "Filters" panel --
+		// see gateway/data-cards/src/edit.js's own comment on that PanelBody
+		// for why it isn't called "Facets" anymore) -- [] means none
+		// configured, the same "nothing to apply" state both preview
+		// fetches below already treat identically to before this existed.
+		'gateway/data-cards/facets': facets = [],
 	},
 } ) {
 	const [ activeBlockContextId, setActiveBlockContextId ] = useState();
@@ -283,6 +289,13 @@ export default function Edit( {
 	// place" behavior the real front end's own get_query_args() already
 	// has for the identical case.
 	const postOrderByToken = POST_ORDERBY_REST_TOKENS[ orderBy ];
+	// A stable, primitive stand-in for `facets` (a fresh array/object
+	// reference from context on every render, even when nothing in it
+	// actually changed) -- used as the real dependency below so this
+	// preview only re-fetches when the Filters config ITSELF changes, the
+	// same reasoning `postOrderByToken` already gets by being derived
+	// rather than depending on the raw `orderBy` object identity.
+	const facetsKey = JSON.stringify( facets );
 
 	const { posts, blocks } = useSelect(
 		( select ) => {
@@ -303,7 +316,15 @@ export default function Edit( {
 				// ordered query the front end's own WP_Query does --
 				// never a client-side resort of an already-wrong sample,
 				// per a direct request ("it needs to run query and show
-				// results in the editor").
+				// results in the editor"). `gateway_facets` is an
+				// undeclared, Gateway-only param wp/v2 itself knows
+				// nothing about -- Facet_Query::apply_editor_preview_facets()
+				// (a `rest_{$post_type}_query` filter) is what actually
+				// reads and applies it -- see that method's own docblock
+				// for why this was the only way to give this preview the
+				// SAME "no network request/no visible change" fix orderBy/
+				// order already got: reported directly, a second time,
+				// this time for the top-level Filters setting specifically.
 				posts: isCollection
 					? null
 					: getEntityRecords( 'postType', postType, {
@@ -312,11 +333,14 @@ export default function Edit( {
 							...( postOrderByToken
 								? { orderby: postOrderByToken, order: order || 'desc' }
 								: {} ),
+							...( facets.length
+								? { gateway_facets: facetsKey }
+								: {} ),
 					  } ),
 				blocks: getBlocks( clientId ),
 			};
 		},
-		[ isCollection, postType, pageSize, postOrderByToken, order, clientId ]
+		[ isCollection, postType, pageSize, postOrderByToken, order, facetsKey, clientId ]
 	);
 
 	// The Collection counterpart of `posts` above -- fetched directly via
@@ -350,9 +374,23 @@ export default function Edit( {
 		// so an unconfigured block's request is byte-identical to before
 		// this feature existed and gets that controller's own default
 		// (id desc) exactly as it always did.
-		const path = orderBy
-			? `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }&orderby=${ encodeURIComponent( orderBy ) }&order=${ encodeURIComponent( order || 'desc' ) }`
-			: `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }`;
+		let path = `/gateway/v1/models/${ collection }/records?per_page=${ pageSize }`;
+
+		if ( orderBy ) {
+			path += `&orderby=${ encodeURIComponent( orderBy ) }&order=${ encodeURIComponent( order || 'desc' ) }`;
+		}
+
+		// facets -- Records_REST_Controller::list_records()'s own new
+		// 'facets' param (Facet_Query::validate_facets()-style JSON, same
+		// shape/re-validation Data_Cards_REST_Controller's own 'facets'
+		// param already uses), added specifically so this preview reflects
+		// the parent's configured Filters -- previously this fetch never
+		// sent them at all, so changing a Filter had no visible effect
+		// here (correct on the real front end throughout, which never
+		// calls this endpoint).
+		if ( facets.length ) {
+			path += `&facets=${ encodeURIComponent( facetsKey ) }`;
+		}
 
 		apiFetch( { path } )
 			.then( ( response ) => {
@@ -369,7 +407,7 @@ export default function Edit( {
 		return () => {
 			isCurrent = false;
 		};
-	}, [ isCollection, collection, pageSize, orderBy, order ] );
+	}, [ isCollection, collection, pageSize, orderBy, order, facetsKey ] );
 
 	// Each item's own id (for the click-to-activate/preview-caching
 	// mechanism below) plus the actual block context to provide -- 'record'
