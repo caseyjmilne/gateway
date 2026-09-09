@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { useDispatch, useSelect } from '@wordpress/data';
-import { createBlock } from '@wordpress/blocks';
+import { createBlock, createBlocksFromInnerBlocksTemplate } from '@wordpress/blocks';
 import apiFetch from '@wordpress/api-fetch';
 import { __ } from '@wordpress/i18n';
 import {
@@ -15,6 +15,13 @@ import { store as coreStore } from '@wordpress/core-data';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { POST_ORDERBY_REST_TOKENS } from '../../shared/orderable-post-columns';
 
+// Everything auto-inserted into a card -- this default template and the
+// Collection-mode field swap below alike -- is wrapped in one `core/group`
+// using the Stack (vertical) layout, matching Gutenberg's own Group "Stack"
+// variation shape, rather than left as flat sibling blocks. Per a direct
+// request: "everything going into the card should be wrapped in a stack."
+const STACK_LAYOUT = { type: 'flex', orientation: 'vertical' };
+
 /**
  * A card's default starting content on first insert -- Featured Image +
  * Title + Excerpt is the most common "card" shape, and it means the block
@@ -25,12 +32,21 @@ import { POST_ORDERBY_REST_TOKENS } from '../../shared/orderable-post-columns';
  *
  * Also the target this card's own content is swapped BACK to if the
  * parent's Source is switched from Collection back to Post Type -- see
- * the swap effects in Edit() below.
+ * the swap effects in Edit() below. A single nested `core/group` entry
+ * (not three flat top-level entries) so both the `template` seeding below
+ * AND `createBlocksFromInnerBlocksTemplate( TEMPLATE )` in the swap effect
+ * produce the same Stack-wrapped shape from one definition.
  */
 const TEMPLATE = [
-	[ 'core/post-featured-image' ],
-	[ 'core/post-title' ],
-	[ 'core/post-excerpt' ],
+	[
+		'core/group',
+		{ layout: STACK_LAYOUT },
+		[
+			[ 'core/post-featured-image' ],
+			[ 'core/post-title' ],
+			[ 'core/post-excerpt' ],
+		],
+	],
 ];
 
 /**
@@ -237,14 +253,25 @@ export default function Edit( {
 			// before switching away) must never re-trigger this.
 			replaceInnerBlocks(
 				clientId,
-				TEMPLATE.map( ( [ name, attrs ] ) => createBlock( name, attrs || {} ) ),
+				createBlocksFromInnerBlocksTemplate( TEMPLATE ),
 				false
 			);
+			// Cancel any Collection swap still in flight (switched to
+			// Collection, then back to Post Type again before that fetch
+			// resolved) -- otherwise a late resolve could still fire the
+			// effect below and replace this Post Type content with stale
+			// Collection-mode fields. See that effect's own matching guard.
+			setIsCollectionSwapPending( false );
 		}
 	}, [ sourceType, collection, clientId, replaceInnerBlocks ] );
 
 	useEffect( () => {
-		if ( ! isCollectionSwapPending || ! collection || isLoadingCollectionFields ) {
+		if (
+			! isCollectionSwapPending ||
+			! collection ||
+			isLoadingCollectionFields ||
+			'collection' !== sourceType
+		) {
 			return;
 		}
 
@@ -254,17 +281,30 @@ export default function Edit( {
 		// than an empty template. Sliced fresh from *this* Collection's
 		// own current field list every time, so a rebuild triggered by
 		// switching models never carries over more blocks than the new
-		// one actually has fields for.
+		// one actually has fields for. Thanks to useAvailableColumns()'s
+		// own synchronous reset on identifier change, `isLoadingCollectionFields
+		// === false` here is a genuine, up-to-date answer for the CURRENT
+		// collection -- never a stale leftover from whichever collection
+		// was selected before -- so `fieldKeys` is never wrongly empty and
+		// this swap always actually completes.
 		const fieldKeys = collectionFields
 			.slice( 0, COLLECTION_FIELD_COUNT )
 			.map( ( column ) => column.key );
 
 		if ( fieldKeys.length ) {
+			// Wrapped in one core/group Stack, same as TEMPLATE's own
+			// Post Type shape above -- see STACK_LAYOUT's own docblock.
 			replaceInnerBlocks(
 				clientId,
-				fieldKeys.map( ( fieldKey ) =>
-					createBlock( 'gateway/card-field-text', { fieldKey } )
-				),
+				[
+					createBlock(
+						'core/group',
+						{ layout: STACK_LAYOUT },
+						fieldKeys.map( ( fieldKey ) =>
+							createBlock( 'gateway/card-field-text', { fieldKey } )
+						)
+					),
+				],
 				false
 			);
 		}
@@ -275,6 +315,7 @@ export default function Edit( {
 		collection,
 		isLoadingCollectionFields,
 		collectionFields,
+		sourceType,
 		clientId,
 		replaceInnerBlocks,
 	] );

@@ -131,17 +131,32 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			// (`layout: { type: 'flex', flexWrap: 'nowrap', justifyContent:
 			// 'left' }` -- the exact attributes core's own Row transform
 			// produces, confirmed against `packages/block-library/src/
-			// group/variations.js` in a `wordpress/gutenberg` checkout)
-			// left empty for a site owner to drop gateway/card-facet
-			// controls into -- the direct replacement for the old,
-			// bespoke gateway/data-cards-facets container block. Ordinary,
-			// freely replaceable/transformable content from here on
-			// (`templateLock: false` below, same as everything else in
-			// this template) -- a site owner can turn it into a Stack, a
-			// Columns block, or delete it outright, per a direct request:
-			// "user should be able to replace that block... they may
-			// choose a stack."
-			[ 'core/group', { layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' } }, [] ],
+			// group/variations.js` in a `wordpress/gutenberg` checkout),
+			// renamed to display as "Facets" (see its own `metadata.name`
+			// comment below), left empty for a site owner to drop
+			// gateway/card-facet controls into -- the direct replacement
+			// for the old, bespoke gateway/data-cards-facets container
+			// block. Ordinary, freely replaceable/transformable content
+			// from here on (`templateLock: false` below, same as
+			// everything else in this template) -- a site owner can turn
+			// it into a Stack, a Columns block, or delete it outright, per
+			// a direct request: "user should be able to replace that
+			// block... they may choose a stack."
+			[
+				'core/group',
+				{
+					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' },
+					// Shows as "Facets" in the block editor's List View instead of
+					// the generic "Row" -- WordPress's Block Renaming feature (WP
+					// 6.5+, `metadata.name`, gated by `supports.renaming` which
+					// core/group doesn't opt out of; degrades gracefully -- simply
+					// ignored -- on older WordPress versions). Otherwise a site
+					// owner has no indication why an empty Row sits here, per a
+					// direct report.
+					metadata: { name: __( 'Facets', 'gateway' ) },
+				},
+				[],
+			],
 			[
 				'gateway/data-cards-header',
 				{},

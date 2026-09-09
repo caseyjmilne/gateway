@@ -167,6 +167,15 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				{
 					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' },
 					allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value', 'gateway/facet-text', 'gateway/facet-search' ],
+					// Shows as "Facets" in the block editor's List View instead of
+					// the generic "Row" -- WordPress's Block Renaming feature (WP
+					// 6.5+, `metadata.name`, gated by `supports.renaming` which
+					// core/group doesn't opt out of; degrades gracefully -- simply
+					// ignored -- on older WordPress versions). Otherwise a site
+					// owner has no indication why an empty Row sits here, per a
+					// direct report (raised against gateway/data-cards' own
+					// identical Row; applied here too for consistency).
+					metadata: { name: __( 'Facets', 'gateway' ) },
 				},
 				[],
 			],

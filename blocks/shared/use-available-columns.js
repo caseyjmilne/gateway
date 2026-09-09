@@ -42,6 +42,29 @@ export function useAvailableColumns( postType, options = {} ) {
 	const [ isLoading, setIsLoading ] = useState( true );
 	const [ error, setError ] = useState( null );
 
+	// Resets isLoading/availableColumns SYNCHRONOUSLY, during render, the
+	// instant what's being fetched changes -- rather than waiting for the
+	// effect below to run after commit. Without this, a consumer reading
+	// isLoading/availableColumns on the very render `identifier` changes on
+	// sees one stale render's worth of the PREVIOUS identifier's data
+	// (often `isLoading: false` with an empty or mismatched
+	// availableColumns) before the effect has even started the new fetch.
+	// That's a real, observed bug: gateway/data-cards-body's own
+	// swap-on-Source-change logic mistook that stale, momentary state for a
+	// genuine "nothing to fetch" answer and gave up permanently. This is
+	// the standard React "adjust state when a prop changes during render"
+	// pattern -- calling setState here triggers an immediate re-render
+	// before anything paints, not an extra visible commit.
+	const key = `${ isCollection }:${ identifier }`;
+	const [ currentKey, setCurrentKey ] = useState( key );
+
+	if ( key !== currentKey ) {
+		setCurrentKey( key );
+		setAvailableColumns( [] );
+		setIsLoading( true );
+		setError( null );
+	}
+
 	useEffect( () => {
 		let isCurrent = true;
 
