@@ -18,16 +18,28 @@
  * broader -- see that flag's own docblock) -- going through that panel
  * at all would have made those fields permanently unreachable here.
  *
- * Renders a single checkbox, unchecked by default: checked means "only
+ * Renders a single control, unchecked by default: checked means "only
  * show records where this field has a value," matching
  * Facet_Query::apply_collection_facets()/apply_facets()'s own HAS_VALUE
  * branches (LENGTH(...) > 0 for a Collection/core column; a `!=` meta_query
  * clause for a meta column) -- see that class's own docblocks for exactly
  * what "has a value" means (0/false count; null/''/unset don't).
  *
+ * `displayAsCheckbox` (default `false`) is purely visual -- a real
+ * `<input type="checkbox">` drives this control either way (view.js's own
+ * `.gateway-card-facet-has-value__checkbox` selector, and
+ * shared/cards.js's collectActiveFacets() own `hasvalue` branch, never
+ * need to know which style is showing), styled as a toggle switch by
+ * default (a `.gateway-card-facet-has-value__toggle-slider` sibling
+ * `<span>`, CSS-only, mirroring the admin app's own established
+ * `.gateway-toggle`/`.gateway-toggle-slider` component) or plain
+ * (skipping that sibling entirely) when turned on -- per a direct
+ * request: "has value should be a toggle by default and option to set it
+ * to a checkbox."
+ *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: fieldKey.
+ * @var array    $attributes Block attributes: fieldKey, displayAsCheckbox.
  * @var string   $content    Inner block content (unused -- this is a leaf block).
  * @var WP_Block $block      Block instance, with context from the parent gateway/data-cards.
  */
@@ -69,6 +81,14 @@ if ( ! $column_definition || empty( $column_definition['isHasValueEligible'] ) )
 
 $label = $column_definition['label'];
 
+// A site owner's own override, per a direct request ("Add option 'Title'
+// which would replace the default... Use current default when title not
+// set") -- trim()'d so a whitespace-only override doesn't silently
+// replace a real "Has {label}" with a blank control.
+$title = isset( $attributes['title'] ) && is_string( $attributes['title'] ) ? trim( $attributes['title'] ) : '';
+
+$display_as_checkbox = ! empty( $attributes['displayAsCheckbox'] );
+
 $field_id           = 'gateway-card-facet-has-value-' . wp_unique_id();
 $wrapper_attributes = get_block_wrapper_attributes(
 	array(
@@ -77,20 +97,30 @@ $wrapper_attributes = get_block_wrapper_attributes(
 		'data-ui-type'   => 'hasvalue',
 	)
 );
+$control_class = 'gateway-card-facet-has-value__control gateway-card-facet-has-value__control--' . ( $display_as_checkbox ? 'checkbox' : 'toggle' );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-	<label class="gateway-card-facet__checkbox-label" for="<?php echo esc_attr( $field_id ); ?>">
+	<label class="<?php echo esc_attr( $control_class ); ?>" for="<?php echo esc_attr( $field_id ); ?>">
 		<input
 			type="checkbox"
 			id="<?php echo esc_attr( $field_id ); ?>"
 			class="gateway-card-facet-has-value__checkbox"
 		/>
-		<?php
-		printf(
-			/* translators: %s: field label. */
-			esc_html__( 'Has %s', 'gateway' ),
-			esc_html( $label )
-		);
-		?>
+		<?php if ( ! $display_as_checkbox ) : ?>
+			<span class="gateway-card-facet-has-value__toggle-slider" aria-hidden="true"></span>
+		<?php endif; ?>
+		<span class="gateway-card-facet-has-value__control-text">
+			<?php
+			echo '' !== $title
+				? esc_html( $title )
+				: esc_html(
+					sprintf(
+						/* translators: %s: field label. */
+						__( 'Has %s', 'gateway' ),
+						$label
+					)
+				);
+			?>
+		</span>
 	</label>
 </div>

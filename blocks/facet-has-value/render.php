@@ -14,15 +14,22 @@
  * field types (Password, both Relate types, ...) a Has Value check is
  * still perfectly meaningful for.
  *
- * Renders a single checkbox, unchecked by default. Unlike gateway/card
+ * Renders a single control, unchecked by default. Unlike gateway/card
  * -facet-has-value (a REST refetch, real server-side query), this runs
  * entirely CLIENT-SIDE against rows already fully loaded into the table
  * (same as every other gateway/facet control) -- see view.js for the
  * actual "does this cell's own text have anything in it" check.
  *
+ * `displayAsCheckbox` (default `false`) is purely visual -- see gateway/
+ * card-facet-has-value/render.php's own docblock for the full "why" (a
+ * direct request: "has value should be a toggle by default and option to
+ * set it to a checkbox"). The real `<input type="checkbox">` view.js
+ * hooks into (`.gateway-facet-has-value__checkbox`) never changes either
+ * way.
+ *
  * @package Gateway
  *
- * @var array    $attributes Block attributes: fieldKey.
+ * @var array    $attributes Block attributes: fieldKey, displayAsCheckbox.
  * @var string   $content    Inner block content (unused -- this is a leaf block).
  * @var WP_Block $block      Block instance, with context from the parent gateway/datatable.
  */
@@ -83,6 +90,13 @@ if ( ! $column_definition || empty( $column_definition['isHasValueEligible'] ) )
 
 $label = $column_definition['label'];
 
+// See gateway/card-facet-has-value/render.php's own comment on this same
+// attribute -- a site owner's override, falling back to "Has {label}"
+// when not set.
+$title = isset( $attributes['title'] ) && is_string( $attributes['title'] ) ? trim( $attributes['title'] ) : '';
+
+$display_as_checkbox = ! empty( $attributes['displayAsCheckbox'] );
+
 $field_id           = 'gateway-facet-has-value-' . wp_unique_id();
 $wrapper_attributes = get_block_wrapper_attributes(
 	array(
@@ -91,20 +105,30 @@ $wrapper_attributes = get_block_wrapper_attributes(
 		'data-ui-type'   => 'hasvalue',
 	)
 );
+$control_class = 'gateway-facet-has-value__control gateway-facet-has-value__control--' . ( $display_as_checkbox ? 'checkbox' : 'toggle' );
 ?>
 <div <?php echo $wrapper_attributes; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-	<label class="gateway-facet__checkbox-label" for="<?php echo esc_attr( $field_id ); ?>">
+	<label class="<?php echo esc_attr( $control_class ); ?>" for="<?php echo esc_attr( $field_id ); ?>">
 		<input
 			type="checkbox"
 			id="<?php echo esc_attr( $field_id ); ?>"
 			class="gateway-facet-has-value__checkbox"
 		/>
-		<?php
-		printf(
-			/* translators: %s: field label. */
-			esc_html__( 'Has %s', 'gateway' ),
-			esc_html( $label )
-		);
-		?>
+		<?php if ( ! $display_as_checkbox ) : ?>
+			<span class="gateway-facet-has-value__toggle-slider" aria-hidden="true"></span>
+		<?php endif; ?>
+		<span class="gateway-facet-has-value__control-text">
+			<?php
+			echo '' !== $title
+				? esc_html( $title )
+				: esc_html(
+					sprintf(
+						/* translators: %s: field label. */
+						__( 'Has %s', 'gateway' ),
+						$label
+					)
+				);
+			?>
+		</span>
 	</label>
 </div>

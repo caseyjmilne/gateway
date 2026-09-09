@@ -1,5 +1,5 @@
 import { useBlockProps, InspectorControls } from '@wordpress/block-editor';
-import { PanelBody, Notice, SelectControl } from '@wordpress/components';
+import { PanelBody, Notice, SelectControl, TextControl, ToggleControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
 import { useAvailableColumns } from '../../shared/use-available-columns';
@@ -15,7 +15,7 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
  * (parent-registered) facets.
  */
 export default function Edit( { attributes, setAttributes, context } ) {
-	const { fieldKey } = attributes;
+	const { fieldKey, displayAsCheckbox, title } = attributes;
 	const blockProps = useBlockProps( {
 		className: 'gateway-facet gateway-facet-has-value',
 	} );
@@ -51,6 +51,15 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	const selectedColumn = eligibleColumns.find( ( column ) => column.key === fieldKey );
 	const isFieldConfigured = Boolean( selectedColumn );
 	const label = selectedColumn ? selectedColumn.label : fieldKey;
+	const defaultText = sprintf(
+		/* translators: %s: field label. */
+		__( 'Has %s', 'gateway' ),
+		label
+	);
+	// See gateway/card-facet-has-value's own edit.js comment on this same
+	// pattern -- a site owner's override, falling back to the live default
+	// (tracking the field's own label/rename) whenever Title is blank.
+	const displayText = title || defaultText;
 
 	// A field this type declares eligible but that isn't (or is no longer)
 	// a displayed column -- distinct from "doesn't exist/isn't eligible at
@@ -79,6 +88,27 @@ export default function Edit( { attributes, setAttributes, context } ) {
 							{ error }
 						</Notice>
 					) }
+					<ToggleControl
+						label={ __( 'Display as Checkbox', 'gateway' ) }
+						help={ __(
+							'Off shows a toggle switch (the default). On shows a plain checkbox instead.',
+							'gateway'
+						) }
+						checked={ Boolean( displayAsCheckbox ) }
+						onChange={ ( value ) =>
+							setAttributes( { displayAsCheckbox: value } )
+						}
+					/>
+					<TextControl
+						label={ __( 'Title', 'gateway' ) }
+						help={ __(
+							'Overrides the default label. Leave blank to keep using it.',
+							'gateway'
+						) }
+						value={ title }
+						placeholder={ defaultText }
+						onChange={ ( value ) => setAttributes( { title: value } ) }
+					/>
 				</PanelBody>
 			</InspectorControls>
 			<div { ...blockProps }>
@@ -111,17 +141,27 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					</Notice>
 				) }
 				{ fieldKey && isFieldConfigured && (
-					<label className="gateway-facet__checkbox-label">
+					<label
+						className={
+							'gateway-facet-has-value__control gateway-facet-has-value__control--' +
+							( displayAsCheckbox ? 'checkbox' : 'toggle' )
+						}
+					>
 						<input
 							type="checkbox"
+							className="gateway-facet-has-value__checkbox"
 							disabled
 							onChange={ () => {} }
 						/>
-						{ sprintf(
-							/* translators: %s: field label. */
-							__( 'Has %s', 'gateway' ),
-							label
+						{ ! displayAsCheckbox && (
+							<span
+								className="gateway-facet-has-value__toggle-slider"
+								aria-hidden="true"
+							/>
 						) }
+						<span className="gateway-facet-has-value__control-text">
+							{ displayText }
+						</span>
 					</label>
 				) }
 			</div>

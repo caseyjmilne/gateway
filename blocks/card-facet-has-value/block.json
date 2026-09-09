@@ -19,6 +19,14 @@
 		"fieldKey": {
 			"type": "string",
 			"default": ""
+		},
+		"displayAsCheckbox": {
+			"type": "boolean",
+			"default": false
+		},
+		"title": {
+			"type": "string",
+			"default": ""
 		}
 	},
 	"supports": {
