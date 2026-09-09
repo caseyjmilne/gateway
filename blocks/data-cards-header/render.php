@@ -5,13 +5,23 @@
  * A single-slot InnerBlocks wrapper for the Data Cards' Page Size and
  * Search controls -- always rendered above the grid, by construction
  * (it's one of the places in the parent's InnerBlocks area gateway/
- * data-cards-page-size and gateway/data-cards-search are allowed to
- * live; see each one's own "parent" restriction in its block.json).
- * gateway/card-facet is also allowed here (one of its own three allowed
- * homes) -- included in $allowed_names below for the same reason.
- * Direct copy of gateway/datatable-header's own render.php, renamed --
- * see that file's docblock for why $content is unused and every child is
- * filtered by name explicitly instead.
+ * data-cards-page-size and gateway/card-facet-search are allowed to
+ * live; see each one's own "parent"/"ancestor" restriction in its
+ * block.json). gateway/card-facet is also allowed here (one of its own
+ * allowed homes) -- included in $allowed_names below for the same
+ * reason. Direct copy of gateway/datatable-header's own render.php,
+ * renamed -- see that file's docblock for why $content is unused and
+ * every child is filtered by name explicitly instead.
+ *
+ * gateway/data-cards-search used to be the search entry in
+ * $allowed_names below -- removed entirely (see README.md's "One search
+ * implementation, not two") once gateway/card-facet-search took over as
+ * the single, shared search implementation. Forgetting to update this
+ * list here specifically would have silently dropped a freshly-seeded
+ * gateway/card-facet-search on the front end with zero output -- the
+ * exact bug class already found once this session for gateway/facet
+ * -has-value inside the (now also removed) datatable-facets container's
+ * own render.php.
  *
  * @package Gateway
  *
@@ -22,7 +32,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$allowed_names = array( 'gateway/data-cards-page-size', 'gateway/data-cards-search', 'gateway/card-facet' );
+$allowed_names = array( 'gateway/data-cards-page-size', 'gateway/card-facet-search', 'gateway/card-facet' );
 $markup        = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {

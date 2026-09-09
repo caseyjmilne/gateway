@@ -1,11 +1,10 @@
 /**
  * Wires the search input to a debounced fetch against the sibling Data
- * Cards grid's REST endpoint -- an exact copy of gateway/data-cards
- * -search's own view.js (see that file's own docblock for the full "why"
- * of the 300ms debounce, gridEl.dataset.search bookkeeping, etc.): this
- * block IS that same search, just packaged as an optional, freely
- * placeable facet-family block instead of a fixed slot inside gateway/
- * data-cards-header.
+ * Cards grid's REST endpoint -- this plugin's single, shared Data Cards
+ * search implementation (see render.php's own docblock for the "why" of
+ * the now-removed gateway/data-cards-search this block replaced). 300ms
+ * debounce, matching gateway/card-facet's own Input control -- a network
+ * fetch per keystroke isn't free.
  *
  * "Facets together" with any other active gateway/card-facet(-has-value/
  * -text) controls needs nothing extra here: fetchCardsPage() already

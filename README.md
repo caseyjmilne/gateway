@@ -2922,19 +2922,21 @@ searches everything at once), added to the datatable Facets Row's own
 curated `allowedBlocks` list (above).
 
 Neither block needed ANY new search logic: each is a near-identical
-copy of the ALREADY-EXISTING `gateway/data-cards-search`/`gateway
-/datatable-search` blocks' own render.php + view.js (down to reusing
-the exact same "contains, across every text-renderable field" backend
--- `Data_Cards_Renderer::apply_collection_search()` for a Collection,
-WP_Query's own native `s` for a postType -- and the exact same
-client-side `dataTable.search(value).draw()` global search for Data
-Table), just packaged as an optional, freely placeable block instead of
-a fixed slot inside Header. The one difference from those originals:
-`gateway/facet-search`'s own view.js also calls
+copy of the (at the time) ALREADY-EXISTING `gateway/data-cards-search`/
+`gateway/datatable-search` blocks' own render.php + view.js (down to
+reusing the exact same "contains, across every text-renderable field"
+backend -- `Data_Cards_Renderer::apply_collection_search()` for a
+Collection, WP_Query's own native `s` for a postType -- and the exact
+same client-side `dataTable.search(value).draw()` global search for
+Data Table), just packaged as an optional, freely placeable block
+instead of a fixed slot inside Header. The one difference from those
+originals: `gateway/facet-search`'s own view.js also calls
 `hideNativeDataTableWidget()` (idempotent -- a no-op if the required
 Header's own search already removed the native widget), so it works as
 a full replacement on its own if a site owner ever empties that slot
-out.
+out. **`gateway/data-cards-search`/`gateway/datatable-search` were
+removed entirely in a direct, immediate follow-up** -- see "One search
+implementation, not two" below.
 
 "Should facet together with other facets... combined... to finalize
 the query" needed no new code at all, on either side -- confirmed by
@@ -2970,6 +2972,109 @@ experience (both new blocks' own "+"-appender discoverability, live
 search-plus-facet combination on a real page) needs manual verification
 in a real block editor, the same caveat every other block-editor-only
 UI change in this plugin carries.
+
+### One search implementation, not two: `gateway/data-cards-search`/`gateway/datatable-search` removed
+
+Requested directly, immediately after the two blocks above were added:
+"I just realized we might already have a search facet block? Let's make
+sure we don't duplicate..." followed by "we have 'Data Table Search' and
+probably same for cards" (confirming: not literally the same block --
+`gateway/data-cards-search`/`gateway/datatable-search`, titled "Data
+Cards Search"/"Data Table Search," were the older, structurally FIXED
+Header slot controls; `gateway/card-facet-search`/`gateway/facet-search`,
+titled "Facet: Search," are the newer, optional, freely placeable ones
+-- no name collision, nothing double-registered), then: "Remove the old
+ones then because we only need 1 implementation of a search facet so
+we'll keep the new ones and remove the old ones. In the templates
+insert the new one in place by default so everything works the same."
+
+- **`blocks/data-cards-search/` and `blocks/datatable-search/` deleted
+  outright** -- `block.json`, `render.php`, every `src/*.js`, `build/*`,
+  all of it, same as every other block removal in this plugin's history.
+- **`gateway/data-cards`/`gateway/datatable`'s own `buildRequiredBlock()`
+  and seed `template`** (both places a Header gets its initial two
+  children -- a fresh insert via `template`, or `useRequiredInnerBlocks()`
+  self-healing a Header that already exists but is missing one) now
+  create `gateway/card-facet-search`/`gateway/facet-search` in the exact
+  position the removed blocks used to occupy, alongside Page Size --
+  literally "insert the new one in place by default," so a freshly
+  inserted Data Cards/Data Table block ends up looking and working
+  exactly as before, just backed by the new block type.
+- **`gateway/data-cards-header`/`gateway/datatable-header`'s own
+  `allowedBlocks`** (their own `src/edit.js`) swap the removed blocks'
+  names for the new ones, so the Header's own "+" appender still offers
+  a search control as a choice.
+- **`gateway/data-cards-header`/`gateway/datatable-header`'s own
+  `render.php`** each do their own name-based `$allowed_names` filtering
+  of `$block->inner_blocks` (independent of the editor-only
+  `allowedBlocks` above -- see each file's own docblock on why: older
+  content, or a block moved in via List View, isn't gated by the
+  inserter at all). This is the one edit in this change that was
+  genuinely load-bearing, not just editor UX: forgetting to swap the
+  search entry in `$allowed_names` here specifically would have silently
+  rendered a freshly-seeded `gateway/card-facet-search`/`gateway/facet
+  -search` as NOTHING on the front end -- the exact bug class already
+  found once this session for `gateway/facet-has-value` inside the
+  (also since-removed) `gateway/datatable-facets` container's own
+  render.php. Both lists were updated.
+- **`gateway/card-facet-search`/`gateway/facet-search`'s own
+  `style.scss` re-sized to 13px / no `margin-bottom`** -- a direct copy
+  of the just-removed blocks' own sizing -- rather than the 16px /
+  `margin-bottom: 1em` these two shipped with originally (matching this
+  plugin's other Facet-family controls, sized for the Facets Row).
+  Reasoning: the block's DEFAULT home is now `gateway/data-cards-header`/
+  `gateway/datatable-header`'s own `space-between` flex row alongside
+  Page Size, not the Facets Row -- "everything works the same" means
+  matching how it actually looks there by default, not the styling that
+  made sense for its *other*, still-available placement. `supports
+  .typography.fontSize` (unchanged) still lets a site owner size it back
+  up with the native toolbar control if they move it into the Facets Row
+  instead.
+- **Every block.json description and render.php/view.js/edit.js
+  docblock** that described these two as "a duplicate of the
+  already-existing gateway/data-cards-search/gateway/datatable-search"
+  (accurate when written, since both sets of blocks briefly coexisted)
+  updated to describe them as this plugin's own single, current search
+  implementation instead -- the removed blocks no longer exist to
+  duplicate.
+
+One real trade-off, unlike the graceful `gateway/datatable-facets`
+removal documented above: `gateway/data-cards-search`/`gateway
+/datatable-search` were plain LEAF blocks (`save: () => null`, confirmed
+against their own since-deleted `src/index.js`), so their saved
+`post_content` was always just a self-closing `<!-- wp:gateway/data
+-cards-search /-->` comment with no inner content at all -- there's no
+wrapper markup or still-registered child blocks for WordPress's own
+"unregistered block type" fallback to reconstruct anything from, the
+way there was for the removed `gateway/datatable-facets` (an InnerBlocks
+WRAPPER around still-registered children). An already-published page
+saved before this change, still carrying the old block name in its
+`post_content`, will simply show nothing where that search box used to
+be, until the post is next opened and re-saved in the editor (which
+will need a `gateway/card-facet-search`/`gateway/facet-search` block
+added back manually, since Gutenberg has no automatic migration for a
+deleted block name). No migration script was requested or written for
+this -- consistent with this plugin's existing practice of not building
+one for a bespoke-block removal (see the Data Cards/Data Table Facets
+Row precedents above) -- but it's a real difference worth naming
+plainly rather than glossing over.
+
+Verified via `php -l` on the two touched `render.php` files with real
+logic changes (`gateway/data-cards-header`, `gateway/datatable-header`),
+a new direct-execution test (`header-search-swap-test.php`, 5 checks)
+proving the load-bearing part directly: a stub `$block->inner_blocks`
+array containing the NEW block names renders their markup, the OLD,
+now-removed names are correctly absent from the allow-list and produce
+no output, and `gateway/card-facet`'s own unrelated, unchanged spot in
+`gateway/data-cards-header`'s list is untouched, a clean run of the
+full existing PHP regression suite (unaffected -- nothing in it
+exercises either Header's own render.php dispatch), and a
+successful production build confirming both deleted blocks' entries are
+gone from the compiled output with no dangling reference anywhere else
+in the bundle. The actual editor/front-end experience -- a freshly
+inserted Data Cards/Data Table block's Header still showing a working
+search box in the same spot -- needs manual verification in a real
+block editor.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 

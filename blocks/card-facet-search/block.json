@@ -5,7 +5,7 @@
 	"title": "Facet: Search",
 	"category": "widgets",
 	"icon": "search",
-	"description": "A search box that narrows a Data Cards grid to records where ANY text-renderable field contains the typed text -- the same whole-model search gateway/data-cards-search already runs, as an optional, freely placeable facet control.",
+	"description": "A search box that narrows a Data Cards grid to records where ANY text-renderable field contains the typed text -- the single, shared search implementation for Data Cards, seeded into the Header by default but freely placeable anywhere inside a Data Cards block.",
 	"keywords": [ "facet", "filter", "search", "data cards", "contains" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",

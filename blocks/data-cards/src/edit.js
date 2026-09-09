@@ -83,7 +83,7 @@ function buildRequiredBlock( name ) {
 	if ( 'gateway/data-cards-header' === name ) {
 		return createBlock( name, {}, [
 			createBlock( 'gateway/data-cards-page-size' ),
-			createBlock( 'gateway/data-cards-search' ),
+			createBlock( 'gateway/card-facet-search' ),
 		] );
 	}
 
@@ -147,7 +147,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				{},
 				[
 					[ 'gateway/data-cards-page-size', {} ],
-					[ 'gateway/data-cards-search', {} ],
+					[ 'gateway/card-facet-search', {} ],
 				],
 			],
 			[ 'gateway/data-cards-body', {} ],

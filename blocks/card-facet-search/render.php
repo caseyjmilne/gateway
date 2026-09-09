@@ -2,15 +2,21 @@
 /**
  * Server-side render for the gateway/card-facet-search block.
  *
- * An optional, freely placeable duplicate of gateway/data-cards-search's
- * own control -- same "search across every text-renderable field,
- * contains" behavior, same REST wiring (src/view.js drives the exact same
- * fetchCardsPage()/renderCardsPage() `search` parameter that block's own
- * view.js already does) -- but as a self-contained facet-family block
- * (ancestor: gateway/data-cards, like gateway/card-facet-has-value/-text)
- * rather than a fixed slot inside gateway/data-cards-header. Per a direct
- * request: "We already have a search field that shows up in the UI but to
- * make it optional we are adding this block with the same approach."
+ * The single, shared search implementation for Data Cards -- "search
+ * across every text-renderable field, contains" (src/view.js drives
+ * fetchCardsPage()/renderCardsPage()'s own `search` parameter) -- as a
+ * self-contained facet-family block (ancestor: gateway/data-cards, like
+ * gateway/card-facet-has-value/-text) rather than a fixed slot bound to
+ * one specific position. Originally added alongside the older, structurally
+ * fixed gateway/data-cards-search (per a direct request: "We already have
+ * a search field that shows up in the UI but to make it optional we are
+ * adding this block with the same approach"); that older block was
+ * removed entirely once this one existed, per a direct follow-up
+ * ("we only need 1 implementation of a search facet") -- see README.md's
+ * "One search implementation, not two". gateway/data-cards' own template
+ * now seeds THIS block (not the removed one) inside
+ * gateway/data-cards-header by default, so a freshly inserted Data Cards
+ * block keeps a working search box in the same spot as before.
  *
  * No field/eligibility gating at all, unlike every other card-facet-*
  * block -- this searches every currently-available text-renderable field
@@ -28,7 +34,7 @@
  * apply_collection_search()'s own nested-closure OR-across-fields (a
  * Collection) or WP_Query's native `s` (a postType) layered on top. This
  * block's only job is to feed that same, already-combining `search`
- * parameter -- identical to what gateway/data-cards-search already does.
+ * parameter.
  *
  * @package Gateway
  *

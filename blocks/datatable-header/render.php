@@ -5,12 +5,21 @@
  * A single-slot InnerBlocks wrapper for the Data Table's Page Size and
  * Search controls -- always rendered above the grid, by construction
  * (it's the only place in the parent's InnerBlocks area gateway/
- * datatable-page-size and gateway/datatable-search are allowed to live;
- * see each one's own "parent" restriction in its block.json). Facets used
- * to live here too; they moved to their own gateway/datatable-facets
- * block (since removed in favor of a plain core/group Row -- see
+ * datatable-page-size and gateway/facet-search are allowed to live; see
+ * each one's own "parent"/"ancestor" restriction in its block.json).
+ * Facets used to live here too; they moved to their own gateway/datatable
+ * -facets block (since removed in favor of a plain core/group Row -- see
  * README.md's "Preferring core blocks over bespoke containers"), rendered
  * above this one either way -- see gateway/datatable's own render.php.
+ *
+ * gateway/datatable-search used to be the search entry in $allowed_names
+ * below -- removed entirely (see README.md's "One search implementation,
+ * not two") once gateway/facet-search took over as the single, shared
+ * search implementation. Forgetting to update this list here specifically
+ * would have silently dropped a freshly-seeded gateway/facet-search on
+ * the front end with zero output -- the exact bug class already found
+ * once this session for gateway/facet-has-value inside the (now also
+ * removed) datatable-facets container's own render.php.
  *
  * Unlike gateway/datatable's own render.php, this block has no hardcoded
  * markup of its own to interleave content around, so it doesn't render
@@ -38,7 +47,7 @@ defined( 'ABSPATH' ) || exit;
 // pattern gateway/datatable's own render.php already uses for its four
 // zones, means this block can only ever show Page Size and Search, no
 // matter what its actual saved inner blocks contain.
-$allowed_names = array( 'gateway/datatable-page-size', 'gateway/datatable-search' );
+$allowed_names = array( 'gateway/datatable-page-size', 'gateway/facet-search' );
 $markup        = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {

@@ -2,21 +2,25 @@
  * Styles for the gateway/card-facet-search block.
  *
  * Loaded on both the front end and inside the editor iframe (block.json's
- * "style" field is enqueued in both contexts by WordPress core). Same
- * layout as gateway/data-cards-search's own style.scss (a flex row: label
- * + input), but sized like this plugin's Facet-family controls (16px,
- * matching gateway-card-facet/-has-value/-text's own default) rather than
- * gateway/data-cards-header's smaller 13px -- this block normally sits
- * alongside those other Facet: controls in the Facets row, not the
- * Header, so it reads as one of that family visually too.
+ * "style" field is enqueued in both contexts by WordPress core). Sized to
+ * match its DEFAULT home -- gateway/data-cards-header, seeded alongside
+ * gateway/data-cards-page-size in a `space-between` flex row (see that
+ * block's own style.scss) -- rather than this plugin's larger Facet-family
+ * controls (16px, `margin-bottom: 1em`): this is a direct copy of the
+ * now-removed gateway/data-cards-search's own sizing (13px, no
+ * margin-bottom of its own), the single search implementation that block
+ * used to provide before it was retired in favor of this one (see
+ * README.md's "One search implementation, not two"). `supports.typography
+ * .fontSize` still gives a site owner the native toolbar control to size
+ * this up if they move it into the Facets row instead, where it'll sit
+ * beside gateway/card-facet-has-value/-text.
  */
 
 .gateway-card-facet-search {
 	display: flex;
 	align-items: center;
 	gap: 0.5em;
-	margin-bottom: 1em;
-	font-size: 16px;
+	font-size: 13px;
 
 	&__label {
 		margin: 0;
@@ -24,8 +28,8 @@
 	}
 
 	&__input {
-		padding: 6px 8px;
-		border: 1px solid #757575;
+		padding: 4px 6px;
+		border: 1px solid #949494;
 		border-radius: 2px;
 	}
 }

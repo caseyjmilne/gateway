@@ -2,15 +2,21 @@
 /**
  * Server-side render for the gateway/facet-search block.
  *
- * An optional, freely placeable duplicate of gateway/datatable-search's
- * own control -- same "DataTables' own global search, replacing its
- * default search box" behavior (src/view.js drives the exact same
- * `dataTable.search(value).draw()` call) -- but as a self-contained
+ * The single, shared search implementation for Data Table -- "DataTables'
+ * own global search, replacing its default search box" (src/view.js
+ * drives `dataTable.search(value).draw()`) -- as a self-contained
  * facet-family block (ancestor: gateway/datatable, like gateway/facet
- * -has-value/-text) rather than a fixed slot inside gateway/datatable
- * -header. Per a direct request: "We already have a search field that
- * shows up in the UI but to make it optional we are adding this block
- * with the same approach."
+ * -has-value/-text) rather than a fixed slot bound to one specific
+ * position. Originally added alongside the older, structurally fixed
+ * gateway/datatable-search (per a direct request: "We already have a
+ * search field that shows up in the UI but to make it optional we are
+ * adding this block with the same approach"); that older block was
+ * removed entirely once this one existed, per a direct follow-up ("we
+ * only need 1 implementation of a search facet") -- see README.md's "One
+ * search implementation, not two". gateway/datatable's own template now
+ * seeds THIS block (not the removed one) inside gateway/datatable-header
+ * by default, so a freshly inserted Data Table keeps a working search box
+ * in the same spot as before.
  *
  * No field/eligibility gating at all, unlike every other facet-* block --
  * this searches every column's own DataTables search-data at once, not
@@ -18,10 +24,9 @@
  * currently displayed column" check, and nothing to re-validate against
  * Column_Registry here.
  *
- * Starts disabled, exactly like gateway/datatable-search's own input --
- * there's no live DataTable instance to drive until the sibling
- * gateway/datatable-body's own view.js has initialized one, client-side.
- * src/view.js enables it once that instance exists.
+ * Starts disabled -- there's no live DataTable instance to drive until the
+ * sibling gateway/datatable-body's own view.js has initialized one,
+ * client-side. src/view.js enables it once that instance exists.
  *
  * "Should facet together with other facets... combined... to finalize
  * the query allowing for further refinement" needs no extra code at all:
@@ -30,8 +35,7 @@
  * `$.fn.dataTable.ext.search` filter function (gateway/facet's/-has
  * -value's own custom compare filters included) as part of its own
  * built-in filtering pass -- this block's only job is to feed that
- * already-combining global search, identical to what gateway/datatable
- * -search already does.
+ * already-combining global search.
  *
  * @package Gateway
  *

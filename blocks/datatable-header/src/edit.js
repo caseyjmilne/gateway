@@ -2,8 +2,14 @@ import { useBlockProps, useInnerBlocksProps } from '@wordpress/block-editor';
 
 /**
  * Just an editable InnerBlocks container restricted to gateway/datatable
- * -page-size and gateway/datatable-search -- no settings of its own, so no
+ * -page-size and gateway/facet-search -- no settings of its own, so no
  * InspectorControls.
+ *
+ * gateway/datatable-search used to live here instead of gateway/facet
+ * -search -- removed entirely (see README.md's "One search implementation,
+ * not two") once gateway/facet-search took over as the single, shared
+ * search implementation; the swap here is what makes a freshly inserted
+ * Data Table keep a working search box in the same spot by default.
  *
  * Deliberately no `renderAppender` (this used to pass
  * `InnerBlocks.ButtonBlockAppender`) -- see gateway/datatable-footer's
@@ -28,7 +34,7 @@ export default function Edit() {
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
 		allowedBlocks: [
 			'gateway/datatable-page-size',
-			'gateway/datatable-search',
+			'gateway/facet-search',
 		],
 		templateLock: false,
 	} );

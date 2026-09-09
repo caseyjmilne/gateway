@@ -71,7 +71,7 @@ function buildRequiredBlock( name ) {
 	if ( 'gateway/datatable-header' === name ) {
 		return createBlock( name, {}, [
 			createBlock( 'gateway/datatable-page-size' ),
-			createBlock( 'gateway/datatable-search' ),
+			createBlock( 'gateway/facet-search' ),
 		] );
 	}
 
@@ -175,7 +175,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				{},
 				[
 					[ 'gateway/datatable-page-size', {} ],
-					[ 'gateway/datatable-search', {} ],
+					[ 'gateway/facet-search', {} ],
 				],
 			],
 			[ 'gateway/datatable-body', {} ],
