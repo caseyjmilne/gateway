@@ -77,7 +77,7 @@ import CollectionControl from '../../shared/controls/collection-control';
  * InnerBlocks editing entirely). Once a Collection is chosen, this
  * switches to the bare `<div { ...innerBlocksProps } />`, exactly the
  * shape every other plain InnerBlocks wrapper in this plugin (e.g.
- * gateway/data-cards-header) already uses.
+ * gateway/data-cards-footer) already uses.
  *
  * `sourceType`/`collection` are provided as real block context
  * (`gateway/data-cards/sourceType`/`gateway/data-cards/collection` -- see

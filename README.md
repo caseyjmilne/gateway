@@ -2092,6 +2092,46 @@ All five moves are behavior-unchanged relocations -- every existing
 caller was updated to import from the new location, nothing about how
 any of them work changed.
 
+### `gateway/data-cards-header` removed -- replaced by a plain `core/group` Row
+
+Per a direct request ("convert Data Cards Header from custom block to
+Row... when done remove the custom block entirely"), the Header zone
+followed the exact same path gateway/data-cards-facets took earlier in
+this section: its only real job was "an editable InnerBlocks area,
+holding Page Size + Search," with a `space-between` flex layout -- a
+plain `core/group` already does exactly that, so the bespoke block
+building it was removed entirely rather than kept alongside a real core
+block covering the same ground.
+
+`gateway/data-cards/src/edit.js`'s own `template` now seeds a `core/group`
+(`layout: { type: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }`
+-- the same attributes the removed block's own hand-written `style.scss`
+used, so an already-published site's Header looks identical the moment
+it's rebuilt from this template) in the Header's old spot, holding the
+same two children (`gateway/data-cards-page-size`, `gateway/card-facet
+-search`) it always did. It carries a `metadata: { name: 'Cards Header' }`
+attribute so it displays as "Cards Header" in the block editor's List
+View instead of the generic "Row" -- the same WordPress Block Renaming
+mechanism (`metadata.name`, WP 6.5+) the Facets Row above already uses to
+display as "Facets." `REQUIRED_BLOCKS`/`buildRequiredBlock()` no longer
+mention it at all -- like the Facets Row, it's ordinary, freely
+replaceable/transformable content from here on, not a required,
+self-healing zone.
+
+The one real placement-restriction consequence: `gateway/data-cards
+-page-size`'s own `block.json` previously declared `"parent": [
+"gateway/data-cards-header"]` -- a direct-parent match against a block
+that no longer exists. Changed to `"ancestor": ["gateway/data-cards"]`,
+the same restriction `gateway/card-facet`/`gateway/card-facet-search`
+already use, so it can still be inserted inside the new Row (or anywhere
+else inside a Data Cards block) exactly as before.
+
+`gateway/data-cards-header/`'s entire directory (block.json, render.php,
+src/, build/) was deleted outright -- block registration
+(`Block_Loader::register_blocks()`) globs `blocks/*` directories and
+calls `register_block_type()` per match, so removing the directory is
+the entire "unregister" step; no PHP registration list needed updating.
+
 ## Facets for Data Cards (`isFilterable`/`facetType` + `gateway/card-facet`)
 
 `gateway/datatable`'s own facets flow bundles two things together: a

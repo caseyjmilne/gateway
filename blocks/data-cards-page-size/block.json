@@ -9,7 +9,7 @@
 	"keywords": [ "page size", "length", "entries", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [ "gateway/data-cards-header" ],
+	"ancestor": [ "gateway/data-cards" ],
 	"usesContext": [ "gateway/data-cards/pageSize" ],
 	"supports": {
 		"html": false

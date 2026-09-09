@@ -2,9 +2,12 @@
  * Editor registration for the gateway/data-cards block.
  *
  * The grid itself is always server-rendered (render.php) -- but the block
- * accepts gateway/data-cards-header/-body/-footer children, and InnerBlocks
- * content has to actually be saved into post_content for render.php to
- * receive it (via $block->inner_blocks), so save() persists that.
+ * accepts gateway/data-cards-body/-footer children (its own required
+ * zones -- see edit.js's own REQUIRED_BLOCKS) alongside whatever else a
+ * site owner's own template holds (a Header/Facets Row, gateway/card-facet
+ * controls, ...), and InnerBlocks content has to actually be saved into
+ * post_content for render.php to receive it (via $block->inner_blocks),
+ * so save() persists that.
  */
 
 import { registerBlockType, registerBlockVariation } from '@wordpress/blocks';

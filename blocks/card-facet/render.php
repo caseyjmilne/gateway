@@ -18,8 +18,9 @@
  * transforms it into), core/columns, or any other layout block. An
  * earlier version restricted this to a small, fixed set of allowed
  * DIRECT parents (a dedicated gateway/data-cards-facets zone -- since
- * removed entirely -- or gateway/data-cards-header/-footer/itself)
- * before this plugin started preferring real core blocks for layout over
+ * removed entirely, the same way gateway/data-cards-header later was --
+ * or gateway/data-cards-footer/itself) before this plugin started
+ * preferring real core blocks for layout over
  * more bespoke container blocks of its own; see this plugin's own
  * README for the fuller reasoning. The one thing that hasn't changed:
  * this is still never expected as a descendant of gateway/data-cards

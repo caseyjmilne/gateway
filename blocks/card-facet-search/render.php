@@ -14,9 +14,10 @@
  * removed entirely once this one existed, per a direct follow-up
  * ("we only need 1 implementation of a search facet") -- see README.md's
  * "One search implementation, not two". gateway/data-cards' own template
- * now seeds THIS block (not the removed one) inside
- * gateway/data-cards-header by default, so a freshly inserted Data Cards
- * block keeps a working search box in the same spot as before.
+ * now seeds THIS block (not the removed one) inside its Header (a plain
+ * core/group Row, not its own bespoke block -- see gateway/data-cards/
+ * src/edit.js's own docblock) by default, so a freshly inserted Data
+ * Cards block keeps a working search box in the same spot as before.
  *
  * No field/eligibility gating at all, unlike every other card-facet-*
  * block -- this searches every currently-available text-renderable field

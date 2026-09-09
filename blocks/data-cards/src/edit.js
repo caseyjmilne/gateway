@@ -45,8 +45,17 @@ import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-bl
 // `template`-seeded `core/group` -- see below -- not a required, self
 // -healing zone: it's ordinary, freely replaceable content from here on,
 // exactly like any other block a site owner might add.
+//
+// gateway/data-cards-header itself was removed the same way, later --
+// its only real job was identical to gateway/data-cards-facets' own:
+// "an editable InnerBlocks area, holding Page Size + Search," just with
+// a `space-between` flex layout instead of a left-aligned one. Per a
+// direct request ("convert Data Cards Header from custom block to Row...
+// when done remove the custom block entirely"), it's now a
+// `template`-seeded `core/group` Row too (see below), renamed to display
+// as "Cards Header" the same `metadata.name` way the Facets Row already
+// displays as "Facets."
 const REQUIRED_BLOCKS = [
-	'gateway/data-cards-header',
 	'gateway/data-cards-body',
 	'gateway/data-cards-empty',
 	'gateway/data-cards-footer',
@@ -80,13 +89,6 @@ const REQUIRED_BLOCKS = [
  * @return {Object} A freshly created block instance for that name, with its own default children where it needs them.
  */
 function buildRequiredBlock( name ) {
-	if ( 'gateway/data-cards-header' === name ) {
-		return createBlock( name, {}, [
-			createBlock( 'gateway/data-cards-page-size' ),
-			createBlock( 'gateway/card-facet-search' ),
-		] );
-	}
-
 	if ( 'gateway/data-cards-footer' === name ) {
 		return createBlock( name, {}, [
 			createBlock( 'gateway/data-cards-pagination' ),
@@ -157,9 +159,24 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				},
 				[],
 			],
+			// The Header, formerly its own bespoke gateway/data-cards-header
+			// container block -- removed entirely (see the REQUIRED_BLOCKS
+			// comment above), replaced by a plain `core/group` seeded with
+			// the exact same `space-between` flex layout that block's own
+			// hand-written CSS used, so an already-published site's Header
+			// looks identical the moment it's rebuilt from this template.
+			// Renamed to display as "Cards Header" (not the generic "Row")
+			// the same `metadata.name` way the Facets Row above displays as
+			// "Facets" -- otherwise a site owner has no indication what this
+			// one's for either. Ordinary, freely replaceable/transformable
+			// content from here on (`templateLock: false` below), exactly
+			// like the Facets Row.
 			[
-				'gateway/data-cards-header',
-				{},
+				'core/group',
+				{
+					layout: { type: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' },
+					metadata: { name: __( 'Cards Header', 'gateway' ) },
+				},
 				[
 					[ 'gateway/data-cards-page-size', {} ],
 					[ 'gateway/card-facet-search', {} ],
