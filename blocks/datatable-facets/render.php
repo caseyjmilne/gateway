@@ -32,12 +32,21 @@ defined( 'ABSPATH' ) || exit;
 // View, which isn't gated the same way as the main inserter). Rendering
 // each child by name explicitly, the same defensive pattern gateway/
 // datatable's own render.php already uses for its four zones, means this
-// block can only ever show gateway/facet children, no matter what its
-// actual saved inner blocks contain.
-$markup = '';
+// block can only ever show gateway/facet/gateway/facet-has-value
+// children, no matter what its actual saved inner blocks contain.
+//
+// gateway/facet-has-value was missing from this allow-list entirely when
+// it was first added -- silently skipped here, this block produced NO
+// output at all for it (not even an empty wrapper), even though its own
+// render.php ran fine on its own and the editor's own preview (which
+// never goes through this file) showed it correctly, exactly the
+// reported symptom: it "renders as expected in the editor" but "produces
+// no output" next to a working gateway/facet on the front end.
+$allowed_child_names = array( 'gateway/facet', 'gateway/facet-has-value' );
+$markup              = '';
 
 foreach ( $block->inner_blocks as $inner_block ) {
-	if ( 'gateway/facet' === $inner_block->name ) {
+	if ( in_array( $inner_block->name, $allowed_child_names, true ) ) {
 		$markup .= $inner_block->render();
 	}
 }
