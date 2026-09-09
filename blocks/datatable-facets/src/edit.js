@@ -26,11 +26,13 @@ import {
  * unrestricted facets area (a plain core/group, no allow-list at all --
  * see README.md's "Preferring core blocks over bespoke containers"),
  * which is why the same block reads as fully working there already.
+ * `gateway/facet-text` is included here from the start for the same
+ * "+" appender convenience.
  */
 export default function Edit() {
 	const blockProps = useBlockProps( { className: 'gateway-datatable-facets' } );
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
-		allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value' ],
+		allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value', 'gateway/facet-text' ],
 		renderAppender: InnerBlocks.ButtonBlockAppender,
 		templateLock: false,
 	} );
