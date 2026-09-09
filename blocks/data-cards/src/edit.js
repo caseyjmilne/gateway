@@ -256,7 +256,13 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						/>
 					) }
 				</PanelBody>
-				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
+				{ /* "Filters" here, not "Facets" -- this is where a site owner
+				   picks fields and sets their own default/always-applied
+				   value for the query itself, distinct from the gateway/
+				   card-facet(-has-value) BLOCKS a visitor actually interacts
+				   with on the front end; the shared terminology read as
+				   confusing between the two, per a direct request. */ }
+				<PanelBody title={ __( 'Filters', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
 						availableColumns={ availableColumns }
 						selectableColumns={ selectableFacetColumns }
@@ -267,7 +273,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						emptyMessage={
 							'collection' === sourceType
 								? __(
-										'No fields are available to use as facets for this Model yet.',
+										'No fields are available to use as filters for this Model yet.',
 										'gateway'
 								  )
 								: undefined

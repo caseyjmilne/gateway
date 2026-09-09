@@ -125,7 +125,7 @@ export default function Edit( { attributes, setAttributes, context } ) {
 				{ facetKey && ! isFacetConfigured && (
 					<Notice status="warning" isDismissible={ false }>
 						{ __(
-							'This facet is no longer configured on the Data Table block. Select another, or re-add it under the Data Table block’s Facets settings.',
+							'This facet is no longer configured on the Data Table block. Select another, or re-add it under the Data Table block’s Filters settings.',
 							'gateway'
 						) }
 					</Notice>
@@ -241,7 +241,7 @@ function FacetPreviewContent( { uiType, label, defaultValue, options, isLoadingO
 					{ sprintf(
 						/* translators: %s: preset filter value. */
 						__(
-							'Pre-filtered to “%s” by the Data Table block’s Facets setting.',
+							'Pre-filtered to “%s” by the Data Table block’s Filters setting.',
 							'gateway'
 						),
 						defaultValue

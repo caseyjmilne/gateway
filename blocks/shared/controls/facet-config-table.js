@@ -161,7 +161,7 @@ export default function FacetConfigTable( {
 									<Button
 										className="gateway-columns-config__remove"
 										icon="no-alt"
-										label={ __( 'Remove facet', 'gateway' ) }
+										label={ __( 'Remove filter', 'gateway' ) }
 										size="small"
 										isDestructive
 										onClick={ () => onRemove( facet.key ) }

@@ -102,7 +102,7 @@ export default function FacetsPanel( {
 				<p className="gateway-columns-config__empty">
 					{ emptyMessage ||
 						__(
-							'No fields are available to use as facets for this post type yet.',
+							'No fields are available to use as filters for this post type yet.',
 							'gateway'
 						) }
 				</p>

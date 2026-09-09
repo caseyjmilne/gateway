@@ -206,7 +206,11 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						onChange={ ( value ) => setAttributes( { columns: value } ) }
 					/>
 				</PanelBody>
-				<PanelBody title={ __( 'Facets', 'gateway' ) } initialOpen={ false }>
+				{ /* "Filters" here, not "Facets" -- see gateway/data-cards'
+				   own edit.js for the full "why" (a direct request to stop
+				   sharing this term with the gateway/facet(-has-value)
+				   BLOCKS a visitor interacts with). */ }
+				<PanelBody title={ __( 'Filters', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
 						availableColumns={ availableColumns }
 						selectableColumns={ selectableFacetColumns }
@@ -215,7 +219,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 						facets={ facets }
 						onChange={ ( value ) => setAttributes( { facets: value } ) }
 						emptyMessage={ __(
-							'Select one or more columns above before adding facets.',
+							'Select one or more columns above before adding filters.',
 							'gateway'
 						) }
 					/>
