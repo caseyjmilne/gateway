@@ -33,6 +33,16 @@ export default function App() {
 				<Routes>
 					<Route path="/" element={ <ModelsList /> } />
 					<Route path="/models/:modelSlug" element={ <ModelDetail /> } />
+					{ /* Same element, a second time, for a URL that also names
+					   * one of ModelDetail's own tabs (`/models/doc/fields`,
+					   * `/models/doc/relationships`, ...) -- react-router v6+
+					   * dropped v5's `:tab?` optional-segment syntax, so two
+					   * routes pointing at the same element is the idiomatic
+					   * way to make a trailing segment optional. ModelDetail
+					   * itself reads `:tab` via useParams() (undefined on the
+					   * route above) to decide which tab to show -- see its
+					   * own docblock for why each tab is a real route now. */ }
+					<Route path="/models/:modelSlug/:tab" element={ <ModelDetail /> } />
 					<Route path="/records" element={ <RecordsList /> } />
 					<Route path="/records/:modelSlug" element={ <RecordsCrud /> } />
 					<Route path="/database" element={ <DatabaseConfig /> } />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import useResolvedModelClass from '../hooks/useResolvedModelClass.js';
 import FieldEditor from '../components/FieldEditor.jsx';
@@ -19,6 +19,15 @@ const MODEL_TYPE_LABELS = {
 	data_model: 'Data Model',
 };
 
+// Every tab this screen has, 'general' included -- App.jsx's own
+// `/models/:modelSlug/:tab` route accepts any of these five as `:tab`
+// (`/models/doc/general` works too, even though the General tab's own
+// Link below points at the shorter bare `/models/doc` instead -- no
+// reason to treat an explicit "general" in the URL as invalid when it's
+// unambiguous). Anything else lands here as an unrecognized `:tab` --
+// see the redirect effect below.
+const TABS = [ 'general', 'fields', 'relationships', 'permalinks', 'columns' ];
+
 /**
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
@@ -28,8 +37,24 @@ const MODEL_TYPE_LABELS = {
  * Status), **Fields** (`FieldEditor`), **Relationships**
  * (`RelationshipEditor`), **Permalinks** (`PermalinkEditor`), **Columns**
  * (`ColumnsEditor` -- which of this model's own fields show as columns
- * on its Records table, their order, and which are sortable). The same
- * `.gateway-subtab`/
+ * on its Records table, their order, and which are sortable).
+ *
+ * Each tab is its own real route (`/models/:modelSlug` for General,
+ * `/models/:modelSlug/fields` for Fields, etc. -- see App.jsx's own
+ * `/models/:modelSlug/:tab` route and the `TABS` const above), not local
+ * component state, per a direct request: these needed to be linkable from
+ * documentation and shareable between users, not just reachable by
+ * clicking through from the model's own General tab. `activeTab` is
+ * derived from the URL's own `:tab` param (falling back to 'general' for
+ * both the no-tab route and an unrecognized `:tab` -- see the redirect
+ * effect below) rather than a `useState`, and the tab strip below is
+ * `Link`s, not `button onClick` handlers, so each tab genuinely
+ * navigates (bookmarkable, back-button-friendly, middle-click-to-open-in
+ * -a-new-tab) instead of just toggling a hidden `<div>` in place. The
+ * five sections themselves are still ALWAYS mounted (`hidden`, not
+ * conditional rendering) so switching tabs never loses an in-progress
+ * edit or re-fetches -- only what decides which one is currently visible
+ * changed. The same `.gateway-subtab`/
  * `.gateway-subtab-active` classes `FieldEditor`'s own inner General/
  * Validation/Presentation/Conditional Logic tabs already use, not a
  * second, visually-different tab style of this page's own -- before this,
@@ -92,7 +117,7 @@ const MODEL_TYPE_LABELS = {
  * become "the" title.
  */
 export default function ModelDetail() {
-	const { modelSlug } = useParams();
+	const { modelSlug, tab } = useParams();
 	// The slug is what the URL actually carries -- everything below still
 	// works in terms of the real class name, resolved once here (see
 	// that hook's own docblock for why this fetches the models list
@@ -136,16 +161,21 @@ export default function ModelDetail() {
 	// had.
 	const [ fields, setFields ] = useState( [] );
 
-	// Which of General/Fields/Relationships/Permalinks is showing --
-	// General's own Title/Plural Title form, FieldEditor, RelationshipEditor,
-	// and PermalinkEditor all stay mounted the whole time (see the `hidden`
-	// attribute below, not conditional rendering), so switching tabs never
-	// loses an in-progress edit in any of the other three, and none of them
-	// ever needs to re-fetch (or, for General, re-type) on switching back.
-	// Defaults to 'general' -- the same section that used to just be the
-	// top of the page, unconditionally visible, before every section here
-	// became a tab.
-	const [ activeTab, setActiveTab ] = useState( 'general' );
+	// Which of General/Fields/Relationships/Permalinks/Columns is showing --
+	// driven by the URL's own `:tab` param now (see this component's own
+	// docblock), not local state. `undefined` (the bare `/models/:modelSlug`
+	// route, no `:tab` segment matched at all) and an unrecognized `:tab`
+	// both fall back to 'general' here; the latter also gets redirected to
+	// the canonical bare URL by the effect below, so an old/mistyped link
+	// doesn't just silently show General forever at a URL that looks like
+	// it should be something else.
+	const activeTab = TABS.includes( tab ) ? tab : 'general';
+
+	useEffect( () => {
+		if ( tab && ! TABS.includes( tab ) ) {
+			navigate( `/models/${ modelSlug }`, { replace: true } );
+		}
+	}, [ tab, modelSlug, navigate ] );
 
 	useEffect( () => {
 		// Waits for the slug to resolve to a real class name first (see
@@ -316,66 +346,36 @@ export default function ModelDetail() {
 					</h2>
 
 					<div className="gateway-subtabs">
-						<button
-							type="button"
-							className={
-								'gateway-subtab' +
-								( 'general' === activeTab
-									? ' gateway-subtab-active'
-									: '' )
-							}
-							onClick={ () => setActiveTab( 'general' ) }
+						<Link
+							to={ `/models/${ modelSlug }` }
+							className={ subtabClass( 'general' === activeTab ) }
 						>
 							General
-						</button>
-						<button
-							type="button"
-							className={
-								'gateway-subtab' +
-								( 'fields' === activeTab
-									? ' gateway-subtab-active'
-									: '' )
-							}
-							onClick={ () => setActiveTab( 'fields' ) }
+						</Link>
+						<Link
+							to={ `/models/${ modelSlug }/fields` }
+							className={ subtabClass( 'fields' === activeTab ) }
 						>
 							Fields
-						</button>
-						<button
-							type="button"
-							className={
-								'gateway-subtab' +
-								( 'relationships' === activeTab
-									? ' gateway-subtab-active'
-									: '' )
-							}
-							onClick={ () => setActiveTab( 'relationships' ) }
+						</Link>
+						<Link
+							to={ `/models/${ modelSlug }/relationships` }
+							className={ subtabClass( 'relationships' === activeTab ) }
 						>
 							Relationships
-						</button>
-						<button
-							type="button"
-							className={
-								'gateway-subtab' +
-								( 'permalinks' === activeTab
-									? ' gateway-subtab-active'
-									: '' )
-							}
-							onClick={ () => setActiveTab( 'permalinks' ) }
+						</Link>
+						<Link
+							to={ `/models/${ modelSlug }/permalinks` }
+							className={ subtabClass( 'permalinks' === activeTab ) }
 						>
 							Permalinks
-						</button>
-						<button
-							type="button"
-							className={
-								'gateway-subtab' +
-								( 'columns' === activeTab
-									? ' gateway-subtab-active'
-									: '' )
-							}
-							onClick={ () => setActiveTab( 'columns' ) }
+						</Link>
+						<Link
+							to={ `/models/${ modelSlug }/columns` }
+							className={ subtabClass( 'columns' === activeTab ) }
 						>
 							Columns
-						</button>
+						</Link>
 					</div>
 
 					<div hidden={ 'general' !== activeTab }>
@@ -562,4 +562,12 @@ export default function ModelDetail() {
 			) }
 		</div>
 	);
+}
+
+// Mirrors App.jsx's own navTabClass() -- same "one shared helper for the
+// active/inactive class string" reasoning, just for this page's own
+// `.gateway-subtab`/`.gateway-subtab-active` pair instead of core's
+// `nav-tab`/`nav-tab-active`.
+function subtabClass( isActive ) {
+	return 'gateway-subtab' + ( isActive ? ' gateway-subtab-active' : '' );
 }
