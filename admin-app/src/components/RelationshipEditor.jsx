@@ -163,12 +163,7 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 		<div className="gateway-relationship-editor">
 			<h3>Relationships</h3>
 			<p className="description">
-				Relate <code>{ modelClass }</code> to another model --
-				each one becomes a real, callable method on{ ' ' }
-				<code>{ modelClass }</code>&rsquo;s own model file, named
-				automatically from the model and type you pick. Unlike
-				fields, adding or removing one never touches the database
-				schema.
+				Relate <code>{ modelClass }</code> to another model.
 			</p>
 
 			{ error && (
@@ -177,58 +172,54 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 				</div>
 			) }
 
-			{ relationships.length === 0 ? (
-				<p className="description">No relationships yet.</p>
-			) : (
-				<table className="widefat striped">
-					<thead>
-						<tr>
-							<th>Related Model</th>
-							<th>Type</th>
-							<th>Method</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{ relationships.map( ( relationship ) => (
-							<tr key={ relationship.method_name }>
-								<td>
-									<code>
-										{ relationship.related_model }
-									</code>
-								</td>
-								<td>{ typeLabel( relationship.type ) }</td>
-								<td>
-									<code>
-										{ relationship.method_name }()
-									</code>
-								</td>
-								<td>
-									<button
-										type="button"
-										className="button"
-										onClick={ () => {
-											setDeleteError( '' );
-											setDeleteConfirmMethodName(
-												relationship.method_name
-											);
-										} }
-										disabled={
-											deletingMethodName ===
+			<table className="widefat striped">
+				<thead>
+					<tr>
+						<th>Related Model</th>
+						<th>Type</th>
+						<th>Method</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					{ relationships.map( ( relationship ) => (
+						<tr key={ relationship.method_name }>
+							<td>
+								<code>
+									{ relationship.related_model }
+								</code>
+							</td>
+							<td>{ typeLabel( relationship.type ) }</td>
+							<td>
+								<code>
+									{ relationship.method_name }()
+								</code>
+							</td>
+							<td>
+								<button
+									type="button"
+									className="button"
+									onClick={ () => {
+										setDeleteError( '' );
+										setDeleteConfirmMethodName(
 											relationship.method_name
-										}
-									>
-										{ deletingMethodName ===
+										);
+									} }
+									disabled={
+										deletingMethodName ===
 										relationship.method_name
-											? 'Deleting…'
-											: 'Delete' }
-									</button>
-								</td>
-							</tr>
-						) ) }
-					</tbody>
-				</table>
-			) }
+									}
+								>
+									{ deletingMethodName ===
+									relationship.method_name
+										? 'Deleting…'
+										: 'Delete' }
+								</button>
+							</td>
+						</tr>
+					) ) }
+				</tbody>
+			</table>
 
 			<h4>Add Relationship</h4>
 
