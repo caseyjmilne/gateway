@@ -87,5 +87,35 @@
 			min-width: 0;
 			min-height: 0;
 		}
+
+		// Backward compatibility for a gateway/card-link block saved before
+		// its own save.js fix (see that block's own deprecated.js): its OLD
+		// save() wrapped InnerBlocks in a bare, CLASSLESS <div>, baked
+		// verbatim into render.php's own $content and then re-wrapped again
+		// in the real <a> -- producing <a><div>{Stack}</div></a>. A
+		// deprecation keeps that already-published markup valid, but never
+		// rewrites what's actually stored -- a post that hasn't been
+		// re-saved since keeps emitting that extra div forever.
+		// `div:not([class])` is what makes this safe to add unconditionally
+		// (unlike just going one level deeper for every card, which would
+		// also reach into a REAL Stack's own normal children -- Title,
+		// Excerpt, Image, ... -- and force them to stretch too): a real
+		// Stack (or literally any other real block) always carries at
+		// least its own `wp-block-*` class -- `useBlockProps()`/
+		// `get_block_wrapper_attributes()` never omit it -- so this only
+		// ever matches the truly bare, legacy pass-through div, never a
+		// site owner's own real content (which the `> *` rule just above
+		// already correctly reaches directly, one level shallower, once
+		// this extra div is no longer there at all).
+		> div:not([class]) {
+			display: flex;
+			flex-direction: column;
+
+			> * {
+				flex: 1 1 auto;
+				min-width: 0;
+				min-height: 0;
+			}
+		}
 	}
 }
