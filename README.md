@@ -9002,3 +9002,139 @@ error shown inside it, and the row is NOT removed), and Escape closing
 the modal the same way Cancel does (`Modal.jsx`'s own existing
 behavior, confirmed still reachable through this new call site).
 `admin-app` rebuilt via `npm run build` (vite), which compiled cleanly.
+
+### Before / After / Between date filtering in the Filters panel
+
+Prompted by an "Events" example: each event has an event date, and a
+site owner configuring the Filters panel's Default Value for that field
+wants to express "only show events from today onward," "only show
+events on/after Jan 1," or "only show events between the first and
+last day of the year." Requested directly, across several messages:
+three modes -- **Before**, **After**, **Between** ("before" added for
+non-Events date content, even though it doesn't make sense for Events
+itself) -- each date boundary independently either a **static date**
+or the dynamic **"Today"** (resolved fresh on every real request, never
+baked in at save time). Scope is deliberately the Filters panel only
+("the filters handle query presets as defaults in the data cards and
+data table") -- the interactive, visitor-facing Facet blocks
+(`gateway/facet`, `gateway/card-facet`, `-has-value`, `-text`,
+`-search`) are untouched. The UI switches to this new mode-based editor
+**automatically** the moment a Date or Date Time field is selected --
+no manual toggle.
+
+**No new compare operator needed for Before/After at all** --
+`Facet_Query::ALLOWED_COMPARE`'s own existing `<=`/`>=` cover them
+verbatim (always the inclusive operator; Between is always inclusive
+on both ends too, matching the "first and last date of the year"
+example directly). Only `BETWEEN` is genuinely new -- a facet whose
+`value` is `{from, to}` rather than a single scalar, gated to Date/
+Date Time columns specifically (narrower than `HAS_VALUE`'s universal
+`isHasValueEligible` -- "between two dates" has no coherent meaning for
+text/number/select).
+
+**The dynamic "Today" sentinel** is the literal string `'today'`,
+resolved by a new `Facet_Query::resolve_dynamic_value( $value,
+$field_type )` -- a complete no-op for anything else, so this is a
+zero-regression addition to `<`/`<=`/`>`/`>=`'s own existing behavior.
+Deliberately a DIFFERENT mechanism from `Date_Field_Type`'s own,
+similarly-named `'today'` default-value sentinel (a RECORD-CREATION
+default, resolved ONCE, client-side, when an "Add New" form opens --
+see that class's own docblock): this one resolves server-side, inside
+`apply_facets()`/`apply_collection_facets()`, which already run fresh
+on every real request (front-end page load, REST refetch, editor
+preview) with nothing cached across requests -- so "Today" always
+means the moment a visitor is actually loading the page.
+
+- **New `Column_Registry` `fieldType` key** -- the raw Gateway
+  `Field_Type::key()` (`'date'`, `'datetime'`, `'text'`, ...), NOT an
+  HTML `<input>` type -- exposed on every model-field column
+  (`get_columns_for_collection()`, reusing the exact variable already
+  computed inline for `facetType`'s own existing Date/DateTime special
+  -casing) and explicitly on the two core date columns
+  (`get_core_columns()`). This is what
+  `blocks/shared/controls/facet-config-table.js` reads to
+  automatically swap in the new UI -- the same per-column-type
+  branching site `TAXONOMY_COMPARE_OPTIONS` already established, just
+  swapping in a differently-shaped control block instead of a
+  narrower option list.
+- **`post_date`/`post_modified` are now filterable core columns** --
+  deliberately excluded before, with a `Column_Registry` comment
+  literally anticipating this exact feature ("meaningful filtering
+  wants a real date-range UI"). Known, documented limitation, not
+  solved here: they're real `DATETIME` columns, but the new UI's own
+  static-value picker is date-only, so a static bound compares against
+  midnight -- a follow-up could expand day boundaries specifically for
+  these two if it matters in practice.
+- **`Facet_Query` changes**: `validate_facets()` gets a `BETWEEN`
+  branch (checked, like `HAS_VALUE`, BEFORE the generic
+  `is_array($raw_value)` handling -- a JSON-decoded `{from,to}` object
+  is a plain PHP array like any other, indistinguishable from the
+  existing "array means OR-match checkboxes" case otherwise), and
+  copies the new `fieldType` onto every emitted facet. `apply_facets()`/
+  `apply_collection_facets()` resolve a scalar value's own `'today'`
+  sentinel at the top of their loop, and get a `BETWEEN` branch each:
+  `WP_Meta_Query`'s own native `'compare' => 'BETWEEN'` (with `'type'
+  => 'DATE'|'DATETIME'`) for meta, Eloquent's `whereBetween()` for a
+  Collection, and a real `BETWEEN %s AND %s` prepared statement in
+  `filter_posts_where()` for postType core columns -- no custom SQL
+  needed for the first two, both natively support it.
+- **`blocks/shared/controls/facet-config-table.js`**: a Date/DateTime
+  column's own Default modal renders a Mode `SelectControl`
+  (Before/After/Between) instead of the generic Compare+Value pair.
+  Each date boundary is its own `DateBoundControl` -- a "Today"/"Date"
+  `SelectControl` (the exact shape `Date_Field_Type`'s own
+  record-creation Default Value picker already uses, per a direct
+  suggestion), revealing a native date/datetime-local `<input>` only
+  when "Date" is chosen. Between renders two independent
+  `DateBoundControl`s (From/To); switching Mode carries over whatever
+  single value was already set rather than discarding it. A
+  `datetime-local` input's own minute-granular, `T`-separated value is
+  bridged to/from `Facet_Query`'s canonical `"Y-m-d H:i:s"` shape, the
+  same bridging `RecordForm.jsx` already does for this field type
+  elsewhere. Every other column type's modal is completely unaffected.
+- **Legacy facets**: a date column already configured with an
+  old-style `{compare: '=', value: '...'}` (or `!=`/`LIKE`/etc.) from
+  before this feature existed falls back to Mode "After" on reopen,
+  carrying the stored value over as a static date -- no `Facet_Query`
+  back-compat shim needed, since `ALLOWED_COMPARE` still includes every
+  operator it always has.
+
+Verified via a new standalone PHP smoke test
+(`date-range-facet-smoke-test.php`, 25 checks) against a real
+in-memory SQLite/Eloquent connection and a `WP_Query`-adjacent stub --
+notably using a `current_time( $type )` stub that actually respects
+its own `$type` argument (a real `date()` format string, matching
+WordPress core's own behavior) rather than the fixed-string stub most
+other smoke tests in this suite use, so the test can independently
+compute the exact same "Today" `resolve_dynamic_value()` will and
+assert against it directly, with no mocking needed at all. Covers:
+`fieldType` correctly exposed for Date/DateTime model fields and the
+two newly-filterable core columns; `BETWEEN` accepted only for
+date-like columns and rejected for a one-sided range; the full
+Before/After/Between matrix against three seeded events (past, today,
+future) via `apply_collection_facets()`, including both bounds
+`'today'`, one bound `'today'`, and a DateTime column; zero-regression
+confirmation that a static Before/After value produces identical
+results to before this feature; `apply_facets()`/`filter_posts_where()`
+resolving a core-column `BETWEEN`/`'today'` facet to a real prepared
+`BETWEEN %s AND %s` SQL fragment; and a meta-column `BETWEEN` facet
+producing a correct native `WP_Meta_Query` clause. Full existing PHP
+regression suite (68 files) re-run and green. `npm run build`
+compiles cleanly.
+
+No interactive Playwright pass was built for `facet-config-table.js`
+itself, unlike this session's usual convention for block-editor UI
+changes -- `@wordpress/components` isn't installed in this repo's own
+`node_modules` (only used as a runtime external against whatever
+`@wordpress/components` a real WordPress install actually ships), so a
+scratch harness would mean installing an unpinned version with no
+guarantee it matches a real editor's own API surface, risking false
+confidence rather than real verification. The new JS was instead
+traced by hand, interaction path by interaction path (Mode switching,
+Today/Date toggling and its per-bound local "remembered" static value,
+Between's two independent bounds, the legacy-compare fallback) against
+the actual committed code. The actual editor experience -- confirming
+this by hand in a real block editor -- still needs manual verification,
+the same caveat every other block-editor-only UI change in this plugin
+carries, but more load-bearing here than usual given the missing
+automated pass.

@@ -41,26 +41,47 @@ class Column_Registry {
 	 * and how). A key absent here is simply not filterable -- see
 	 * get_core_columns()'s own use of this.
 	 *
-	 * Deliberately excludes: post_date/post_modified (meaningful filtering
-	 * wants a real date-range UI; gateway/facet's live compare vocabulary
-	 * is contains/equals only), menu_order/comment_count (numeric fields
-	 * with no useful contains/equals semantics, and no range UI either).
-	 * post_title/post_content/post_excerpt/post_name/post_parent are free
-	 * -text ('input' only -- a Select of every distinct title would be
-	 * unusable); post_status/post_author are small, enumerable sets
-	 * ('select'/'checkboxes' only -- see get_facet_options()'s own
+	 * post_date/post_modified now included too -- deliberately excluded
+	 * before ("meaningful filtering wants a real date-range UI; gateway/
+	 * facet's live compare vocabulary is contains/equals only"), now that
+	 * the Filters panel's own Before/After/Between date UI
+	 * (`blocks/shared/controls/facet-config-table.js`) exists to fill
+	 * that exact gap -- see `Facet_Query`'s own `BETWEEN` handling and
+	 * this file's own `fieldType` key below, which is what lets that UI
+	 * recognize these two as date-like in the first place. 'input' only,
+	 * same as every other free-text core column -- the UI itself decides
+	 * whether to actually show a text box or the date-mode controls,
+	 * based on `fieldType`, not on this list.
+	 *
+	 * Still deliberately excludes: menu_order/comment_count (numeric
+	 * fields with no useful contains/equals semantics, and no range UI
+	 * either). post_title/post_content/post_excerpt/post_name/post_parent
+	 * are free-text ('input' only -- a Select of every distinct title
+	 * would be unusable); post_status/post_author are small, enumerable
+	 * sets ('select'/'checkboxes' only -- see get_facet_options()'s own
 	 * post_author-specific label-resolution fix, needed to make that one
 	 * actually usable).
+	 *
+	 * Known limitation, not solved here: post_date/post_modified are real
+	 * DATETIME columns, but the new date UI's own static-value picker is
+	 * date-only -- a static "Before 2026-01-01" bound compares against
+	 * midnight, so anything later that same day is excluded. Documented
+	 * rather than solved, the same way this file's/Facet_Query's own
+	 * LIKE-escaping gap already is; a follow-up could expand day
+	 * boundaries (00:00:00/23:59:59) specifically for these two columns
+	 * if it matters in practice.
 	 */
 	const FILTERABLE_CORE_COLUMNS = array(
-		'ID'           => array( 'input' ),
-		'post_title'   => array( 'input' ),
-		'post_content' => array( 'input' ),
-		'post_excerpt' => array( 'input' ),
-		'post_name'    => array( 'input' ),
-		'post_parent'  => array( 'input' ),
-		'post_status'  => array( 'select', 'checkboxes' ),
-		'post_author'  => array( 'select', 'checkboxes' ),
+		'ID'            => array( 'input' ),
+		'post_title'    => array( 'input' ),
+		'post_content'  => array( 'input' ),
+		'post_excerpt'  => array( 'input' ),
+		'post_name'     => array( 'input' ),
+		'post_parent'   => array( 'input' ),
+		'post_status'   => array( 'select', 'checkboxes' ),
+		'post_author'   => array( 'select', 'checkboxes' ),
+		'post_date'     => array( 'input' ),
+		'post_modified' => array( 'input' ),
 	);
 
 	/**
@@ -538,6 +559,16 @@ class Column_Registry {
 				'type'                 => 'model_field',
 				'isFilterable'         => ! empty( $facet_type ),
 				'facetType'            => array_values( $facet_type ),
+				// The raw Gateway Field_Type::key() ('date', 'datetime',
+				// 'text', 'number', ...) -- NOT an HTML <input> type.
+				// blocks/shared/controls/facet-config-table.js reads this
+				// to automatically swap in the Before/After/Between date
+				// UI the moment a Date or Date Time field is selected,
+				// same "a type declares this about itself" pattern
+				// isNumeric/isOrderable/etc. already establish. Harmless
+				// to compute unconditionally for every field type, same
+				// reasoning already given for returnFormat/newLines above.
+				'fieldType'            => $field['type'],
 				'isTextRenderable'     => $is_text_renderable,
 				'isHtmlRenderable'     => $is_html_renderable,
 				// gateway/card-field-markdown's own Field picker reads
@@ -840,6 +871,12 @@ class Column_Registry {
 				// has value"), regardless of how filterable/orderable it
 				// otherwise is.
 				'isHasValueEligible' => 'ID' !== $key,
+				// See the model_field branch's own docblock for the full
+				// "why" -- an explicit list here (matching this file's own
+				// existing style for core columns) rather than a general
+				// mapping, since only these two core columns are date-like
+				// at all.
+				'fieldType'          => in_array( $key, array( 'post_date', 'post_modified' ), true ) ? 'date' : '',
 			);
 		}
 

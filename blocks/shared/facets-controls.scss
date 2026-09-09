@@ -158,6 +158,29 @@
 	}
 }
 
+// One Before/After/Between date boundary (DateBoundControl in
+// facet-config-table.js): the "Today"/"Date" SelectControl, plus a native
+// date/datetime-local input shown only when "Date" is chosen. Between
+// renders two of these (From/To) back to back -- the same 1em rhythm
+// .gateway-facet-default-modal's own controls already use above keeps
+// them visually consistent with the Mode picker sitting just above them.
+.gateway-facet-date-bound {
+	margin-bottom: 1em;
+
+	.components-select-control {
+		margin-bottom: 0.5em;
+	}
+
+	&__input {
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 6px 8px;
+		border: 1px solid #949494;
+		border-radius: 2px;
+	}
+}
+
 // gateway-datatable's own per-column Format modal (column-config-table.js)
 // -- same spacing fix as .gateway-facet-default-modal above, just against
 // NumberFormatControls' own wider mix of control types (also shared with

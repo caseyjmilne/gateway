@@ -37,8 +37,25 @@ class Facet_Query {
 	 * apply_facets()/apply_collection_facets()/filter_posts_where() each
 	 * branch on it specially before ever reaching the code that treats
 	 * every other member as literal SQL.
+	 *
+	 * `BETWEEN` is the Before/After/Between date-filtering UI's own
+	 * "between two dates" mode (`blocks/shared/controls/facet-config-table.js`,
+	 * gated to Date/DateTime columns only -- see validate_facets()' own
+	 * docblock) -- same non-literal-SQL-operator treatment as `HAS_VALUE`:
+	 * its own `value` is never a single scalar but `{from, to}`, and every
+	 * caller branches on it specially (`WP_Meta_Query`'s own native
+	 * `'compare' => 'BETWEEN'`, Eloquent's `whereBetween()`, or a
+	 * hand-written `BETWEEN %s AND %s` for the raw-SQL core-column path)
+	 * rather than the generic single-placeholder interpolation every other
+	 * member here gets. Before/After themselves need NO new operator at
+	 * all -- they reuse the existing `<`/`<=`/`>`/`>=` verbatim, with
+	 * `value` either a real date string or the dynamic sentinel `'today'`
+	 * (resolved server-side by resolve_dynamic_value(), only for a
+	 * Date/DateTime column's own value -- completely inert for every other
+	 * field type, so this is a zero-risk addition to those four operators'
+	 * existing behavior).
 	 */
-	const ALLOWED_COMPARE = array( '=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'HAS_VALUE' );
+	const ALLOWED_COMPARE = array( '=', '!=', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'HAS_VALUE', 'BETWEEN' );
 
 	/**
 	 * wp_posts columns safe to interpolate directly into SQL -- matches
@@ -167,6 +184,50 @@ class Facet_Query {
 		$core_facets = array();
 
 		foreach ( $facets as $facet ) {
+			// Resolves a Before/After facet's own dynamic 'today' sentinel
+			// fresh on every request -- a complete no-op for a real static
+			// date (or any other field type's own value) -- see
+			// resolve_dynamic_value()'s own docblock. Done once, up front,
+			// so every branch below (meta/taxonomy/core) sees an
+			// already-real value, the same way BETWEEN's own two bounds
+			// are resolved inside its own branch below.
+			if ( is_string( $facet['value'] ) ) {
+				$facet['value'] = self::resolve_dynamic_value( $facet['value'], $facet['fieldType'] ?? '' );
+			}
+
+			if ( 'BETWEEN' === $facet['compare'] ) {
+				$field_type = $facet['fieldType'] ?? '';
+				$from       = self::resolve_dynamic_value( $facet['value']['from'], $field_type );
+				$to         = self::resolve_dynamic_value( $facet['value']['to'], $field_type );
+
+				if ( 'meta' === $facet['type'] ) {
+					// WP_Meta_Query's own native BETWEEN support -- no
+					// custom SQL needed. 'type' => DATE/DATETIME (rather
+					// than the default CHAR) is what makes the comparison
+					// a real date range instead of a lexicographic string
+					// one.
+					$meta_query[] = array(
+						'key'     => $facet['key'],
+						'value'   => array( $from, $to ),
+						'compare' => 'BETWEEN',
+						'type'    => 'datetime' === $field_type ? 'DATETIME' : 'DATE',
+					);
+				} elseif ( self::sanitize_core_column( $facet['key'] ) ) {
+					$core_facets[] = array(
+						'key'     => $facet['key'],
+						'compare' => 'BETWEEN',
+						'value'   => array( $from, $to ),
+					);
+				}
+
+				// Never a taxonomy facet -- validate_facets() only ever
+				// marks a Date/DateTime column's own facet BETWEEN
+				// -eligible, and a taxonomy column's own 'type' is never
+				// 'date'/'datetime' (Column_Registry never sets 'fieldType'
+				// for one).
+				continue;
+			}
+
 			if ( 'HAS_VALUE' === $facet['compare'] ) {
 				if ( 'meta' === $facet['type'] ) {
 					// A meta row's own `meta_value` is always plain text
@@ -323,6 +384,18 @@ class Facet_Query {
 				continue;
 			}
 
+			if ( 'BETWEEN' === $facet['compare'] ) {
+				// $facet['value'] already carries two REAL, resolved dates
+				// by the time it reaches here -- apply_facets() (this
+				// query var's own only producer) resolves any 'today'
+				// sentinel before ever setting it, earlier in this same
+				// request. $column is allow-listed above; both values are
+				// still their own prepared placeholders, never interpolated.
+				list( $from, $to ) = (array) $facet['value'];
+				$where             .= $wpdb->prepare( " AND {$wpdb->posts}.{$column} BETWEEN %s AND %s", $from, $to ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+				continue;
+			}
+
 			$compare = self::sanitize_compare( $facet['compare'] );
 
 			$value = in_array( $compare, array( 'LIKE', 'NOT LIKE' ), true )
@@ -357,6 +430,23 @@ class Facet_Query {
 	public static function apply_collection_facets( $query, array $facets ) {
 		foreach ( $facets as $facet ) {
 			$key = $facet['key'];
+
+			// Resolves a Before/After facet's own dynamic 'today' sentinel
+			// fresh on every request -- see resolve_dynamic_value()'s own
+			// docblock. A complete no-op for a real static date (or any
+			// other field's own value).
+			if ( is_string( $facet['value'] ) ) {
+				$facet['value'] = self::resolve_dynamic_value( $facet['value'], $facet['fieldType'] ?? '' );
+			}
+
+			if ( 'BETWEEN' === $facet['compare'] ) {
+				$field_type = $facet['fieldType'] ?? '';
+				$from       = self::resolve_dynamic_value( $facet['value']['from'], $field_type );
+				$to         = self::resolve_dynamic_value( $facet['value']['to'], $field_type );
+
+				$query->whereBetween( $key, array( $from, $to ) );
+				continue;
+			}
 
 			if ( 'HAS_VALUE' === $facet['compare'] ) {
 				// LENGTH() > 0, not `whereNotNull($key)->where($key, '!=', '')`:
@@ -535,6 +625,52 @@ class Facet_Query {
 				continue;
 			}
 
+			// The Before/After/Between date-filtering UI's own "Between"
+			// mode -- a genuinely different shape from every other facet
+			// here (an associative `{from, to}` value, not a scalar or a
+			// sequential OR-match array), so -- same reasoning as the
+			// HAS_VALUE branch just above -- it's handled as its own
+			// branch, checked BEFORE the generic isFilterable/is_array()
+			// handling below. That ordering isn't cosmetic: a JSON-decoded
+			// `{"from":...,"to":...}` object is a plain PHP array like any
+			// other, indistinguishable from the generic branch's own
+			// "array means OR-match checkboxes" case, so BETWEEN must be
+			// intercepted here first or it would silently be reinterpreted
+			// as one instead.
+			if ( 'BETWEEN' === ( $requested_facet['compare'] ?? '' ) ) {
+				$field_type = $available_columns[ $key ]['fieldType'] ?? '';
+
+				// "Between two dates" has no coherent meaning for
+				// text/number/select the way HAS_VALUE's universal
+				// isHasValueEligible does -- gated to Date/DateTime
+				// specifically, deliberately narrower.
+				if ( ! in_array( $field_type, array( 'date', 'datetime' ), true ) ) {
+					continue;
+				}
+
+				$raw_value = $requested_facet['value'] ?? array();
+				$from      = is_scalar( $raw_value['from'] ?? null ) ? trim( (string) $raw_value['from'] ) : '';
+				$to        = is_scalar( $raw_value['to'] ?? null ) ? trim( (string) $raw_value['to'] ) : '';
+
+				if ( '' === $from || '' === $to ) {
+					// A one-sided range isn't "between" at all -- Before/After
+					// already cover that, with their own single-value shape.
+					continue;
+				}
+
+				$facets[] = array(
+					'key'       => $key,
+					'type'      => $available_columns[ $key ]['type'],
+					'compare'   => 'BETWEEN',
+					'value'     => array(
+						'from' => $from,
+						'to'   => $to,
+					),
+					'fieldType' => $field_type,
+				);
+				continue;
+			}
+
 			if ( empty( $available_columns[ $key ]['isFilterable'] ) ) {
 				continue;
 			}
@@ -566,10 +702,15 @@ class Facet_Query {
 			}
 
 			$facets[] = array(
-				'key'     => $key,
-				'type'    => $available_columns[ $key ]['type'],
-				'compare' => isset( $requested_facet['compare'] ) ? $requested_facet['compare'] : '=',
-				'value'   => $value,
+				'key'       => $key,
+				'type'      => $available_columns[ $key ]['type'],
+				'compare'   => isset( $requested_facet['compare'] ) ? $requested_facet['compare'] : '=',
+				'value'     => $value,
+				// Carried through so apply_facets()/apply_collection_facets()
+				// can resolve a Before/After 'today' sentinel without a
+				// second Column_Registry lookup -- see resolve_dynamic_value()'s
+				// own docblock. A no-op key for every non-date field.
+				'fieldType' => $available_columns[ $key ]['fieldType'] ?? '',
 			);
 		}
 
@@ -728,6 +869,39 @@ class Facet_Query {
 	 */
 	protected static function sanitize_compare( $compare ) {
 		return in_array( $compare, self::ALLOWED_COMPARE, true ) ? $compare : '=';
+	}
+
+	/**
+	 * Resolves the Before/After/Between date-filtering UI's own dynamic
+	 * "Today" sentinel (the literal string `'today'`) to a real date,
+	 * fresh on every call -- unlike Date_Field_Type's own similarly-named
+	 * `'today'` sentinel (a RECORD-CREATION default value, resolved ONCE,
+	 * client-side, when an "Add New" form opens -- see that class's own
+	 * docblock), this one is resolved server-side, on every real request
+	 * that applies facets at all (apply_facets()/apply_collection_facets()
+	 * are never cached across requests), so "today" always means the
+	 * moment a visitor is actually loading the page -- never a stale date
+	 * baked in whenever the facet was configured.
+	 *
+	 * A complete no-op for anything that isn't literally `'today'`, or for
+	 * a column that isn't Date/DateTime -- a static date value (the
+	 * overwhelming common case, and the ONLY case for every field type
+	 * this shipped before this feature existed) passes straight through
+	 * unchanged, so this is a zero-regression-risk addition to the
+	 * existing `<`/`<=`/`>`/`>=` operators' own behavior.
+	 *
+	 * @param mixed  $value      A facet's raw value (one bound, for Before/After/Between alike).
+	 * @param string $field_type Column_Registry's own `fieldType` ('date'/'datetime'/''/etc.) -- the
+	 *                            raw Gateway Field_Type::key(), not an HTML `<input>` type.
+	 * @return mixed The resolved value -- current_time()'s own site-timezone-aware "now," formatted to match
+	 *               that field type's own canonical cast() shape, or $value unchanged.
+	 */
+	protected static function resolve_dynamic_value( $value, $field_type ) {
+		if ( 'today' !== $value || ! in_array( $field_type, array( 'date', 'datetime' ), true ) ) {
+			return $value;
+		}
+
+		return 'datetime' === $field_type ? current_time( 'mysql' ) : current_time( 'Y-m-d' );
 	}
 
 	/**
