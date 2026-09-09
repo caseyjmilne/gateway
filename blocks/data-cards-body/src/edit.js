@@ -11,9 +11,10 @@ import {
 	store as blockEditorStore,
 } from '@wordpress/block-editor';
 import { Spinner } from '@wordpress/components';
-import { store as coreStore } from '@wordpress/core-data';
+import { useEntityRecords } from '@wordpress/core-data';
 import { useAvailableColumns } from '../../shared/use-available-columns';
 import { POST_ORDERBY_REST_TOKENS } from '../../shared/orderable-post-columns';
+import { STORE_NAME as DATA_CARDS_PREVIEW_STORE } from '../../shared/store/data-cards-preview';
 
 // Everything auto-inserted into a card -- this default template and the
 // Collection-mode field swap below alike -- is wrapped in one `core/group`
@@ -338,50 +339,53 @@ export default function Edit( {
 	// rather than depending on the raw `orderBy` object identity.
 	const facetsKey = JSON.stringify( facets );
 
-	const { posts, blocks } = useSelect(
-		( select ) => {
-			const { getEntityRecords } = select( coreStore );
-			const { getBlocks } = select( blockEditorStore );
+	// A page-1-sized preview, same convention as core/post-template's own
+	// editor preview -- real pagination is a front-end-only (REST-fetch
+	// -driven) concern, see Data_Cards_REST_Controller.
+	//
+	// orderby/order are passed straight to the wp/v2 REST collection
+	// endpoint itself, so this preview runs the exact same real, server
+	// -side ordered query the front end's own WP_Query does -- never a
+	// client-side resort of an already-wrong sample, per a direct request
+	// ("it needs to run query and show results in the editor").
+	// `gateway_facets` is an undeclared, Gateway-only param wp/v2 itself
+	// knows nothing about -- Facet_Query::apply_editor_preview_facets()
+	// (a `rest_{$post_type}_query` filter) is what actually reads and
+	// applies it -- see that method's own docblock for why this was the
+	// only way to give this preview the SAME "no network request/no
+	// visible change" fix orderBy/order already got: reported directly,
+	// a second time, this time for the top-level Filters setting
+	// specifically.
+	const postsQuery = useMemo(
+		() => ( {
+			per_page: pageSize,
+			offset: 0,
+			...( postOrderByToken
+				? { orderby: postOrderByToken, order: order || 'desc' }
+				: {} ),
+			...( facets.length ? { gateway_facets: facetsKey } : {} ),
+		} ),
+		[ pageSize, postOrderByToken, order, facets.length, facetsKey ]
+	);
 
-			return {
-				// A page-1-sized preview, same convention as core/post
-				// -template's own editor preview -- real pagination is a
-				// front-end-only (REST-fetch-driven) concern, see
-				// Data_Cards_REST_Controller. Skipped entirely for a
-				// Collection source -- core-data has no notion of a
-				// Gateway model, that's fetched separately below.
-				//
-				// orderby/order are passed straight to the wp/v2 REST
-				// collection endpoint itself (via getEntityRecords()), so
-				// this preview runs the exact same real, server-side
-				// ordered query the front end's own WP_Query does --
-				// never a client-side resort of an already-wrong sample,
-				// per a direct request ("it needs to run query and show
-				// results in the editor"). `gateway_facets` is an
-				// undeclared, Gateway-only param wp/v2 itself knows
-				// nothing about -- Facet_Query::apply_editor_preview_facets()
-				// (a `rest_{$post_type}_query` filter) is what actually
-				// reads and applies it -- see that method's own docblock
-				// for why this was the only way to give this preview the
-				// SAME "no network request/no visible change" fix orderBy/
-				// order already got: reported directly, a second time,
-				// this time for the top-level Filters setting specifically.
-				posts: isCollection
-					? null
-					: getEntityRecords( 'postType', postType, {
-							per_page: pageSize,
-							offset: 0,
-							...( postOrderByToken
-								? { orderby: postOrderByToken, order: order || 'desc' }
-								: {} ),
-							...( facets.length
-								? { gateway_facets: facetsKey }
-								: {} ),
-					  } ),
-				blocks: getBlocks( clientId ),
-			};
-		},
-		[ isCollection, postType, pageSize, postOrderByToken, order, facetsKey, clientId ]
+	// @wordpress/core-data's own public useEntityRecords() hook, not the
+	// plain getEntityRecords() selector -- only the hook also exposes
+	// `totalItems` (backed by the REST response's own X-WP-Total header),
+	// needed so gateway/data-cards-pagination/-results can show real
+	// numbers (see this block's own STORE publish effect below). Always
+	// called (hooks can't be conditional), but its result is only used
+	// when NOT a Collection source -- switching to Collection just leaves
+	// this resolution cached/unused, no extra request is issued for it.
+	const { records: postRecords, totalItems: postTotalItems } = useEntityRecords(
+		'postType',
+		postType,
+		postsQuery
+	);
+	const posts = isCollection ? null : postRecords;
+
+	const { blocks } = useSelect(
+		( select ) => ( { blocks: select( blockEditorStore ).getBlocks( clientId ) } ),
+		[ clientId ]
 	);
 
 	// The Collection counterpart of `posts` above -- fetched directly via
@@ -393,15 +397,23 @@ export default function Edit( {
 	// end's real per-record rendering goes through Data_Cards_Renderer::
 	// render_items_for_collection() instead, which never calls this route.
 	const [ records, setRecords ] = useState( null );
+	// The total the Collection endpoint already returns alongside its own
+	// page of `records` (Records_REST_Controller::list_records()) --
+	// previously fetched and discarded; now kept so this block's own
+	// pager-meta publish effect (below) can report a real total, the same
+	// way `postTotalItems` does for the Post Type path above.
+	const [ collectionRecordsTotal, setCollectionRecordsTotal ] = useState( 0 );
 
 	useEffect( () => {
 		if ( ! isCollection ) {
 			setRecords( null );
+			setCollectionRecordsTotal( 0 );
 			return;
 		}
 
 		if ( ! collection ) {
 			setRecords( [] );
+			setCollectionRecordsTotal( 0 );
 			return;
 		}
 
@@ -437,11 +449,13 @@ export default function Edit( {
 			.then( ( response ) => {
 				if ( isCurrent ) {
 					setRecords( response.records || [] );
+					setCollectionRecordsTotal( response.total ?? 0 );
 				}
 			} )
 			.catch( () => {
 				if ( isCurrent ) {
 					setRecords( [] );
+					setCollectionRecordsTotal( 0 );
 				}
 			} );
 
@@ -449,6 +463,60 @@ export default function Edit( {
 			isCurrent = false;
 		};
 	}, [ isCollection, collection, pageSize, orderBy, order, facetsKey ] );
+
+	// This card's own real total -- Collection's own REST response total,
+	// or the Post Type preview's own `totalItems` (falling back to just
+	// the current page's length if an older/differently-shaped WordPress
+	// somehow doesn't expose it, rather than showing a broken NaN count).
+	const recordsTotal = isCollection
+		? collectionRecordsTotal
+		: typeof postTotalItems === 'number'
+		? postTotalItems
+		: posts
+		? posts.length
+		: 0;
+
+	// The ancestor gateway/data-cards block's own clientId -- gateway/
+	// data-cards-pagination and gateway/data-cards-results are its
+	// SIBLINGS, not this block's own descendants (both live inside
+	// gateway/data-cards-footer instead -- see data-cards/render.php's own
+	// docblock), so this instance's computed pager meta is published into
+	// a shared store (blocks/shared/store/data-cards-preview.js) keyed by
+	// this ancestor id, rather than passed down through ordinary block
+	// context (which only ever flows ancestor -> descendant, never
+	// sideways between siblings).
+	const dataCardsClientId = useSelect(
+		( select ) =>
+			select( blockEditorStore ).getBlockParentsByBlockName(
+				clientId,
+				'gateway/data-cards'
+			)[ 0 ],
+		[ clientId ]
+	);
+
+	const { setPreviewMeta } = useDispatch( DATA_CARDS_PREVIEW_STORE );
+	const items = isCollection ? records : posts;
+
+	useEffect( () => {
+		if ( ! dataCardsClientId ) {
+			return;
+		}
+
+		const displayCount = items ? items.length : 0;
+
+		setPreviewMeta( dataCardsClientId, {
+			isLoading: ! items,
+			// Always the first (and only) page -- this preview is a page-1
+			// -sized sample, same as `postsQuery`'s own `offset: 0` above;
+			// real pagination only exists on the front end.
+			page: 0,
+			pages: recordsTotal ? Math.max( 1, Math.ceil( recordsTotal / pageSize ) ) : 1,
+			start: 0,
+			end: displayCount,
+			recordsDisplay: displayCount,
+			recordsTotal,
+		} );
+	}, [ dataCardsClientId, items, recordsTotal, pageSize, setPreviewMeta ] );
 
 	// Each item's own id (for the click-to-activate/preview-caching
 	// mechanism below) plus the actual block context to provide -- 'record'
@@ -477,8 +545,6 @@ export default function Edit( {
 			.filter( Boolean )
 			.join( ' ' ),
 	} );
-
-	const items = isCollection ? records : posts;
 
 	if ( ! items ) {
 		return (
