@@ -2800,22 +2800,30 @@ block.
 "Maintain the list of accepted block types" is the one real difference
 from the Data Cards precedent, which went further and dropped its own
 top-level `allowedBlocks` entirely (a separate, later, explicit
-request: "Data Cards should allow more items to be added"). Gutenberg
-has no supported way for external code to restrict a *specific
-instance* of a foreign block's (here, `core/group`'s) own nested
-InnerBlocks to a fixed list -- `allowedBlocks` is only ever read by
-whichever block's own `edit.js` calls `useInnerBlocksProps`/
-`<InnerBlocks>`, and `core/group`'s own `edit.js` (core, not this
-plugin's) accepts no such override. The closest, actually-supported
-equivalent -- and the same mechanism `gateway/card-facet` already
-relies on for Data Cards -- is each facet block's own `block.json`
-`"ancestor"` restriction: it decides where THAT block itself may be
-placed, symmetrically achieving "these three block types only work
-inside a Data Table" without needing the container to enforce anything.
-The trade-off is real and worth naming: like the Data Cards Row, this
-one will also accept a Heading, a Paragraph, or any other block a site
-owner drags in alongside a facet -- Gutenberg's inserter simply has no
-concept of "this Group instance, specifically, only accepts blocks X/Y/Z."
+request: "Data Cards should allow more items to be added"). Corrected
+after an initial wrong claim here that Gutenberg has no way to restrict
+a specific instance of a foreign block's own InnerBlocks -- it does:
+`core/group` (also `core/columns`, `core/column`, `core/cover`) reads
+`allowedBlocks`/`templateLock` off its OWN saved attributes and passes
+them straight through to its own internal `useInnerBlocksProps()` call,
+so a specific instance -- set right in that block's own attributes,
+the same as writing them into its saved `<!-- wp:group {...} -->`
+comment by hand -- curates its own "+" appender without needing a
+bespoke wrapper block at all. `gateway/datatable`'s own template seeds
+the Row with exactly that: `allowedBlocks: ['gateway/facet',
+'gateway/facet-has-value', 'gateway/facet-text']` on the `core/group`
+node itself (see `src/edit.js`). Per direct clarification ("its not a
+huge issue if the user can add other blocks but the benefit of allowed
+blocks is the inserter provides a list of the facets"), this is a
+curated-menu convenience, not a hard security boundary --
+`templateLock` is deliberately left unset (`false`), so a site owner
+can still reach an unlisted block via the global inserter, search, or
+paste; converting the Row away from Group to a Stack/Columns loses this
+attribute entirely, since the new block type carries none of its own.
+Each facet block's own `block.json` `"ancestor": ["gateway/datatable"]`
+restriction (below) is the actual, structural enforcement of "these
+three only work inside a Data Table" -- the Group's own `allowedBlocks`
+is a nicety layered on top, not a replacement for it.
 
 - **`blocks/datatable-facets/` deleted outright** -- `block.json`,
   `render.php`, every `src/*.js`, `build/*`, all of it. No PHP
@@ -2844,8 +2852,15 @@ concept of "this Group instance, specifically, only accepts blocks X/Y/Z."
   stays a closed set (now `core/group` plus the three required zones,
   not fully opened up) -- per the "maintain the list" request, a site
   owner still can't drop arbitrary top-level blocks directly under
-  `gateway/datatable` itself, even though the Row's own children are, as
-  explained above, unavoidably open-ended.
+  `gateway/datatable` itself.
+- **The seeded `core/group` node itself carries its own
+  `allowedBlocks: ['gateway/facet', 'gateway/facet-has-value',
+  'gateway/facet-text']` attribute** -- Group/Columns/Column/Cover all
+  read this (and `templateLock`) off their own saved attributes, so this
+  one instance's own "+" appender offers exactly the three facet types
+  instead of the full block library, without any bespoke wrapper block.
+  `templateLock` is left unset -- this only curates the menu, it doesn't
+  lock the Row down.
 - **`gateway/datatable/render.php`'s own dispatch changed from an
   exhaustive name-keyed lookup to dispatch-by-exclusion.** The old
   version kept one array slot per exact child name (`gateway/

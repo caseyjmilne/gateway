@@ -130,11 +130,46 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			// Row already uses) left empty for a site owner to drop
 			// gateway/facet(-has-value/-text) controls into -- the direct
 			// replacement for the old, bespoke gateway/datatable-facets
-			// container block. Ordinary, freely replaceable/transformable
-			// content from here on (`templateLock: false` below, same as
-			// everything else in this template) -- a site owner can turn
-			// it into a Stack, a Columns block, or delete it outright.
-			[ 'core/group', { layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' } }, [] ],
+			// container block.
+			//
+			// `allowedBlocks` here is this GROUP INSTANCE's own saved
+			// attribute, not the top-level `allowedBlocks` prop above --
+			// core/group (also core/columns, core/column, core/cover)
+			// reads its own `attributes.allowedBlocks`/`templateLock` and
+			// passes them straight through to its own internal
+			// `useInnerBlocksProps()` call, so a specific instance's own
+			// "+" appender can be curated down to a fixed list without
+			// needing a bespoke wrapper block at all -- exactly the
+			// gateway/datatable-facets replacement this is. Curates the
+			// inserter down to the three known facet types purely for
+			// discoverability (per a direct clarification: "the benefit
+			// of allowed blocks is the inserter provides a list of the
+			// facets"), not as a hard restriction -- `templateLock` is
+			// deliberately left unset here (equivalent to `false`), so a
+			// site owner can still drop in a Heading/Paragraph/whatever
+			// via the global inserter or by pasting, same as gateway/
+			// data-cards' own equivalent Row already allows. Each facet
+			// block's own `block.json` `"ancestor": ["gateway/datatable"]`
+			// (rather than this Group's own allowedBlocks) is still what
+			// actually enforces "these three only work inside a Data
+			// Table" -- this is purely a curated-menu convenience layered
+			// on top. Ordinary, freely replaceable/transformable content
+			// from here on (`templateLock: false` on the OUTER
+			// useInnerBlocksProps() call below, same as everything else
+			// in this template) -- a site owner can turn it into a Stack,
+			// a Columns block, or delete it outright; converting it away
+			// from Group loses this curated `allowedBlocks` list (the new
+			// block type has none of its own), same trade-off as any
+			// other block-level attribute that doesn't survive a
+			// transform.
+			[
+				'core/group',
+				{
+					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' },
+					allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value', 'gateway/facet-text' ],
+				},
+				[],
+			],
 			[
 				'gateway/datatable-header',
 				{},
