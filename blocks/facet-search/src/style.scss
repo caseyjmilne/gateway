@@ -1,0 +1,31 @@
+/**
+ * Styles for the gateway/facet-search block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Same
+ * layout as gateway/datatable-search's own style.scss (a flex row: label
+ * + input), but sized like this plugin's Facet-family controls (16px,
+ * matching gateway-facet/-has-value/-text's own default) rather than
+ * gateway/datatable-header's smaller 13px -- this block normally sits
+ * alongside those other Facet: controls in the Facets row, not the
+ * Header, so it reads as one of that family visually too.
+ */
+
+.gateway-facet-search {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	margin-bottom: 1em;
+	font-size: 16px;
+
+	&__label {
+		margin: 0;
+		font-weight: 600;
+	}
+
+	&__input {
+		padding: 6px 8px;
+		border: 1px solid #757575;
+		border-radius: 2px;
+	}
+}

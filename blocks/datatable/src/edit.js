@@ -128,9 +128,9 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			// group/variations.js` in a `wordpress/gutenberg` checkout,
 			// and the same attributes gateway/data-cards' own equivalent
 			// Row already uses) left empty for a site owner to drop
-			// gateway/facet(-has-value/-text) controls into -- the direct
-			// replacement for the old, bespoke gateway/datatable-facets
-			// container block.
+			// gateway/facet(-has-value/-text/-search) controls into -- the
+			// direct replacement for the old, bespoke gateway/datatable
+			// -facets container block.
 			//
 			// `allowedBlocks` here is this GROUP INSTANCE's own saved
 			// attribute, not the top-level `allowedBlocks` prop above --
@@ -166,7 +166,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				'core/group',
 				{
 					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' },
-					allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value', 'gateway/facet-text' ],
+					allowedBlocks: [ 'gateway/facet', 'gateway/facet-has-value', 'gateway/facet-text', 'gateway/facet-search' ],
 				},
 				[],
 			],

@@ -2854,13 +2854,15 @@ is a nicety layered on top, not a replacement for it.
   owner still can't drop arbitrary top-level blocks directly under
   `gateway/datatable` itself.
 - **The seeded `core/group` node itself carries its own
-  `allowedBlocks: ['gateway/facet', 'gateway/facet-has-value',
-  'gateway/facet-text']` attribute** -- Group/Columns/Column/Cover all
-  read this (and `templateLock`) off their own saved attributes, so this
-  one instance's own "+" appender offers exactly the three facet types
-  instead of the full block library, without any bespoke wrapper block.
-  `templateLock` is left unset -- this only curates the menu, it doesn't
-  lock the Row down.
+  `allowedBlocks` attribute** (currently `['gateway/facet',
+  'gateway/facet-has-value', 'gateway/facet-text', 'gateway/facet-search']`
+  -- grows every time a new facet-family block joins the set; see
+  "Facet: Search" below for the most recent addition) -- Group/Columns/
+  Column/Cover all read this (and `templateLock`) off their own saved
+  attributes, so this one instance's own "+" appender offers exactly the
+  known facet types instead of the full block library, without any
+  bespoke wrapper block. `templateLock` is left unset -- this only
+  curates the menu, it doesn't lock the Row down.
 - **`gateway/datatable/render.php`'s own dispatch changed from an
   exhaustive name-keyed lookup to dispatch-by-exclusion.** The old
   version kept one array slot per exact child name (`gateway/
@@ -2904,6 +2906,70 @@ Data Table insert, transforming it to a Stack, dropping a
 an old post saved before this change still rendering its facets on the
 front end -- needs manual verification in a real block editor, the same
 caveat every other block-editor-only UI change in this plugin carries.
+
+### `gateway/card-facet-search` / `gateway/facet-search` (new blocks)
+
+Requested directly: "make a Facet: Search block which simply searches
+the entire model. This should work as our current search does with a
+'contains' approach to searching all the fields. We already have a
+search field that shows up in the UI but to make it optional we are
+adding this block with the same approach." Two new blocks, following
+the exact self-contained facet-family pattern `gateway/card-facet-has
+-value`/`-text` and `gateway/facet-has-value`/`-text` already
+established -- `ancestor: gateway/data-cards`/`gateway/datatable`
+respectively, no `fieldKey` (there's no one field to pick; this
+searches everything at once), added to the datatable Facets Row's own
+curated `allowedBlocks` list (above).
+
+Neither block needed ANY new search logic: each is a near-identical
+copy of the ALREADY-EXISTING `gateway/data-cards-search`/`gateway
+/datatable-search` blocks' own render.php + view.js (down to reusing
+the exact same "contains, across every text-renderable field" backend
+-- `Data_Cards_Renderer::apply_collection_search()` for a Collection,
+WP_Query's own native `s` for a postType -- and the exact same
+client-side `dataTable.search(value).draw()` global search for Data
+Table), just packaged as an optional, freely placeable block instead of
+a fixed slot inside Header. The one difference from those originals:
+`gateway/facet-search`'s own view.js also calls
+`hideNativeDataTableWidget()` (idempotent -- a no-op if the required
+Header's own search already removed the native widget), so it works as
+a full replacement on its own if a site owner ever empties that slot
+out.
+
+"Should facet together with other facets... combined... to finalize
+the query" needed no new code at all, on either side -- confirmed by
+reading the existing mechanisms rather than assuming: `shared/cards.js`'s
+`fetchCardsPage()` already sends BOTH `search` and `facets` in the same
+request, and `Data_Cards_Renderer` applies them as two independently
+-scoped, ANDed conditions (`Facet_Query::apply_collection_facets()`/
+`apply_facets()` first, `apply_collection_search()`'s own nested
+-closure OR-across-fields, or WP_Query's native `s`, layered on top)
+regardless of which block actually supplied the `search` term.
+DataTables' own client-side filtering pass ANDs a global `.search()`
+term against every active per-column `column().search()` call and every
+registered `$.fn.dataTable.ext.search` filter (`gateway/facet`'s/`-has
+-value`'s own custom compare filters included) the same way, natively,
+with zero custom code -- this is simply how DataTables' own filtering
+already works.
+
+Verified via `php -l`/JSON validation on the new files, a successful
+production build, and confirming (not assuming) that `search` and
+`facets` genuinely combine server-side already: the existing
+`data-cards-collection-search-smoke-test.php` (part of this project's
+standard regression suite, unmodified by this change) already has its
+own "Search composes with facets (AND'd together)" checks --
+`get_collection_page()` with BOTH a facet (`views > 50`) and a search
+term together correctly narrows to only the record matching both,
+and a facet that alone would match still narrows to zero once a
+non-matching search term is added on top. This test passing is direct,
+existing proof neither new block needed any change to that combining
+behavior. No PHP regression test exercises either new block's own
+render.php specifically (both are `php -l`-only, structurally identical
+to their already-tested originals), and the actual editor/front-end
+experience (both new blocks' own "+"-appender discoverability, live
+search-plus-facet combination on a real page) needs manual verification
+in a real block editor, the same caveat every other block-editor-only
+UI change in this plugin carries.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 
