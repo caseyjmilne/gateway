@@ -16,6 +16,7 @@ import ConditionalLogicEditor from './ConditionalLogicEditor.jsx';
 import TypeSelect from './TypeSelect.jsx';
 import FilterMultiSelect from './FilterMultiSelect.jsx';
 import DndSortableGroup from './DndSortableGroup.jsx';
+import Modal from './Modal.jsx';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -654,12 +655,30 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	const [ editTab, setEditTab ] = useState( 'general' );
 
 	const [ deletingName, setDeletingName ] = useState( null );
+	// Deliberately its own state, not the general `error` above (shared
+	// today by add/duplicate/reorder) -- a delete failure needs to render
+	// INSIDE the open confirm modal, not in that banner, matching how
+	// RecordsCrud.jsx keeps every action's own error (addError, editError,
+	// deleteError, ...) separate rather than one shared state.
+	const [ deleteError, setDeleteError ] = useState( '' );
+	// Which field is being asked about, by name -- `null` means no modal.
+	// Distinct from `deletingName` (whether that field's own DELETE
+	// request is actually in flight), the same two-state split
+	// RecordsCrud.jsx's own delete confirmation uses: a failed delete
+	// leaves this set (the modal stays open, showing deleteError) rather
+	// than silently closing as if it had succeeded.
+	const [ deleteConfirmName, setDeleteConfirmName ] = useState( null );
 
 	const [ reordering, setReordering ] = useState( false );
 	const dragSensors = useReorderSensors();
 
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/fields`;
 	const dragEnabled = null === editingIndex && null === deletingName;
+	// Looked up by name (not just checking `null !== deleteConfirmName`)
+	// so a reload racing the confirm click harmlessly closes this modal
+	// instead of confirming against a field no longer in `fields` at all.
+	const deleteConfirmField =
+		fields.find( ( field ) => field.name === deleteConfirmName ) || null;
 
 	// `relationships` (this model's own) arrives as a prop, owned by
 	// ModelDetail and shared with RelationshipEditor -- not fetched here
@@ -1360,7 +1379,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 	};
 
 	const handleDelete = async ( name ) => {
-		setError( '' );
+		setDeleteError( '' );
 		setDeletingName( name );
 
 		try {
@@ -1370,8 +1389,9 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 			setFields( ( current ) =>
 				current.filter( ( field ) => field.name !== name )
 			);
+			setDeleteConfirmName( null );
 		} catch ( err ) {
-			setError( err.message );
+			setDeleteError( err.message );
 		} finally {
 			setDeletingName( null );
 		}
@@ -2655,7 +2675,8 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 															null === editingIndex &&
 															null === deletingName
 														) {
-															handleDelete( field.name );
+															setDeleteError( '' );
+															setDeleteConfirmName( field.name );
 														}
 													} }
 												>
@@ -2732,6 +2753,47 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 						+ Add Field
 					</button>
 				</p>
+			) }
+
+			{ deleteConfirmField && (
+				<Modal
+					title="Delete Field"
+					onClose={ () => setDeleteConfirmName( null ) }
+				>
+					<p>
+						Are you sure you want to delete{ ' ' }
+						<code>{ deleteConfirmField.name }</code>? This cannot
+						be undone, and if this field already has data in it,
+						deleting it will permanently delete that data too.
+					</p>
+					{ deleteError && (
+						<div className="notice notice-error">
+							<p>{ deleteError }</p>
+						</div>
+					) }
+					<p>
+						<button
+							type="button"
+							className="button button-primary"
+							onClick={ () =>
+								handleDelete( deleteConfirmField.name )
+							}
+							disabled={ deletingName === deleteConfirmField.name }
+						>
+							{ deletingName === deleteConfirmField.name
+								? 'Deleting…'
+								: 'Delete' }
+						</button>{ ' ' }
+						<button
+							type="button"
+							className="button"
+							onClick={ () => setDeleteConfirmName( null ) }
+							disabled={ deletingName === deleteConfirmField.name }
+						>
+							Cancel
+						</button>
+					</p>
+				</Modal>
 			) }
 		</div>
 	);

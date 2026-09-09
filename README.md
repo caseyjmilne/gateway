@@ -8927,3 +8927,78 @@ exactly what made the error confusing -- but it's what the health-check
 cache was for, so real database unavailability gets a clear answer
 without adding a second live connection attempt of its own alongside the
 one the migration is already about to make.
+
+### Confirm-before-delete modal: `FieldEditor.jsx` / `RelationshipEditor.jsx`
+
+Reported directly: "In the fields editor: Delete happens immediately
+instead of asking for a confirmation. We need to confirm the delete
+here in a modal because it is very destructive, if the model has
+records this could mean losing data from the rows." Confirmed against
+the server side that this really is as destructive as described:
+`DELETE /gateway/v1/models/<class>/fields/<field_name>` →
+`Model_Field_Rest_Controller::remove_field()` →
+`Model_Fields::remove()` runs a real `DROP COLUMN` migration for most
+field types -- clicking Delete used to destroy real row data with zero
+confirmation. While investigating, `RelationshipEditor.jsx`'s own
+Delete button had the identical bug (no confirmation at all before
+calling its own `handleDelete` directly) -- lower stakes, since
+removing a relationship never touches the database schema, but the
+same missing-confirmation pattern nonetheless. Confirmed with a direct
+follow-up to fix both in the same pass.
+
+Both fixes replicate an already-established pattern rather than
+inventing a new one: `RecordsCrud.jsx`'s own delete-confirmation flow,
+built on the existing hand-rolled `Modal` component
+(`admin-app/src/components/Modal.jsx`) plus a
+`deleteConfirmId`/`deletingId`/`deleteError` three-state split. Its own
+docblock explains the reasoning, which both new call sites inherit
+directly: a failed delete should leave the confirmation modal open
+with the error shown *inside* it, not silently close as if it had
+succeeded.
+
+- **`FieldEditor.jsx`**: new `deleteError`/`deleteConfirmName` state,
+  alongside the existing `deletingName`. `deleteError` is deliberately
+  its OWN state, not the general `error` (shared by add/duplicate/
+  reorder) -- a delete failure needs to render inside the open modal,
+  not that banner. The row's Delete link now sets
+  `deleteConfirmName( field.name )` instead of calling `handleDelete()`
+  directly; `handleDelete()` itself is unchanged except swapping
+  `setError` for `setDeleteError` and clearing `deleteConfirmName` on
+  success. A new `<Modal title="Delete Field">` (rendered when
+  `deleteConfirmField` -- `fields.find()` by the confirm name -- is
+  non-null) asks for confirmation with copy stronger than
+  `RecordsCrud`'s own ("This cannot be undone, and if this field
+  already has data in it, deleting it will permanently delete that
+  data too"), since a field delete's blast radius is every row's data
+  for that column, not one record.
+- **`RelationshipEditor.jsx`**: same shape --
+  `deleteError`/`deleteConfirmMethodName` new state, the Delete button
+  opens the modal instead of deleting directly, `handleDelete()` swaps
+  `setError` for `setDeleteError` (its previously-shared `error` state
+  is now owned by `handleAdd` alone). The confirm copy is honest about
+  the lower stakes here ("Relationships don't touch the database
+  schema, so no row data is lost, but any code relying on this method
+  will break").
+- No new CSS in either case -- `Modal.jsx`'s existing
+  `.gateway-modal-*` classes (`styles.css`) and WP core's own
+  `.button`/`.button-primary`/`.notice`/`.notice-error` classes cover
+  everything needed, the same way `RecordsCrud`'s own confirm modal
+  already does.
+- No PHP changes at all -- both `DELETE` endpoints and their underlying
+  removal logic are untouched; this is purely a client-side
+  confirmation gate in front of an unchanged request.
+
+Verified with a temporary, uncommitted Playwright harness (a scratch
+`test-harness.html` + `src/test-harness-entry.jsx` mounting the real
+`FieldEditor`/`RelationshipEditor` components against a mocked
+`window.fetch`, served via a scratch `vite --port` process, driven by a
+scratch `verify-delete-confirm.mjs` script -- all deleted before this
+change was committed): 18 checks, covering both components' full
+success path (Delete opens the modal without deleting immediately, the
+row survives while the modal is open, Cancel closes it without
+deleting, confirming actually deletes and closes the modal), the
+failure path (a simulated server error leaves the modal OPEN with the
+error shown inside it, and the row is NOT removed), and Escape closing
+the modal the same way Cancel does (`Modal.jsx`'s own existing
+behavior, confirmed still reachable through this new call site).
+`admin-app` rebuilt via `npm run build` (vite), which compiled cleanly.

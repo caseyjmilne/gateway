@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../api.js';
 import useRelationshipTypes from '../hooks/useRelationshipTypes.js';
 import { SkeletonBar } from './Skeleton.jsx';
+import Modal from './Modal.jsx';
 
 /**
  * A small field-editor-style Relationship Editor for one model: pick
@@ -44,8 +45,29 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 	const [ adding, setAdding ] = useState( false );
 
 	const [ deletingMethodName, setDeletingMethodName ] = useState( null );
+	// Its own state, split off from the general `error` above (which stays
+	// owned by handleAdd from here on) -- a delete failure needs to render
+	// INSIDE the open confirm modal, not the banner at the top of this
+	// screen, matching RecordsCrud.jsx's own per-action error split.
+	const [ deleteError, setDeleteError ] = useState( '' );
+	// Which relationship is being asked about, by method name -- `null`
+	// means no modal. Distinct from `deletingMethodName` (whether that
+	// relationship's own DELETE request is actually in flight), the same
+	// two-state split RecordsCrud.jsx's/FieldEditor.jsx's own delete
+	// confirmation uses: a failed delete leaves this set (the modal stays
+	// open, showing deleteError) rather than silently closing as if it
+	// had succeeded.
+	const [ deleteConfirmMethodName, setDeleteConfirmMethodName ] = useState( null );
 
 	const basePath = `/models/${ encodeURIComponent( modelClass ) }/relationships`;
+	// Looked up by method name (not just checking
+	// `null !== deleteConfirmMethodName`) so a reload racing the confirm
+	// click harmlessly closes this modal instead of confirming against a
+	// relationship no longer in `relationships` at all.
+	const deleteConfirmRelationship =
+		relationships.find(
+			( relationship ) => relationship.method_name === deleteConfirmMethodName
+		) || null;
 
 	// Every *other* registered model -- what the "related model" dropdown
 	// offers. Reuses GET /models (the same endpoint the Models/Records
@@ -116,7 +138,7 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 	};
 
 	const handleDelete = async ( methodName ) => {
-		setError( '' );
+		setDeleteError( '' );
 		setDeletingMethodName( methodName );
 
 		try {
@@ -129,8 +151,9 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 					( relationship ) => relationship.method_name !== methodName
 				)
 			);
+			setDeleteConfirmMethodName( null );
 		} catch ( err ) {
-			setError( err.message );
+			setDeleteError( err.message );
 		} finally {
 			setDeletingMethodName( null );
 		}
@@ -184,11 +207,12 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 									<button
 										type="button"
 										className="button"
-										onClick={ () =>
-											handleDelete(
+										onClick={ () => {
+											setDeleteError( '' );
+											setDeleteConfirmMethodName(
 												relationship.method_name
-											)
-										}
+											);
+										} }
 										disabled={
 											deletingMethodName ===
 											relationship.method_name
@@ -261,6 +285,59 @@ export default function RelationshipEditor( { modelClass, relationships, onRelat
 						{ adding ? 'Adding…' : 'Add Relationship' }
 					</button>
 				</form>
+			) }
+
+			{ deleteConfirmRelationship && (
+				<Modal
+					title="Delete Relationship"
+					onClose={ () => setDeleteConfirmMethodName( null ) }
+				>
+					<p>
+						Are you sure you want to delete the{ ' ' }
+						<code>{ deleteConfirmRelationship.method_name }()</code>
+						{ ' ' }relationship to{ ' ' }
+						<code>{ deleteConfirmRelationship.related_model }</code>?
+						This cannot be undone. Relationships don't touch the
+						database schema, so no row data is lost, but any code
+						relying on this method will break.
+					</p>
+					{ deleteError && (
+						<div className="notice notice-error">
+							<p>{ deleteError }</p>
+						</div>
+					) }
+					<p>
+						<button
+							type="button"
+							className="button button-primary"
+							onClick={ () =>
+								handleDelete(
+									deleteConfirmRelationship.method_name
+								)
+							}
+							disabled={
+								deletingMethodName ===
+								deleteConfirmRelationship.method_name
+							}
+						>
+							{ deletingMethodName ===
+							deleteConfirmRelationship.method_name
+								? 'Deleting…'
+								: 'Delete' }
+						</button>{ ' ' }
+						<button
+							type="button"
+							className="button"
+							onClick={ () => setDeleteConfirmMethodName( null ) }
+							disabled={
+								deletingMethodName ===
+								deleteConfirmRelationship.method_name
+							}
+						>
+							Cancel
+						</button>
+					</p>
+				</Modal>
 			) }
 		</div>
 	);
