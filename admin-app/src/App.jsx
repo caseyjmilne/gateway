@@ -45,6 +45,18 @@ export default function App() {
 					<Route path="/models/:modelSlug/:tab" element={ <ModelDetail /> } />
 					<Route path="/records" element={ <RecordsList /> } />
 					<Route path="/records/:modelSlug" element={ <RecordsCrud /> } />
+					{ /* Same element, a second time, for a URL that also names one
+					   * record's own Edit or Delete action
+					   * (`/records/doc/42/edit`, `/records/doc/42/delete`) -- same
+					   * "two routes, one element" shape as ModelDetail's own
+					   * `:tab` route above, so a specific record's Edit/Delete
+					   * modal can be linked to and shared directly rather than
+					   * only ever reachable by clicking its row on
+					   * `/records/:modelSlug` first. RecordsCrud reads `:id`/
+					   * `:action` via useParams() (both undefined on the route
+					   * above) to decide whether to open a modal, and for which
+					   * record -- see its own docblock. */ }
+					<Route path="/records/:modelSlug/:id/:action" element={ <RecordsCrud /> } />
 					<Route path="/database" element={ <DatabaseConfig /> } />
 				</Routes>
 			</div>

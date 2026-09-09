@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { arrayMove } from '@dnd-kit/sortable';
 import { GripVertical, ChevronsUp, ChevronsDown, ChevronsUpDown } from 'lucide-react';
 import { apiFetch } from '../api.js';
@@ -125,14 +125,35 @@ const POSITION_PER_PAGE = 100;
  * genuinely destructive, unrecoverable action deserves a second click
  * (matching wp-admin's own convention for e.g. trashing a post), unlike
  * Edit's modal, which just holds a form nothing has committed yet.
- * `deleteConfirmId` (which record is being asked about) and `deletingId`
- * (whether that record's own DELETE request is actually in flight) are
- * deliberately two different pieces of state, the same "asking" vs.
- * "doing" split every other action here already has between its own
- * `showAddForm`/`addSubmitting` or `editingId`/`editSubmitting` pair -- a
- * failed delete leaves the confirmation modal open with the error shown
- * inside it (same as Edit's own `editError`) rather than silently
- * closing as if it had succeeded.
+ * `deletingId` (whether a record's own DELETE request is actually in
+ * flight) and `editSubmitting`/`editError` are still local state -- only
+ * WHICH record's modal is open moved to the URL (below).
+ *
+ * WHICH record's Edit/Delete modal is open (if either) is driven entirely
+ * by this route's own optional `:id`/`:action` segments
+ * (`/records/doc/42/edit`, `/records/doc/42/delete` -- App.jsx's own
+ * second route for this screen), not local state, per a direct request:
+ * a specific record's Edit or Delete modal needed a real URL of its own
+ * to link/share, the same reasoning ModelDetail's own tabs already got.
+ * `linkedRecord` holds that record: reused directly from the currently
+ * -loaded `records` page when it's already there (instant, no request --
+ * what a normal in-table Edit/Delete click already had), or fetched
+ * directly by id (`GET .../records/:id`, the same route Save/Delete
+ * already target) when it isn't -- a shared link has no reason to assume
+ * whoever opens it is looking at the same page/sort/search the link's
+ * author was. `linkedRecordLoading`/`linkedRecordError` cover that
+ * fetch's own in-flight/failed states (e.g. the record was since
+ * deleted) with a small dedicated modal, before the real Edit/Delete
+ * modals -- which assume a resolved record in hand -- ever try to render.
+ * An `:id`/`:action` that doesn't resolve to a real record still shows
+ * SOMETHING meaningful rather than silently doing nothing or crashing;
+ * an `:action` that isn't literally "edit" or "delete" (or an `:id`
+ * that isn't a plain integer) redirects back to the bare `/records/:modelSlug`
+ * URL instead, mirroring ModelDetail's own unrecognized-`:tab` redirect.
+ *
+ * A failed delete leaves the confirmation modal open with the error shown
+ * inside it (same as Edit's own `editError`) rather than silently closing
+ * as if it had succeeded.
  *
  * A field whose type is_sensitive() (Password_Field_Type, currently the
  * only one) has its value masked in this table -- the record's own
@@ -142,13 +163,32 @@ const POSITION_PER_PAGE = 100;
  * typing without hiding the value from the person typing it.
  */
 export default function RecordsCrud() {
-	const { modelSlug } = useParams();
+	const { modelSlug, id, action } = useParams();
 	// The slug is what the URL actually carries -- everything below still
 	// works in terms of the real class name, resolved once here (see
 	// that hook's own docblock for why this fetches the models list
 	// rather than adding a dedicated REST route just for this lookup).
 	const { className, error: slugError } = useResolvedModelClass( modelSlug );
 	const fieldTypes = useFieldTypes();
+	const navigate = useNavigate();
+
+	// A plain integer id, or `null` for a genuinely absent `:id` (the bare
+	// `/records/:modelSlug` route) AND for a malformed one (`:id` present
+	// but not just digits) alike -- both are treated identically by the
+	// redirect effect below (see this component's own docblock).
+	const linkedRecordId =
+		id && /^\d+$/.test( id ) ? parseInt( id, 10 ) : null;
+	const hasValidAction = 'edit' === action || 'delete' === action;
+
+	// An `:id`/`:action` naming this screen's own optional record-modal
+	// route, but not a RECOGNIZABLE one -- redirects back to the bare
+	// model URL rather than leaving the page sitting at a URL that looks
+	// like it should do something but silently doesn't.
+	useEffect( () => {
+		if ( id && ! ( linkedRecordId && hasValidAction ) ) {
+			navigate( `/records/${ modelSlug }`, { replace: true } );
+		}
+	}, [ id, linkedRecordId, hasValidAction, modelSlug, navigate ] );
 
 	const [ model, setModel ] = useState( null );
 	const [ modelError, setModelError ] = useState( '' );
@@ -223,19 +263,84 @@ export default function RecordsCrud() {
 	const [ addSubmitting, setAddSubmitting ] = useState( false );
 	const [ addError, setAddError ] = useState( '' );
 
-	const [ editingId, setEditingId ] = useState( null );
 	const [ editSubmitting, setEditSubmitting ] = useState( false );
 	const [ editError, setEditError ] = useState( '' );
 
 	const [ deletingId, setDeletingId ] = useState( null );
 	const [ deleteError, setDeleteError ] = useState( '' );
-	// The record a Delete click is asking to confirm -- distinct from
-	// `deletingId` below, which only tracks the DELETE request actually
-	// in flight (after that confirmation), the same "asking" vs. "doing"
-	// split `editingId`/`editSubmitting` already have.
-	const [ deleteConfirmId, setDeleteConfirmId ] = useState( null );
 
 	const basePath = `/models/${ encodeURIComponent( className ) }/records`;
+
+	// The record `:id`/`:action` (above) names, once resolved -- reused
+	// directly from the currently-loaded `records` page when it's already
+	// there, or fetched by id directly otherwise. See this component's
+	// own docblock for the full "why."
+	const [ linkedRecord, setLinkedRecord ] = useState( null );
+	const [ linkedRecordLoading, setLinkedRecordLoading ] = useState( false );
+	const [ linkedRecordError, setLinkedRecordError ] = useState( '' );
+	// Which id this effect has already fetched directly (not found on the
+	// currently-loaded page) -- a `useRef`, not state, purely so checking
+	// it doesn't itself need to be a dependency of the effect below (that
+	// would defeat the point: `records` changing identity again is exactly
+	// what this guards against re-fetching for).
+	const fetchedRecordIdRef = useRef( null );
+
+	useEffect( () => {
+		if ( ! className || ! linkedRecordId || ! hasValidAction ) {
+			setLinkedRecord( null );
+			setLinkedRecordLoading( false );
+			setLinkedRecordError( '' );
+			fetchedRecordIdRef.current = null;
+			return;
+		}
+
+		// Prefer the currently-loaded page's own copy when it's there --
+		// re-derived fresh every time this effect runs (i.e. whenever
+		// `records` changes), so this never goes stale the way caching a
+		// separately-fetched copy across a records reload would.
+		const existing = records.find( ( record ) => record.id === linkedRecordId );
+
+		if ( existing ) {
+			setLinkedRecord( existing );
+			setLinkedRecordLoading( false );
+			setLinkedRecordError( '' );
+			return;
+		}
+
+		if ( fetchedRecordIdRef.current === linkedRecordId ) {
+			// Not on the currently-loaded page, but already fetched directly
+			// by id on a prior run of this same effect -- don't refetch just
+			// because `records` got a new array reference from an unrelated
+			// reload.
+			return;
+		}
+
+		let cancelled = false;
+		fetchedRecordIdRef.current = linkedRecordId;
+		setLinkedRecordLoading( true );
+		setLinkedRecordError( '' );
+
+		apiFetch( `${ basePath }/${ linkedRecordId }` )
+			.then( ( data ) => {
+				if ( ! cancelled ) {
+					setLinkedRecord( data );
+				}
+			} )
+			.catch( ( err ) => {
+				if ( ! cancelled ) {
+					setLinkedRecordError( err.message );
+				}
+			} )
+			.finally( () => {
+				if ( ! cancelled ) {
+					setLinkedRecordLoading( false );
+				}
+			} );
+
+		return () => {
+			cancelled = true;
+		};
+	}, [ className, linkedRecordId, hasValidAction, records, basePath ] );
 
 	useEffect( () => {
 		// Waits for the slug to resolve to a real class name first (see
@@ -251,7 +356,6 @@ export default function RecordsCrud() {
 		setModel( null );
 		setModelError( '' );
 		setShowAddForm( false );
-		setEditingId( null );
 		// A genuinely different model's own Records screen starts fresh --
 		// its own first load still deserves the classic full-page
 		// "Loading…" treatment (see `hasLoadedOnce`'s own docblock), and a
@@ -496,16 +600,21 @@ export default function RecordsCrud() {
 		}
 	};
 
-	const handleEditSave = async ( id, values ) => {
+	const handleEditSave = async ( recordId, values ) => {
 		setEditSubmitting( true );
 		setEditError( '' );
 
 		try {
-			await apiFetch( `${ basePath }/${ id }`, {
+			await apiFetch( `${ basePath }/${ recordId }`, {
 				method: 'PUT',
 				body: JSON.stringify( values ),
 			} );
-			setEditingId( null );
+			// Back to the bare model URL -- `replace`, not a normal push, so
+			// Back from here lands wherever the user was BEFORE opening this
+			// modal, not right back on the now-closed .../edit URL (same
+			// reasoning ModelDetail's own post-rename navigate() already
+			// uses `replace` for).
+			navigate( `/records/${ modelSlug }`, { replace: true } );
 			setRowsPending( true );
 			refetch();
 		} catch ( err ) {
@@ -515,18 +624,18 @@ export default function RecordsCrud() {
 		}
 	};
 
-	const handleDelete = async ( id ) => {
+	const handleDelete = async ( recordId ) => {
 		setDeleteError( '' );
-		setDeletingId( id );
+		setDeletingId( recordId );
 
 		try {
-			await apiFetch( `${ basePath }/${ id }`, { method: 'DELETE' } );
+			await apiFetch( `${ basePath }/${ recordId }`, { method: 'DELETE' } );
 			// Only closes the confirm modal on SUCCESS -- an error leaves
 			// it open with `deleteError` shown inside it, the same "stay
 			// open and show what went wrong" behavior the Edit modal's
 			// own `editError` already has, rather than silently
 			// dismissing a failed delete as if it had gone through.
-			setDeleteConfirmId( null );
+			navigate( `/records/${ modelSlug }`, { replace: true } );
 			setRowsPending( true );
 			refetch();
 		} catch ( err ) {
@@ -647,13 +756,17 @@ export default function RecordsCrud() {
 
 	const effectivePerPage = positionField ? POSITION_PER_PAGE : perPage;
 	const totalPages = Math.max( 1, Math.ceil( total / effectivePerPage ) );
-	// `null` both while nothing is being edited and for the brief window
-	// right after a delete/reload where the previously-edited record's id
-	// no longer matches anything in the freshly-fetched `records` -- the
-	// Modal below only ever renders when this is non-null, so either case
-	// just means no modal shows.
-	const editingRecord =
-		records.find( ( record ) => record.id === editingId ) || null;
+	// `model &&` guards against the URL naming a record before `model`
+	// itself has finished loading (a direct visit to .../42/edit resolves
+	// independently of, and possibly before, the model fetch) -- both
+	// modals below (and the title they show) assume `model.class` is
+	// already real. `null` otherwise means no modal, whether that's
+	// because nothing is being edited/deleted at all, or `linkedRecord`
+	// hasn't resolved yet (see the loading/error modal further below,
+	// which covers exactly that gap).
+	const editingRecord = model && 'edit' === action ? linkedRecord : null;
+	const deleteConfirmRecord =
+		model && 'delete' === action ? linkedRecord : null;
 
 	// The classic WordPress "Permalink: ... View" chrome, shown at the
 	// top of the Edit modal -- computed here rather than inline in the
@@ -663,14 +776,6 @@ export default function RecordsCrud() {
 	const editingPermalink = editingRecord
 		? getRecordPermalink( fields, editingRecord )
 		: null;
-
-	// Same "null means no modal" shape as `editingRecord` above, and the
-	// same reasoning: looking the record back up by id (rather than just
-	// checking `null !== deleteConfirmId`) means a reload racing the
-	// confirm click harmlessly closes this modal instead of confirming
-	// against a record that's no longer in `records` at all.
-	const deleteConfirmRecord =
-		records.find( ( record ) => record.id === deleteConfirmId ) || null;
 
 	const isSensitive = ( type ) =>
 		fieldTypes.find( ( fieldType ) => fieldType.key === type )
@@ -1000,7 +1105,9 @@ export default function RecordsCrud() {
 					<button
 						type="button"
 						className="button"
-						onClick={ () => setEditingId( record.id ) }
+						onClick={ () =>
+							navigate( `/records/${ modelSlug }/${ record.id }/edit` )
+						}
 					>
 						Edit
 					</button>
@@ -1009,7 +1116,7 @@ export default function RecordsCrud() {
 						className="button"
 						onClick={ () => {
 							setDeleteError( '' );
-							setDeleteConfirmId( record.id );
+							navigate( `/records/${ modelSlug }/${ record.id }/delete` );
 						} }
 						disabled={ deletingId === record.id }
 					>
@@ -1263,10 +1370,38 @@ export default function RecordsCrud() {
 				</Modal>
 			) }
 
+			{ /* The `:id`/`:action` route named a record, but resolving it
+			   * hasn't finished (or failed) yet -- see this component's own
+			   * docblock. `model &&` guards this the same way editingRecord/
+			   * deleteConfirmRecord do; `! linkedRecord` keeps this from
+			   * flashing in for even a frame once the real record has
+			   * resolved and one of the two modals below is about to take
+			   * over. */ }
+			{ model &&
+				hasValidAction &&
+				! linkedRecord &&
+				( linkedRecordLoading || linkedRecordError ) && (
+					<Modal
+						title={ `${ 'edit' === action ? 'Edit' : 'Delete' } ${ model.class }` }
+						onClose={ () =>
+							navigate( `/records/${ modelSlug }`, { replace: true } )
+						}
+					>
+						{ linkedRecordLoading && <p>Loading…</p> }
+						{ linkedRecordError && (
+							<div className="notice notice-error">
+								<p>{ linkedRecordError }</p>
+							</div>
+						) }
+					</Modal>
+				) }
+
 			{ editingRecord && (
 				<Modal
 					title={ `Edit ${ model.class } #${ editingRecord.id }` }
-					onClose={ () => setEditingId( null ) }
+					onClose={ () =>
+						navigate( `/records/${ modelSlug }`, { replace: true } )
+					}
 				>
 					{ editingPermalink && (
 						<p className="gateway-record-permalink">
@@ -1288,7 +1423,9 @@ export default function RecordsCrud() {
 							onSubmit={ ( values ) =>
 								handleEditSave( editingRecord.id, values )
 							}
-							onCancel={ () => setEditingId( null ) }
+							onCancel={ () =>
+								navigate( `/records/${ modelSlug }`, { replace: true } )
+							}
 							submitLabel="Save"
 							submitting={ editSubmitting }
 						/>
@@ -1304,7 +1441,9 @@ export default function RecordsCrud() {
 			{ deleteConfirmRecord && (
 				<Modal
 					title="Delete Record"
-					onClose={ () => setDeleteConfirmId( null ) }
+					onClose={ () =>
+						navigate( `/records/${ modelSlug }`, { replace: true } )
+					}
 				>
 					<p>
 						Are you sure you want to delete{ ' ' }
@@ -1336,7 +1475,9 @@ export default function RecordsCrud() {
 						<button
 							type="button"
 							className="button"
-							onClick={ () => setDeleteConfirmId( null ) }
+							onClick={ () =>
+								navigate( `/records/${ modelSlug }`, { replace: true } )
+							}
 							disabled={
 								deletingId === deleteConfirmRecord.id
 							}
