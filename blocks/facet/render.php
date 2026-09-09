@@ -10,9 +10,16 @@
  * that makes a facet "discoverable by other scripts": any block nested
  * inside a datatable block, not just this one, can read the same context --
  * context propagates transitively through any number of intermediate
- * blocks (here, gateway/datatable-facets, this block's direct parent) that
- * don't themselves override it, so this block doesn't need to be a
- * *direct* child of gateway/datatable to see its context.
+ * blocks that don't themselves override it, so this block doesn't need to
+ * be a *direct* child of gateway/datatable to see its context. This
+ * block's own placement restriction reflects that directly: block.json's
+ * "ancestor" (not "parent") only requires SOME gateway/datatable ancestor,
+ * at any depth -- it used to be a fixed "parent": ["gateway/datatable
+ * -facets"] before that bespoke container block was removed in favor of a
+ * plain, freely transformable core/group Row (see README.md's "Preferring
+ * core blocks over bespoke containers" for the fuller reasoning, and
+ * gateway/card-facet's own render.php for the identical precedent already
+ * set for gateway/data-cards).
  *
  * `sourceType` branches the column/options lookup the same way gateway/
  * card-facet's own render.php does -- Column_Registry::

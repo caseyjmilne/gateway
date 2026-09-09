@@ -8,8 +8,9 @@
  * datatable-page-size and gateway/datatable-search are allowed to live;
  * see each one's own "parent" restriction in its block.json). Facets used
  * to live here too; they moved to their own gateway/datatable-facets
- * block, rendered above this one -- see gateway/datatable's own
- * render.php.
+ * block (since removed in favor of a plain core/group Row -- see
+ * README.md's "Preferring core blocks over bespoke containers"), rendered
+ * above this one either way -- see gateway/datatable's own render.php.
  *
  * Unlike gateway/datatable's own render.php, this block has no hardcoded
  * markup of its own to interleave content around, so it doesn't render

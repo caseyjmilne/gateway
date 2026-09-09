@@ -51,7 +51,7 @@ blocks/
     use-available-columns.js    Fetches the field list for a post type (shared by both blocks below)
   datatable/
     block.json                  Block metadata, attributes, providesContext, asset + render wiring
-    render.php                  PHP render callback: just renders the facets/header/body/footer children, in that order
+    render.php                  PHP render callback: renders the Facets position (a core/group Row, or whatever a site owner put there) then header/body/footer, in that order
     src/
       index.js                  Editor registration (editorScript)
       edit.js                   Editor UI: InspectorControls + one self-healing InnerBlocks skeleton
@@ -71,16 +71,6 @@ blocks/
       hooks/
         use-reconcile-field-list.js   Drops selections no longer valid for the current post type
         use-required-inner-blocks.js React hook: name-based self-heal for the 4 required children (see below)
-    build/                      Compiled output (generated, do not hand-edit)
-  datatable-facets/
-    block.json                  Block metadata, parent restricting it to gateway/datatable
-    render.php                  PHP render callback: echoes $content as-is (see "Header/body/footer" below)
-    src/
-      index.js                  Editor registration
-      edit.js                   Editor UI: an InnerBlocks area restricted to gateway/facet
-      save.js                   Persists InnerBlocks content -- this block's own wrapper + classes
-      view.js                   No front-end behavior -- exists only so style.scss gets built
-      style.scss                Layout for facet children (flex row)
     build/                      Compiled output (generated, do not hand-edit)
   datatable-header/
     block.json                  Block metadata, parent restricting it to gateway/datatable
@@ -113,7 +103,7 @@ blocks/
       style.scss                Layout for the pagination/results children
     build/                      Compiled output (generated, do not hand-edit)
   facet/
-    block.json                  Block metadata, parent + usesContext restricting it to gateway/datatable-facets
+    block.json                  Block metadata, ancestor + usesContext restricting it to gateway/datatable
     render.php                  PHP render callback: the input/select/checkboxes control
     src/
       index.js                  Editor registration
@@ -821,8 +811,11 @@ updated markup has landed and reinitializes against *that*.
 ## Facets: interactive front-end filtering (`gateway/facet` block)
 
 `gateway/datatable` now accepts child blocks -- `gateway/facet`
-(`block.json`'s `"parent": ["gateway/datatable-facets"]` restricts it to
-only be insertable inside the Facets block documented below) -- that
+(`block.json`'s `"ancestor": ["gateway/datatable"]` restricts it to only
+be insertable somewhere inside a Data Table -- originally a fixed
+`"parent": ["gateway/datatable-facets"]`, before that bespoke container
+block was removed in favor of a plain `core/group` Row; see "Preferring
+core blocks over bespoke containers, part two" below) -- that
 render an interactive input/select/checkboxes control on the front end and
 filter the grid live, client-side, as a visitor uses it. This is distinct
 from the Facets *panel* documented above: that panel defines a *preset*
@@ -2788,6 +2781,114 @@ Cards insert, transforming it to a Stack, dropping a `gateway/card-facet`
 control at any depth inside it -- needs manual verification in a real
 block editor, the same caveat every other block-editor-only UI change in
 this plugin carries.
+
+### Preferring core blocks over bespoke containers, part two: `gateway/datatable-facets` removed
+
+Requested directly: "Replace Data Table Facets block with a core Row
+block. Maintain the list of accepted block types (facets). You can
+remove the Data Table Facets block completely after making this change.
+We won't use it again." The same treatment `gateway/data-cards-facets`
+already got (previous section) applied to Data Table's own equivalent
+zone: `gateway/datatable-facets` was always a thin wrapper -- an
+editable InnerBlocks area, restricted to `gateway/facet`/
+`gateway/facet-has-value`/`gateway/facet-text`, with a button appender,
+nothing else -- around whatever facet controls a site owner dropped
+into it. A real `core/group` already does the "editable InnerBlocks
+area" part of that job, with none of the maintenance cost of a bespoke
+block.
+
+"Maintain the list of accepted block types" is the one real difference
+from the Data Cards precedent, which went further and dropped its own
+top-level `allowedBlocks` entirely (a separate, later, explicit
+request: "Data Cards should allow more items to be added"). Gutenberg
+has no supported way for external code to restrict a *specific
+instance* of a foreign block's (here, `core/group`'s) own nested
+InnerBlocks to a fixed list -- `allowedBlocks` is only ever read by
+whichever block's own `edit.js` calls `useInnerBlocksProps`/
+`<InnerBlocks>`, and `core/group`'s own `edit.js` (core, not this
+plugin's) accepts no such override. The closest, actually-supported
+equivalent -- and the same mechanism `gateway/card-facet` already
+relies on for Data Cards -- is each facet block's own `block.json`
+`"ancestor"` restriction: it decides where THAT block itself may be
+placed, symmetrically achieving "these three block types only work
+inside a Data Table" without needing the container to enforce anything.
+The trade-off is real and worth naming: like the Data Cards Row, this
+one will also accept a Heading, a Paragraph, or any other block a site
+owner drags in alongside a facet -- Gutenberg's inserter simply has no
+concept of "this Group instance, specifically, only accepts blocks X/Y/Z."
+
+- **`blocks/datatable-facets/` deleted outright** -- `block.json`,
+  `render.php`, every `src/*.js`, `build/*`, all of it. No PHP
+  registration list needed updating (`Block_Loader::register_blocks()`
+  globs `blocks/*` directories directly), and no other PHP class ever
+  referenced its name.
+- **`gateway/facet`/`gateway/facet-has-value`/`gateway/facet-text`'s own
+  `block.json` each swap `"parent": ["gateway/datatable-facets"]` for
+  `"ancestor": ["gateway/datatable"]`** -- the exact swap
+  `gateway/card-facet` already made for Data Cards. Each now only
+  requires SOME `gateway/datatable` ancestor, at any depth, rather than
+  being a DIRECT child of the (now-removed) Facets block specifically.
+  Context (`gateway/datatable/sourceType`/`postType`/`collection`/
+  `columns`/`facets`) already propagated transitively through any
+  number of intermediate blocks regardless of nesting depth -- nothing
+  about resolving it needed to change, only the placement restriction.
+- **`gateway/datatable`'s own initial `template` seeds a plain
+  `core/group` instead**, with the same Row attributes
+  (`layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' }`)
+  `gateway/data-cards`' own equivalent Row already uses. **Not** one of
+  the required, self-healing zones (`REQUIRED_BLOCKS`, now just
+  Header/Body/Footer): ordinary, freely replaceable content, exactly
+  like the Data Cards precedent -- `templateLock: false` means a site
+  owner can transform it to a Stack, Columns, or delete it outright.
+  Unlike Data Cards, `gateway/datatable`'s own top-level `allowedBlocks`
+  stays a closed set (now `core/group` plus the three required zones,
+  not fully opened up) -- per the "maintain the list" request, a site
+  owner still can't drop arbitrary top-level blocks directly under
+  `gateway/datatable` itself, even though the Row's own children are, as
+  explained above, unavoidably open-ended.
+- **`gateway/datatable/render.php`'s own dispatch changed from an
+  exhaustive name-keyed lookup to dispatch-by-exclusion.** The old
+  version kept one array slot per exact child name (`gateway/
+  datatable-facets`/`-header`/`-body`/`-footer`) and rendered whichever
+  of the four were present, in that fixed key order -- silently
+  dropping anything whose name wasn't one of the four (the exact bug
+  class already found and fixed once this session for
+  `gateway/facet-has-value` inside the old container's own render.php).
+  A bare `core/group` has no fixed name to add as a fifth key, so the
+  new version keys Header/Body/Footer by their own exact names as
+  before, and buckets EVERYTHING ELSE -- whatever currently occupies
+  the Facets position, whatever block type it actually is -- into a
+  fourth bucket rendered first, above them. This also means any
+  already-published Data Table still carrying an old, now-unregistered
+  `gateway/datatable-facets` child keeps rendering without a content
+  migration: WordPress's own `WP_Block::render()` falls back to that
+  unregistered block's saved wrapper markup plus each of its still
+  -registered children's own fresh render when a block type isn't found
+  registered at all, and dispatch-by-exclusion still catches it in the
+  same "renders first" bucket it always occupied -- it just won't carry
+  the deleted block's own `display: flex` styling any more, until the
+  post is next re-saved with a real `core/group` in its place.
+
+Verified via `php -l` on the two touched PHP files
+(`gateway/datatable/render.php`, real logic; `gateway/facet/render.php`,
+docblock only), `python3 -m json.tool` on all three touched `block.json`
+files, a direct-execution test of the new dispatch-by-exclusion logic
+(a stub `$block->inner_blocks` array covering: a `core/group` Facets
+child + Header/Body/Footer in original order; the same four reordered;
+Header/Body/Footer with NO Facets child at all; a legacy, unregistered
+`gateway/datatable-facets` name in the Facets position -- all four
+producing the correct fixed Facets-Header-Body-Footer output order), a
+clean run of the full existing PHP regression suite (unaffected --
+nothing in it ever exercised `gateway/datatable-facets` or
+`gateway/datatable/render.php`'s dispatch), and a successful production
+build confirming the deleted block's entry disappeared from the
+compiled output with no dangling reference anywhere else in the bundle.
+The actual editor experience -- the seeded Row appearing on a fresh
+Data Table insert, transforming it to a Stack, dropping a
+`gateway/facet`/`-has-value`/`-text` control at any depth inside it, and
+an old post saved before this change still rendering its facets on the
+front end -- needs manual verification in a real block editor, the same
+caveat every other block-editor-only UI change in this plugin carries.
 
 ### Full comparison-operator support (`gateway/card-facet`'s live Compare)
 

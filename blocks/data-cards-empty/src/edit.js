@@ -8,9 +8,8 @@ import { useBlockProps, useInnerBlocksProps, InnerBlocks } from '@wordpress/bloc
  * inside that we show only if cards empty." `renderAppender` is a real
  * button appender (not left unset the way Header/Footer's own docblocks
  * explain for THEIR restricted single-slot shape) since an empty state
- * message is exactly the kind of thing a site owner starts from a blank
- * block, the same reasoning gateway/datatable-facets' own edit.js
- * already gives for its own ButtonBlockAppender.
+ * message is exactly the kind of thing a site owner starts from a blank,
+ * genuinely open-ended (not fixed-count) block.
  *
  * No settings of its own, so no InspectorControls -- same as every other
  * plain zone in this family.

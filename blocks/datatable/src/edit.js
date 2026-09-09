@@ -23,7 +23,7 @@ const DEFAULT_COLUMNS = [
 // (Page Size + Search) next, then the table itself, then Footer (Results +
 // Pagination) -- see render.php's own comment for how this maps to
 // DataTables' own default layout. useRequiredInnerBlocks() keeps exactly
-// these four present (inserting whichever are missing, without touching
+// these three present (inserting whichever are missing, without touching
 // any that already exist) rather than a locked `template`/`templateLock:
 // 'all'` -- see that hook's own docblock for why: an existing block saved
 // before a later-added required child (like gateway/datatable-body) would
@@ -31,12 +31,37 @@ const DEFAULT_COLUMNS = [
 // template sync, against whatever *existing* block already happened to
 // sit there -- silently discarding it -- rather than actually inserting
 // the new one.
+//
+// There used to be a FOURTH required zone here, gateway/datatable-facets
+// -- a bespoke container block whose only real job was "an editable
+// InnerBlocks area, holding gateway/facet(-has-value/-text) controls."
+// Removed entirely, per a direct request ("Replace Data Table Facets
+// block with a core Row block... we won't use it again"): a plain
+// `core/group` (transformable to Row/Stack/whatever a site owner wants)
+// already does exactly that -- the same "Preferring core blocks over
+// bespoke containers" precedent gateway/data-cards-facets' own removal
+// already set (see README.md). Its own front-end role (a left-aligned
+// row of facet controls above the table) is now just a `template`-seeded
+// `core/group` -- see below -- not a required, self-healing zone: it's
+// ordinary, freely replaceable content from here on, exactly like every
+// other block a site owner might add.
 const REQUIRED_BLOCKS = [
-	'gateway/datatable-facets',
 	'gateway/datatable-header',
 	'gateway/datatable-body',
 	'gateway/datatable-footer',
 ];
+
+// Unlike gateway/data-cards' own equivalent InnerBlocks area (fully
+// opened up to any block at all, per a separate, later direct request),
+// gateway/datatable's own top-level InnerBlocks stays a closed set --
+// exactly REQUIRED_BLOCKS above, plus the one, freely-replaceable
+// `core/group` seeded in `template` below. `core/group` is deliberately
+// listed here but NOT in REQUIRED_BLOCKS: allowed (so a site owner can
+// still add one back after deleting it, or the template-seeded one can
+// exist at all), but never self-healed back in the moment it's removed --
+// the same distinction gateway/data-cards' own template-seeded Row
+// draws.
+const ALLOWED_BLOCKS = [ 'core/group', ...REQUIRED_BLOCKS ];
 
 /**
  * @param {string} name One of REQUIRED_BLOCKS.
@@ -94,9 +119,22 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// own -- an existing block already past that empty-list moment, missing
 	// only a since-added required child.
 	const innerBlocksProps = useInnerBlocksProps( blockProps, {
-		allowedBlocks: REQUIRED_BLOCKS,
+		allowedBlocks: ALLOWED_BLOCKS,
 		template: [
-			[ 'gateway/datatable-facets', {} ],
+			// A plain core/group, seeded as its own "Row" variation
+			// (`layout: { type: 'flex', flexWrap: 'nowrap', justifyContent:
+			// 'left' }` -- the exact attributes core's own Row transform
+			// produces, confirmed against `packages/block-library/src/
+			// group/variations.js` in a `wordpress/gutenberg` checkout,
+			// and the same attributes gateway/data-cards' own equivalent
+			// Row already uses) left empty for a site owner to drop
+			// gateway/facet(-has-value/-text) controls into -- the direct
+			// replacement for the old, bespoke gateway/datatable-facets
+			// container block. Ordinary, freely replaceable/transformable
+			// content from here on (`templateLock: false` below, same as
+			// everything else in this template) -- a site owner can turn
+			// it into a Stack, a Columns block, or delete it outright.
+			[ 'core/group', { layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' } }, [] ],
 			[
 				'gateway/datatable-header',
 				{},
