@@ -1,0 +1,31 @@
+/**
+ * Styles for the gateway/card-facet-sort block.
+ *
+ * Loaded on both the front end and inside the editor iframe (block.json's
+ * "style" field is enqueued in both contexts by WordPress core). Same
+ * sizing as gateway/card-facet-search's own style.scss (13px, no
+ * `margin-bottom`) -- likely to sit right beside it in the Header/Facets
+ * Row -- see that file's own docblock for the fuller "why" this differs
+ * from this plugin's larger Facet-family controls (16px,
+ * `margin-bottom: 1em`). `supports.typography.fontSize` still gives a
+ * site owner the native toolbar control to size this up if they move it
+ * elsewhere.
+ */
+
+.gateway-card-facet-sort {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	font-size: 13px;
+
+	&__label {
+		margin: 0;
+		font-weight: 600;
+	}
+
+	&__select {
+		padding: 4px 6px;
+		border: 1px solid #949494;
+		border-radius: 2px;
+	}
+}

@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "gateway/card-facet-sort",
+	"title": "Facet: Sort",
+	"category": "widgets",
+	"icon": "sort",
+	"description": "A dropdown that lets a visitor change a Data Cards grid's own sort -- every sortable field listed twice, once per direction.",
+	"keywords": [ "facet", "filter", "sort", "order", "data cards" ],
+	"version": "0.1.0",
+	"textdomain": "gateway",
+	"ancestor": [ "gateway/data-cards" ],
+	"usesContext": [
+		"gateway/data-cards/sourceType",
+		"gateway/data-cards/postType",
+		"gateway/data-cards/collection",
+		"gateway/data-cards/orderBy",
+		"gateway/data-cards/order"
+	],
+	"supports": {
+		"html": false,
+		"typography": {
+			"fontSize": true
+		}
+	},
+	"editorScript": "file:./build/index.js",
+	"style": "file:./build/style-view.css",
+	"viewScript": "file:./build/view.js",
+	"render": "file:./render.php"
+}
