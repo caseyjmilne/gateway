@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Gateway
  * Plugin URI:        https://github.com/caseyjmilne/gateway
- * Description:       Custom Gutenberg blocks for Gateway, starting with a sortable/filterable DataTable grid block.
+ * Description:       Custom Gutenberg blocks for Gateway, including a searchable/filterable card grid block.
  * Version:           0.1.0
  * Requires at least: 6.3
  * Requires PHP:      8.2

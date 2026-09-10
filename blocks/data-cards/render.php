@@ -2,18 +2,14 @@
 /**
  * Server-side render for the gateway/data-cards block.
  *
- * Unlike gateway/datatable's own render.php (a pure "find each named child
- * and echo it" dispatcher, with all real work delegated to the one child
- * that needs it -- gateway/datatable-body), THIS parent does the real
- * work itself: running the WP_Query, rendering the card template per
- * post, and computing pager metadata, all ONCE, right here -- then hands
- * that one computed result to Header/Body/Empty/Footer via
- * Data_Cards_Renderer::set_current() before dispatching them, and clears
- * it immediately after.
+ * This parent does the real work itself: running the WP_Query, rendering
+ * the card template per post, and computing pager metadata, all ONCE,
+ * right here -- then hands that one computed result to Header/Body/Empty/
+ * Footer via Data_Cards_Renderer::set_current() before dispatching them,
+ * and clears it immediately after.
  *
- * Why here and not in gateway/data-cards-body/render.php (which is where
- * the equivalent work lives for the table family): FOUR of this family's
- * children need the same query result -- Body (the grid itself), Empty
+ * Why here and not in gateway/data-cards-body/render.php: FOUR of this
+ * family's children need the same query result -- Body (the grid itself), Empty
  * (needs `recordsTotal` to know whether to show itself at all -- see its
  * own render.php), and Pagination/Results (nested under Footer, needing
  * the real page/pager counts to render real initial state instead of an
@@ -26,10 +22,12 @@
  * ancestor -- this block -- is the only place that can compute it once
  * and hand it to all four.
  *
- * `sourceType` ('postType' or 'collection') branches this file the same
- * way gateway/datatable-body/render.php branches -- see that file's own
- * docblock for why this is two full paths rather than one merged one.
- * The Collection branch resolves/validates/applies its own configured
+ * `sourceType` ('postType' or 'collection') branches this file into two
+ * full paths rather than one merged one -- kept separate since a
+ * Collection's own query/facet/ordering logic (Eloquent) has little in
+ * common with a post type's (WP_Query), beyond both ultimately producing
+ * the same shape of result this file hands off. The Collection branch
+ * resolves/validates/applies its own configured
  * facets the same way the postType branch does (Facet_Query::
  * validate_facets() + Facet_Query::apply_collection_facets() in place of
  * apply_facets() -- see Data_Cards_Renderer::get_collection_page()'s own
@@ -72,9 +70,8 @@ if ( ! in_array( $order, array( 'asc', 'desc' ), true ) ) {
 
 // Find the gateway/data-cards-body child to read its own authored template
 // (its innerBlocks -- arbitrary user-authored content) directly off the
-// already-instantiated WP_Block, the same public property gateway/
-// datatable/render.php's own docblock already confirms against WordPress
-// core's WP_Block source.
+// already-instantiated WP_Block, via its own real, public `inner_blocks`
+// property (confirmed against WordPress core's own WP_Block source).
 $body_block = null;
 
 foreach ( $block->inner_blocks as $inner_block ) {
@@ -162,10 +159,9 @@ if ( 'collection' === $source_type ) {
 	}
 
 	// Resolve + validate this block's own configured facets (its Facets
-	// panel, mirroring gateway/datatable's own) the same defensive way
-	// gateway/datatable-body/render.php validates its own -- a key not
-	// currently isFilterable for this post type is dropped, never trusted
-	// from the attribute. Default values take effect right here, on the
+	// panel) defensively -- a key not currently isFilterable for this post
+	// type is dropped, never trusted from the attribute. Default values
+	// take effect right here, on the
 	// always-fresh initial query -- a visitor's own live changes are a
 	// separate, later concern (Data_Cards_REST_Controller).
 	$available_columns = array();

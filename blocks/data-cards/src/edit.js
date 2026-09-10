@@ -17,10 +17,9 @@ import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-bl
 // The entire front-end contract, in order: Header (Page Size + Search),
 // the grid itself, Empty (shown only when the grid currently has nothing
 // to display -- see gateway/data-cards-empty's own render.php), then
-// Footer (Results + Pagination) -- mirrors gateway/datatable's own zones
-// (see README.md for the "why" behind reusing the table's own top-level
-// Facets panel/Default-value UI here, just without its "displayed
-// column" gate). useRequiredInnerBlocks() keeps exactly these four
+// Footer (Results + Pagination) -- see README.md for the "why" behind
+// this Facets panel/Default-value UI's own design. useRequiredInnerBlocks()
+// keeps exactly these four
 // present (inserting whichever are missing, without touching any that
 // already exist) -- see that hook's own docblock for why, over a locked
 // `template`/`templateLock: 'all'`. gateway/data-cards-empty was
@@ -118,9 +117,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	// `get_block_wrapper_attributes()` call -- so this element is findable
 	// by that class in the editor too, not just the front end: shared/
 	// cards.js's findCardsGridElement() locates its sibling grid via
-	// `.closest('.gateway-data-cards-block')`, the same convention
-	// gateway/datatable's own blockProps className comment already
-	// establishes for the table family.
+	// `.closest('.gateway-data-cards-block')`.
 	const blockProps = useBlockProps( { className: 'gateway-data-cards-block' } );
 
 	useRequiredInnerBlocks( clientId, REQUIRED_BLOCKS, buildRequiredBlock );
@@ -156,9 +153,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 					// versions). Otherwise a site owner has no indication why an
 					// empty Row sits here, per a direct report. "Cards " prefix
 					// (not plain "Facets") for naming congruency with this
-					// template's other Rows ("Cards Header," "Cards Footer") --
-					// gateway/datatable's own, separate Facets Row keeps its
-					// plain "Facets" label; this rename doesn't touch it.
+					// template's other Rows ("Cards Header," "Cards Footer").
 					metadata: { name: __( 'Cards Facets', 'gateway' ) },
 				},
 				[],
@@ -222,9 +217,8 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 
 	// Fetched once per post type/Collection, purely to know which fields are
 	// isFilterable -- gateway/data-cards has no "displayed columns" step
-	// (no columns concept at all), so unlike gateway/datatable's own
-	// Facets panel, this is the *only* narrowing this block's own picker
-	// needs. A Collection's own fields are isFilterable too (see
+	// (no columns concept at all), so this is the *only* narrowing this
+	// block's own picker needs. A Collection's own fields are isFilterable too (see
 	// Column_Registry::get_columns_for_collection()'s own docblock --
 	// Facet_Query::apply_collection_facets() is the Eloquent counterpart
 	// that actually applies one), except a Password field (never
@@ -257,9 +251,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 	const defaultOrder = 'desc';
 
 	// Drops a facet whose field is no longer filterable for the (possibly
-	// new) post type -- same reconciliation gateway/datatable/edit.js
-	// already runs against its own displayed columns, applied against
-	// this block's own narrower "selectable" list instead.
+	// new) post type, against this block's own "selectable" list.
 	useReconcileFieldList( selectableFacetColumns, facets, ( value ) =>
 		setAttributes( { facets: value } )
 	);

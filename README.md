@@ -9546,3 +9546,85 @@ this by hand in a real block editor -- still needs manual verification,
 the same caveat every other block-editor-only UI change in this plugin
 carries, but more load-bearing here than usual given the missing
 automated pass.
+
+## Removing the Data Table block family entirely
+
+Decided: supporting both `gateway/datatable` and `gateway/data-cards`
+in parallel wasn't practical going forward. Data Table -- the original
+block this plugin was "starting with" (see its own opening description
+above) -- was removed entirely, along with every block built
+exclusively for it, keeping Data Cards.
+
+**Deleted, 11 block directories**: `blocks/datatable/`,
+`blocks/datatable-body/`, `blocks/datatable-footer/`,
+`blocks/datatable-header/`, `blocks/datatable-page-size/`,
+`blocks/datatable-results/`, `blocks/facet/`, `blocks/facet-has-value/`,
+`blocks/facet-search/`, `blocks/facet-text/`, `blocks/pagination/` --
+the last five being the older, non-`card-`-prefixed facet/pagination
+blocks that only ever attached to `gateway/datatable`
+(`"ancestor": ["gateway/datatable"]`/`"parent": [...]`), as distinct
+from their still-present `card-facet-*`/`data-cards-pagination`
+Data-Cards counterparts.
+
+**Deleted, 5 Data-Table-only files under `blocks/shared/`**:
+`datatable.js`, `dom.js`, `facets-controls.scss`,
+`use-live-datatable-sync.js`, `wait-for-datatable.js` -- confirmed each
+had real importers only inside the 11 directories above.
+
+**Kept, despite looking Data-Table-only at first**:
+`blocks/shared/classnames.js` and
+`blocks/shared/controls/available-columns-list.js`. A shallow
+"who imports this file directly" search misclassified both as
+Data-Table-only (their only *direct* importers were
+`blocks/datatable/src/controls/column-config-table.js`/`columns-panel.js`),
+but both are pulled in *transitively* by `blocks/shared/controls/facets-panel.js`
+(`facets-panel.js` → `facet-config-table.js`/`available-columns-list.js`
+→ `classnames.js`), and `facets-panel.js` itself is imported directly by
+`gateway/data-cards/src/edit.js`. Deleting either would have broken the
+Data Cards build the moment its own Facets panel rendered -- caught by
+cross-checking two independent dependency searches against each other
+and verifying the actual import lines directly, then confirmed
+conclusively by `npm run build` still compiling cleanly (a stale import
+would have failed the build outright, the strongest possible check
+here).
+
+**PHP**: `includes/class-column-registry.php` had five methods --
+`get_cell_value()`, `get_thumbnail_html()`, `get_cell_filter_value()`,
+`join_tokens()`, `stringify()` -- that existed purely to render
+`blocks/datatable-body/render.php`'s own `<table>` cells and build
+DataTables.js's own DOM `data-filter` search attribute. Confirmed via a
+repo-wide grep that `blocks/datatable-body/render.php` was their only
+real caller anywhere; deleted alongside it (~194 lines). Every other
+method on that class (`get_columns()`, `get_columns_for_collection()`,
+`isFilterable`/`facetType`/`isNumeric` computation, etc.) is genuinely
+shared with Data Cards and every `card-facet-*`/`card-field-*` block --
+untouched. No other PHP file needed any change: `Facet_Query`,
+`Facet_Options_REST_Controller`, and `Columns_REST_Controller` are all
+confirmed fully shared between both families (no Data-Table-only branch
+exists in any of them), and `gateway.php` had zero
+`require_once`/`::init()` lines corresponding to anything Data-Table
+-specific to begin with -- `Block_Loader::register_blocks()` globs
+`blocks/*` for a `block.json`, so deleting the 11 directories was the
+entire "unregister" step.
+
+The plugin's own header `Description` (top of `gateway.php`) is updated
+to no longer describe Data Table as the starting point. A light,
+non-exhaustive pass also cleaned up the most prominent stray
+"unlike gateway/datatable..." comparison comments in
+`blocks/data-cards/src/edit.js` and `blocks/data-cards/render.php` --
+deliberately not a full sweep of every comment mentioning "datatable"
+across the ~40 files that had one (most are either still-accurate
+comparisons to the third-party DataTables.js *library* itself, unrelated
+to whether this plugin's own `gateway/datatable` block still exists, or
+minor historical asides left as-is per this README's own established
+convention of preserving past design rationale rather than rewriting
+it).
+
+Verified: `npm run build` (blocks) compiles cleanly with the 11
+directories and 5 shared files gone (104 build assets vs. 168 before,
+consistent with removing 11 whole blocks). `php -l` clean on the
+trimmed `class-column-registry.php`. No functional/code-level reference
+from any surviving Data Cards block into the Data Table family was
+ever found (only comparative docblock comments, confirmed via a direct
+quoted-literal grep pass) -- Data Cards was unaffected by this removal
+beyond the shared-file/PHP trims documented above.
