@@ -164,8 +164,8 @@ class Field_Type_Registry extends Registry {
 	 * for `User_Field_Type` today.
 	 *
 	 * `supports_permalink_settings` (`Field_Type::supports_permalink_settings()`)
-	 * gates `source_field`/`root`/`template_page_id`, all General --
-	 * `true` only for `Permalink_Field_Type` today. `max_one_per_model`
+	 * gates `source_field`/`root`, both General -- `true` only for
+	 * `Permalink_Field_Type` today. `max_one_per_model`
 	 * (`Field_Type::max_one_per_model()`) is a separate, narrower flag --
 	 * also `true` only for `Permalink_Field_Type` today, but independent
 	 * of the settings bundle above (a future type could in principle

@@ -36,9 +36,9 @@
  * The child's own `{slug}` is the related model's own Permalink FIELD
  * value when it has one configured (`Model_Fields::permalink_field_for()`),
  * else the child's own bare id -- unlike gateway/single-record's
- * fully-routed template pages (real rewrite rules, `Permalink_Routes`),
- * a child here is always linkable this way regardless of whether its
- * model has a Permalink field, or a full `root`/Template Page route,
+ * fully-routed Templates (real rewrite rules, `Permalink_Routes`), a
+ * child here is always linkable this way regardless of whether its
+ * model has a Permalink field, or a full `root`/Template route,
  * configured at all. See view.js's own docblock for how that fragment
  * is read back on load/hashchange.
  *

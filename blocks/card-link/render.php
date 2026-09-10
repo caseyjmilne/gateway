@@ -16,15 +16,15 @@
  * max_one_per_model() guarantees a model has at most one, so "the"
  * Permalink field is never ambiguous). `Permalink_Routes::url_for_record()`
  * is the one call that does the whole job: finds the record's own
- * model's Permalink field, confirms it's actually routable (a Root AND
- * Template Page both configured -- Permalink_Routes::routable_models()'s
- * own requirement), reads the record's own current slug, and builds the
+ * model's Permalink field, confirms it's actually routable (Root set
+ * AND a Template built -- Permalink_Routes::routable_models()'s own
+ * requirement), reads the record's own current slug, and builds the
  * real, absolute front-end URL -- or returns null the moment any of
  * that isn't true.
  *
  * No permalink available -- no Permalink field on this model at all, a
- * Permalink field with no Root/Template Page set yet, or this specific
- * record has no slug of its own yet -- is never an error: $content
+ * Permalink field with no Root set or no Template built yet, or this
+ * specific record has no slug of its own yet -- is never an error: $content
  * (this block's own already-rendered inner blocks) is printed
  * completely unwrapped, exactly as if this block weren't there at all.
  * A card that can't be made clickable should still show its own text/

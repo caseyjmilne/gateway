@@ -24,7 +24,7 @@
 const config =
 	typeof window !== 'undefined' && window.GatewayAdmin
 		? window.GatewayAdmin
-		: { apiUrl: '', nonce: '', oembedProxyUrl: '', wpApiUrl: '', homeUrl: '' };
+		: { apiUrl: '', nonce: '', oembedProxyUrl: '', wpApiUrl: '', wpAdminUrl: '', homeUrl: '' };
 
 // The site's own front-end root (e.g. "https://example.com/"), set by
 // Admin_Page::enqueue_assets(). The only current reader is
@@ -33,6 +33,13 @@ const config =
 // Root -- exported plainly rather than through a function, the same
 // "just a config value" treatment `config` itself already gets internally.
 export const HOME_URL = config.homeUrl;
+
+// The bare wp-admin root, set by Admin_Page::enqueue_assets(). The only
+// current reader is `PermalinkEditor.jsx`, which builds a direct link to
+// a Model's own Template post (`post.php?post={id}&action=edit`, or
+// `post-new.php?post_type=gateway_templates` when none exists yet) --
+// same "just a config value" export as HOME_URL above.
+export const WP_ADMIN_URL = config.wpAdminUrl;
 
 // Guards the one-time automatic reload below against looping forever --
 // see apiFetch()'s own "rest_cookie_invalid_nonce" branch for why a
@@ -142,62 +149,16 @@ export async function fetchOembedPreview( url, maxwidth, maxheight ) {
 }
 
 /**
- * Searches WordPress's own core Pages via `GET /wp-json/wp/v2/pages` --
- * used by `PermalinkEditor.jsx`'s own Template Page picker. A different
- * REST namespace again (`wp/v2`, not this plugin's own `gateway/v1`, and
- * not the oEmbed proxy either), so it goes through `config.wpApiUrl`
- * (the bare REST root) the same way `fetchOembedPreview()` above goes
- * through its own separate `oembedProxyUrl` rather than `apiFetch()`.
- *
- * `search`, when given, is passed straight through as `wp/v2`'s own
- * `search` query param (a plain substring match against title/content --
- * core's own behavior, nothing this plugin implements). Results are
- * capped at a generous `per_page` -- a full, unpaginated picker isn't
- * worth building for what's expected to be a short list of candidate
- * template pages.
- *
- * @param {string} search Optional title search string.
- * @return {Promise<Array<{id: number, title: string}>>}
- */
-export async function fetchWpPages( search = '' ) {
-	const params = new URLSearchParams( {
-		per_page: '50',
-		status: 'any',
-		_fields: 'id,title',
-	} );
-	if ( search.trim() ) {
-		params.set( 'search', search.trim() );
-	}
-
-	const response = await fetch(
-		`${ config.wpApiUrl }wp/v2/pages?${ params.toString() }`,
-		{ headers: { 'X-WP-Nonce': config.nonce } }
-	);
-
-	if ( ! response.ok ) {
-		throw new Error( `Could not load pages (${ response.status }).` );
-	}
-
-	const pages = await response.json();
-	return pages.map( ( page ) => ( {
-		id: page.id,
-		title: page.title && page.title.rendered ? page.title.rendered : `(#${ page.id })`,
-	} ) );
-}
-
-/**
  * `LinkPicker.jsx`'s own "Or link to existing content" list -- copying
- * ACF's own Link field, per a direct request. Same `wp/v2` REST
- * namespace as `fetchWpPages()` above, just querying BOTH `wp/v2/pages`
- * and `wp/v2/posts` in parallel and merging the results, since ACF's own
+ * ACF's own Link field, per a direct request. Goes through
+ * `config.wpApiUrl` (the bare REST root) the same way `fetchOembedPreview()`
+ * above goes through its own separate `oembedProxyUrl` rather than
+ * `apiFetch()` -- a different REST namespace again (`wp/v2`, not this
+ * plugin's own `gateway/v1`) -- querying BOTH `wp/v2/pages` and
+ * `wp/v2/posts` in parallel and merging the results, since ACF's own
  * modal offers both post types together in one list, distinguished only
- * by `type` (`PermalinkEditor`'s own picker only ever needed Pages, one
- * model's own single-record template page, so `fetchWpPages()` itself
- * stays narrower rather than gaining a post-type param nothing else uses
- * yet). `status: 'publish'` -- only content a site visitor could actually
- * land on is worth offering to link to, unlike `fetchWpPages()`'s own
- * `status: 'any'` (a Template Page picker is an admin-only concern,
- * where a still-draft page is a perfectly reasonable pick).
+ * by `type`. `status: 'publish'` -- only content a site visitor could
+ * actually land on is worth offering to link to.
  *
  * A request search's own failure is swallowed to an empty array for
  * that one post type rather than thrown -- one endpoint erroring (a
@@ -206,8 +167,7 @@ export async function fetchWpPages( search = '' ) {
  *
  * Sorted newest-first and capped at a generous but bounded count -- this
  * is a quick "recent items" picker, not a fully paginated browse of
- * every page/post a large site has, the same "short list of candidates"
- * scope `fetchWpPages()`'s own docblock already accepts.
+ * every page/post a large site has.
  *
  * @param {string} search Optional title search string.
  * @return {Promise<Array<{id: number, type: 'page'|'post', title: string, link: string, date: string}>>}

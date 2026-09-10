@@ -1986,8 +1986,8 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								When set, this field&rsquo;s slug tracks
 								that field&rsquo;s value automatically
 								until switched to manual on a given record.
-								The URL root and template page are
-								configured on the Permalinks tab.
+								The URL root and Template are configured on
+								the Permalinks tab.
 							</span>
 						</div>
 					) }

@@ -100,10 +100,10 @@ class Model_Builder {
 	 * to optional if they genuinely want to (see the Field Editor's own
 	 * Validation tab), the same "seeded, never locked" treatment every
 	 * other property of these two starter fields already has.
-	 * Root/Template Page (the rest of what a working single page
+	 * Root/Template (the rest of what a working single page
 	 * actually needs -- see PermalinkEditor.jsx) are deliberately NOT set
 	 * here: those are genuinely per-site choices (what URL prefix, which
-	 * template page) this class has no sensible default for, unlike
+	 * Template post) this class has no sensible default for, unlike
 	 * "does this kind of model want a title and a slug at all," which
 	 * Type answers once and for all up front.
 	 */
@@ -290,7 +290,7 @@ class Model_Builder {
 
 		// A Content Type's own two defining fields -- see TYPE_CONTENT_TYPE's
 		// own docblock for why these two specifically (Title Required by
-		// default included), and why Root/Template Page are deliberately
+		// default included), and why Root/Template are deliberately
 		// left for the site owner to set afterward instead. Added via the
 		// exact same Model_Fields::add() a site owner would use by hand --
 		// real ADD COLUMN migrations, not something baked into

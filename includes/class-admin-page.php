@@ -164,15 +164,23 @@ class Admin_Page {
 				'oembedProxyUrl' => esc_url_raw( rest_url( 'oembed/1.0/proxy' ) ),
 				// The bare WP REST root (no namespace) -- same reasoning as
 				// oembedProxyUrl above, one route below it
-				// (`wp/v2/pages`) is WordPress core's own, not this
-				// plugin's `gateway/v1`. `PermalinkEditor.jsx` is the only
-				// thing that reads this, to build its own Template Page
-				// picker from the site's real Pages.
+				// (`wp/v2/pages`/`wp/v2/posts`) is WordPress core's own,
+				// not this plugin's `gateway/v1`. `LinkPicker.jsx`'s own
+				// searchLinkableContent() is the only thing that reads
+				// this today.
 				'wpApiUrl'       => esc_url_raw( rest_url() ),
+				// The bare wp-admin root (e.g. "https://example.com/wp-admin/"),
+				// used by `PermalinkEditor.jsx` to build a direct link to a
+				// Model's own Template post -- `post.php?post={id}&action=edit`
+				// when one already exists, `post-new.php?post_type=gateway_templates`
+				// to create one -- rather than this plugin's own single
+				// `admin.php?page=gateway` page, which has nothing to do
+				// with editing a real post's content.
+				'wpAdminUrl'     => esc_url_raw( admin_url() ),
 				// The site's own front-end root, e.g. "https://example.com/" --
 				// used to build a real, clickable front-end link for a
 				// record whose model has a fully-configured Permalink field
-				// (Root + Template Page both set -- see Permalink_Routes::
+				// (Root set AND a Template built -- see Permalink_Routes::
 				// register_rules()'s own matching requirement). Nothing
 				// server-side resolves this per record; it's plain string
 				// concatenation (homeUrl + root + slug) on the admin app's

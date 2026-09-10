@@ -734,8 +734,8 @@ interface Field_Type {
 	/**
 	 * Whether a field of this type has its own bundle of permalink-specific
 	 * settings -- `true` only for `Permalink_Field_Type` today. Gates
-	 * `source_field`/`root`/`template_page_id` (all General-tab concerns --
-	 * there's no Validation-tab bundle here at all, unlike
+	 * `source_field`/`root` (both General-tab concerns -- there's no
+	 * Validation-tab bundle here at all, unlike
 	 * `supports_media_settings()`/`supports_file_settings()`, since a
 	 * slug's own uniqueness is enforced unconditionally by
 	 * `Model_Fields::resolve_permalink_value()`, not something a site
@@ -760,14 +760,16 @@ interface Field_Type {
 	 *   claims it (`Model_Fields::validate_permalink_settings()` again --
 	 *   two models racing for the same `root` would otherwise make
 	 *   `Permalink_Routes`' own rewrite rules ambiguous).
-	 * - `template_page_id` -- the id of the WordPress Page a site owner
-	 *   has built (with Gateway's own blocks, `gateway/single-record`
-	 *   chief among them) to serve as this model's single-record
-	 *   template. `Permalink_Routes::register_rules()` only ever
-	 *   registers a rewrite rule for a model once BOTH `root` and this
-	 *   are set -- a `root` alone, with no template page chosen yet,
-	 *   simply doesn't route yet, a deliberate, explainable phase-1 gap
-	 *   rather than a bare built-in fallback template.
+	 * "Which post renders this model" is NOT a third setting here --
+	 * unlike `source_field`/`root`, that association lives on the
+	 * Template post itself (a `gateway_templates` post's own
+	 * `_gateway_template_collection` meta -- see `Template_Post_Type`),
+	 * not in this field's own settings. `Permalink_Routes::register_rules()`
+	 * only ever registers a rewrite rule for a model once BOTH `root` is
+	 * set AND a `gateway_templates` post declares itself for this model
+	 * -- a `root` alone, with no Template built yet, simply doesn't
+	 * route yet, a deliberate, explainable phase-1 gap rather than a
+	 * bare built-in fallback template.
 	 *
 	 * Unlike every other `supports_*_settings()` flag above, this one's
 	 * own field type ALSO sets `max_one_per_model()` -- see that

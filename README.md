@@ -7871,6 +7871,162 @@ yet, both missing entirely and present-but-empty; `settings` arriving as
 `[]` rather than `{}`; a slug needing URL-encoding; a null record/fields
 array) alongside a successful `admin-app` production build.
 
+### The `gateway_templates` CPT -- replacing the Page-based Template mechanism above
+
+Reported directly: the workflow the section above describes is circular
+-- **(1)** create an ordinary WP Page, **(2)** insert `gateway/single-record`
+into it and set its own `collection` attribute so descendant blocks
+(`card-field-text`, `related-items`) get field context, **(3)** go to
+the Model's own Permalinks tab (a completely different admin screen) and
+point `template_page_id` back at that same Page. Two independent
+settings both had to name the same relationship, with `render.php`
+having to defensively cross-check them at render time
+(`Permalink_Routes::matches_current_request()`, since removed -- see
+below) because nothing stopped them from disagreeing. There was also no
+dedicated place for these Pages to live -- they sat in the same list as
+every other real page on the site.
+
+Replaced outright with a dedicated `gateway_templates` custom post type
+(`Template_Post_Type`, new) -- a clean break, no migration, since
+nothing yet depended on the Page-based mechanism this replaces:
+
+- **Nests directly under the Gateway admin menu** via
+  `'show_in_menu' => 'gateway'` -- WordPress does this automatically for
+  any post type registered with `show_ui => true` and `show_in_menu` set
+  to another menu's own slug, so no `add_submenu_page()` call was
+  needed. `public`/`publicly_queryable` so a real visitor's own
+  `/{root}/{slug}` request can genuinely load one via WordPress's main
+  query (same requirement a Page had); `show_in_nav_menus => false`/
+  `exclude_from_search => true`/excluded from core XML sitemaps (a
+  `wp_sitemaps_post_types` filter) -- a Template is a once-per-record
+  stamp, never real standalone content; `rewrite => false`/
+  `has_archive => false` -- `Permalink_Routes` owns every real URL to
+  these.
+- **Auto-scaffolds `gateway/single-record`** via the CPT's own native
+  `template`/`template_lock: false` args -- WordPress's per-post-type
+  block-editor default content, distinct from Full Site Editing's
+  `wp_template` entities (which need a block theme this plugin can't
+  assume, confirmed unused anywhere in this codebase). Every fresh "Add
+  New Template" post starts with a real `gateway/single-record` block
+  already in place, no need to search the inserter for it.
+- **Flips the association's direction.** Two new post meta keys,
+  `Template_Post_Type::META_COLLECTION`/`META_PREVIEW_RECORD_ID`
+  (`register_post_meta()`, `show_in_rest => true`) -- a `gateway_templates`
+  post now declares, via its own real sidebar setting, which Collection
+  it's for; `Template_Post_Type::find_for_class()` is the one canonical
+  lookup (a small `get_posts()` meta query, the same "small enough that
+  a full scan costs nothing that matters" reasoning
+  `Model_Fields::validate_permalink_settings()`'s own cross-model
+  `root`-uniqueness scan already accepts) that both `Permalink_Routes`
+  and the admin app's own Permalinks tab now use. `root` itself is
+  unchanged -- still a Model-side Permalink-field setting.
+- **At most one Template per Collection**, enforced centrally via a
+  `rest_pre_insert_gateway_templates` filter
+  (`validate_collection_uniqueness()`) -- the same "declare it, validate
+  it centrally" reasoning `Field_Type::max_one_per_model()` already
+  established for Permalink fields, applied here to Templates instead.
+  Hooked on `rest_pre_insert_*` rather than `save_post`: it fires before
+  either the post OR its meta are actually written for a REST save (the
+  only save path this CPT has), so it sees the INCOMING `collection`
+  value before it's committed, not whatever was already stored a moment
+  ago.
+
+**The "Gateway Template" sidebar panel** (`blocks/single-record/src/template-panel.js`,
+new) -- a `PluginDocumentSettingPanel`, shown only on a `gateway_templates`
+post, with a Collection `<select>` (reusing `CollectionControl`) and a
+Preview Record `ComboboxControl` (reusing the same `.../records/search`
+route the block's own editor preview already fetches), both writing
+straight to the post's own meta via `useEntityProp`. Bundled into
+`gateway/single-record`'s own `editorScript` rather than a separate
+build entry -- WordPress already enqueues every registered block's
+`editorScript` unconditionally in the block editor (unlike a
+`viewScript`, which only loads when that block is actually present),
+so this runs everywhere the editor does, and simply renders nothing
+outside a `gateway_templates` post. This is now the ONE place a site
+owner sets the association -- not duplicated on the block itself
+anymore (see below).
+
+**`gateway/single-record` simplified.** `block.json` drops the
+`collection`/`sourceType`/`previewRecordId` attributes and the
+`providesContext` map entirely -- no attributes are needed for this
+purpose anymore. `src/edit.js` reads the CURRENT POST's own meta
+directly (`useEntityProp`) instead of its own attributes for its live
+preview, and lost its own Inspector Collection/Preview-record controls
+(now edited once, in the sidebar panel). `render.php` no longer
+validates anything -- `Permalink_Routes::inject_record_context()` (below)
+already guarantees `$block->context['record']` is only ever populated
+when the resolved model genuinely matches the Template post being
+viewed, so it simplifies to an unconditional passthrough of `$content`,
+the same shape most other dynamic InnerBlocks wrappers in this plugin
+already use. `matches_current_request()` was removed from
+`Permalink_Routes` entirely as a result -- it had no other caller.
+
+**`Permalink_Routes` changes:**
+- The model↔template lookup flips from reading `template_page_id` off
+  the Model's Permalink field settings to
+  `Template_Post_Type::find_for_class()`.
+- `register_rules()`'s rewrite target changes from
+  `index.php?page_id={id}&...` to
+  `index.php?p={id}&post_type=gateway_templates&...` (CPT-appropriate
+  query vars -- `page_id` is Page-specific).
+- `inject_record_context()` now ALSO injects
+  `gateway/data-cards/sourceType`/`collection` context page-wide
+  (sourced from the resolved record's own class), not just `record` --
+  centralizing all page-wide context in this one filter, which is what
+  let `gateway/single-record`'s own `providesContext` be deleted
+  entirely. Reachability for deeply-nested descendants is unaffected:
+  WordPress's own block-context merge already applies
+  `render_block_context` at any depth, the same mechanism that already
+  made `record` reach arbitrarily-nested blocks.
+- The old `resolve_preview_record()`'s block-content parsing
+  (`find_preview_record_id()`/`find_single_record_block()`, walking
+  `parse_blocks()` looking for a matching `gateway/single-record`) is
+  gone -- it now reads `Template_Post_Type::META_PREVIEW_RECORD_ID`
+  directly via a plain `get_post_meta()` call.
+- `rename_edit_node()` was removed outright -- a genuine simplification
+  the CPT switch uncovered, not just a rename. WordPress core's own
+  `wp_admin_bar_edit_menu()` already pulls the admin-bar "Edit ..." node's
+  label from `get_post_type_object($post->post_type)->labels->edit_item`;
+  the OLD code needed to override this because an ordinary WP Page's own
+  `edit_item` label is the generic core default "Edit Page," but
+  `gateway_templates`'s own registered `edit_item` label is already
+  `"Edit Template"` -- core shows the right label automatically now,
+  with zero extra code. `suppress_template_page_title()` (renamed
+  `suppress_template_title()`) is unrelated and unchanged -- still
+  needed regardless of post type, since a site owner's own real Title
+  ("Ticket Template") should never print for an actual visitor looking
+  at one real record.
+
+**Admin app:** `PermalinkEditor.jsx`'s Page picker (`fetchWpPages()`,
+removed) is replaced by a Template status view -- "Edit Template"
+(linking straight to `post.php?post={id}&action=edit`) when
+`Template_Post_Type::find_for_class()` already found one for this
+Collection, or "Add Template" (`post-new.php?post_type=gateway_templates`)
+when it hasn't yet -- backed by a new `templateId` field on
+`Permalink_REST_Controller::get_permalink_config()`'s existing response.
+A new `wpAdminUrl` value (`Admin_Page::enqueue_assets()`'s own
+`wp_localize_script()` call) is what lets the admin app build a link
+into `wp-admin` proper, distinct from its own single
+`admin.php?page=gateway` mount point. `getRecordPermalink()`
+(`admin-app/src/utils/permalink.js`) can no longer tell "does a Template
+exist" from a record's own `fields` alone (that fact moved off the
+field's settings entirely) -- it now takes an explicit `hasTemplate`
+boolean, fetched once per model by its two callers (`RecordsCrud.jsx`)
+via that same `.../permalink` route.
+
+Verified with a standalone PHP smoke test (scratchpad, WP stubs + a fake
+Eloquent-shaped model class, the real `Template_Post_Type`/
+`Permalink_Routes` classes required directly): CPT-post lookup by
+Collection, the one-Template-per-Collection rejection (and that
+re-saving the SAME post is still allowed), the rewrite rule's own
+`p=…&post_type=gateway_templates` target shape, flush gating on config
+-version change, `inject_record_context()`'s three injected keys
+together, real-slug resolution (found and 404 cases), and
+`resolve_preview_record()`'s meta-driven fallback chain (explicit choice
+-> first record found -> a deleted choice re-falling-back) -- 30
+checks, all passing -- alongside a clean `npm run build` (blocks) and
+`admin-app` production build.
+
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
 Per a direct request: "copy ACF link field type, it has URL/Link Text

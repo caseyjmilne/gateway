@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, fetchWpPages } from '../api.js';
+import { apiFetch, WP_ADMIN_URL } from '../api.js';
 
 // Mirrors FieldEditor.jsx's own normalizeSettings() -- same defensive
 // reason: a field with no settings configured yet can arrive as `[]`,
@@ -9,17 +9,30 @@ const normalizeSettings = ( settings ) =>
 
 /**
  * Model-level Permalink configuration -- the **Permalinks** tab on
- * `ModelDetail`, beside Relationships. Unlike everything on the Fields
- * tab, Root and Template Page aren't really properties of one field's own
- * settings panel: Root is validated for uniqueness across every OTHER
- * model's own permalink field (`Model_Fields::validate_permalink_settings()`),
- * and Template Page picks a real WordPress Page that has nothing to do
- * with this model's schema at all -- both belong with the rest of this
- * model's own configuration, not buried in `FieldEditor`'s per-field
- * panel (which still owns the one thing that IS field-level: Source
- * Field, on its own General tab -- see that component's own docblock).
+ * `ModelDetail`, beside Relationships. Root isn't really a property of
+ * one field's own settings panel: it's validated for uniqueness across
+ * every OTHER model's own permalink field
+ * (`Model_Fields::validate_permalink_settings()`), which belongs with
+ * the rest of this model's own configuration, not buried in
+ * `FieldEditor`'s per-field panel (which still owns the one thing that
+ * IS field-level: Source Field, on its own General tab -- see that
+ * component's own docblock).
  *
- * There's no new REST route here -- Root/Template Page still live in the
+ * Unlike an earlier version of this tab, "which post renders this
+ * model" is no longer something picked HERE at all -- a `gateway_templates`
+ * post now declares that itself, via its own "Gateway Template" sidebar
+ * setting (`blocks/single-record/src/template-panel.js`), backed by that
+ * post's own `_gateway_template_collection` meta
+ * (`Template_Post_Type::find_for_class()` is how this looks it back up).
+ * This tab only shows that Template's own status -- exists already
+ * (link straight to it) or doesn't yet (a direct "Add Template" link,
+ * pre-selecting the right post type) -- rather than re-offering a picker
+ * that would just be a second, independent way to set the same
+ * relationship. That's what the earlier design got wrong: a Page and a
+ * Model both had to separately agree on the same pairing, one from each
+ * side, with nothing stopping them from disagreeing.
+ *
+ * There's no new REST route for Root itself -- it still lives in the
  * permalink field's own `gateway_fields.settings` JSON, saved through the
  * exact same `PUT /gateway/v1/models/<class>/fields/<name>` endpoint
  * `FieldEditor` already uses. That endpoint expects a field's *entire*
@@ -28,8 +41,12 @@ const normalizeSettings = ( settings ) =>
  * given -- see that method's own `sanitize_settings()` call), so
  * `buildBody()` below carries every other already-saved property (name/
  * label/type/required/choices/conditional_logic, and `source_field`
- * within settings) straight through unchanged alongside whichever of
- * Root/Template Page this tab is actually editing.
+ * within settings) straight through unchanged alongside Root.
+ *
+ * The Template's own status comes from `GET /gateway/v1/models/<class>/permalink`
+ * (`Permalink_REST_Controller`, the same route `gateway/card-link`'s own
+ * edit.js already uses) -- its `templateId` field names the Model's own
+ * Template post, if one has declared itself for this Collection yet.
  *
  * Finds the model's (at most one) permalink field client-side --
  * `fields.find(f => f.type === 'permalink')` -- from the same lifted
@@ -51,12 +68,12 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 	const permalinkField = fields.find( ( field ) => 'permalink' === field.type );
 
 	const [ root, setRoot ] = useState( '' );
-	const [ templatePageId, setTemplatePageId ] = useState( '' );
-	const [ pages, setPages ] = useState( [] );
-	const [ pagesError, setPagesError ] = useState( '' );
 	const [ saving, setSaving ] = useState( false );
 	const [ error, setError ] = useState( '' );
 	const [ justSaved, setJustSaved ] = useState( false );
+
+	const [ templateId, setTemplateId ] = useState( null );
+	const [ templateStatusError, setTemplateStatusError ] = useState( '' );
 
 	// Re-seeds whenever the permalink field itself changes identity (a
 	// different model navigated to, or the field just got created/renamed/
@@ -66,30 +83,33 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 	useEffect( () => {
 		const settings = normalizeSettings( permalinkField?.settings );
 		setRoot( settings.root || '' );
-		setTemplatePageId( settings.template_page_id || '' );
 		setError( '' );
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ permalinkField?.name ] );
 
 	useEffect( () => {
+		if ( ! modelClass ) {
+			return;
+		}
+
 		let cancelled = false;
 
-		fetchWpPages()
+		apiFetch( `/models/${ encodeURIComponent( modelClass ) }/permalink` )
 			.then( ( result ) => {
 				if ( ! cancelled ) {
-					setPages( result );
+					setTemplateId( result?.templateId ?? null );
 				}
 			} )
 			.catch( ( err ) => {
 				if ( ! cancelled ) {
-					setPagesError( err.message );
+					setTemplateStatusError( err.message );
 				}
 			} );
 
 		return () => {
 			cancelled = true;
 		};
-	}, [] );
+	}, [ modelClass ] );
 
 	if ( ! permalinkField ) {
 		return (
@@ -105,9 +125,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 	}
 
 	const savedSettings = normalizeSettings( permalinkField.settings );
-	const dirty =
-		root !== ( savedSettings.root || '' ) ||
-		String( templatePageId || '' ) !== String( savedSettings.template_page_id || '' );
+	const dirty = root !== ( savedSettings.root || '' );
 
 	const handleSave = async ( event ) => {
 		event.preventDefault();
@@ -124,7 +142,6 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 				settings: {
 					...savedSettings,
 					root,
-					template_page_id: templatePageId,
 				},
 				conditional_logic: permalinkField.conditional_logic || {
 					enabled: false,
@@ -198,61 +215,54 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 							</td>
 						</tr>
 						<tr>
-							<th scope="row">
-								<label htmlFor="gateway-permalink-template-page">
-									Template Page
-								</label>
-							</th>
+							<th scope="row">Template</th>
 							<td>
-								{ pagesError ? (
+								{ templateStatusError ? (
 									<p className="description">
-										Couldn&rsquo;t load pages:{ ' ' }
-										{ pagesError }
+										Couldn&rsquo;t check for a
+										Template:{ ' ' }
+										{ templateStatusError }
+									</p>
+								) : templateId ? (
+									<p>
+										<a
+											href={ `${ WP_ADMIN_URL }post.php?post=${ templateId }&action=edit` }
+										>
+											Edit Template
+										</a>
 									</p>
 								) : (
-									<select
-										id="gateway-permalink-template-page"
-										className="regular-text"
-										value={ templatePageId }
-										onChange={ ( event ) =>
-											setTemplatePageId(
-												event.target.value
-											)
-										}
-									>
-										<option value="">
-											None selected yet
-										</option>
-										{ pages.map( ( page ) => (
-											<option
-												key={ page.id }
-												value={ page.id }
-											>
-												{ page.title }
-											</option>
-										) ) }
-									</select>
+									<p>
+										<a
+											href={ `${ WP_ADMIN_URL }post-new.php?post_type=gateway_templates` }
+											className="button"
+										>
+											Add Template
+										</a>
+									</p>
 								) }
 								<p className="description">
-									The WordPress Page whose template
-									renders one record -- add a{ ' ' }
-									<code>gateway/single-record</code> block
-									to it.
+									A real block-editor page rendering one
+									record -- design it with Gateway blocks
+									(e.g. Card Field Text, Related Items),
+									then pick this Model in its own
+									&ldquo;Gateway Template&rdquo; sidebar
+									panel.
 								</p>
 							</td>
 						</tr>
 					</tbody>
 				</table>
 
-				{ root && templatePageId ? (
+				{ root && templateId ? (
 					<p className="description">
 						Preview: <code>/{ root }/example-slug</code>
 					</p>
 				) : (
 					<p className="description">
-						Both Root and Template Page are required before
-						this model&rsquo;s records are reachable at their
-						own URL.
+						Both Root and a Template are required before this
+						model&rsquo;s records are reachable at their own
+						URL.
 					</p>
 				) }
 

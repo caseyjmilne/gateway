@@ -193,6 +193,17 @@ export default function RecordsCrud() {
 	const [ model, setModel ] = useState( null );
 	const [ modelError, setModelError ] = useState( '' );
 
+	// Whether this model's Permalink field (if any) is fully routed --
+	// Root AND a real Template both configured -- the same
+	// `{available, field, root}` shape and endpoint
+	// `blocks/card-link/src/edit.js` already fetches for the identical
+	// question in the block editor. `getRecordPermalink()` below needs
+	// this to know a route actually exists; it can no longer tell from
+	// the field's own `settings` alone now that "which post renders
+	// this model" lives on the Template post itself (a
+	// `gateway_templates` post's own meta), not in `gateway_fields.settings`.
+	const [ hasTemplate, setHasTemplate ] = useState( false );
+
 	// This model's own Position field (Position_Field_Type), auto-detected
 	// the same way `getRecordPermalink()` already auto-detects a Permalink
 	// field -- `null` for every model that doesn't have one, which is what
@@ -365,6 +376,7 @@ export default function RecordsCrud() {
 		setSearchInput( '' );
 		setSearch( '' );
 		setPerPage( PER_PAGE );
+		setHasTemplate( false );
 
 		apiFetch( `/models/${ encodeURIComponent( className ) }` )
 			.then( ( data ) => {
@@ -375,6 +387,18 @@ export default function RecordsCrud() {
 			.catch( ( err ) => {
 				if ( ! cancelled ) {
 					setModelError( err.message );
+				}
+			} );
+
+		apiFetch( `/models/${ encodeURIComponent( className ) }/permalink` )
+			.then( ( result ) => {
+				if ( ! cancelled ) {
+					setHasTemplate( Boolean( result?.available ) );
+				}
+			} )
+			.catch( () => {
+				if ( ! cancelled ) {
+					setHasTemplate( false );
 				}
 			} );
 
@@ -774,7 +798,7 @@ export default function RecordsCrud() {
 	// one record, unlike the table's own per-row `getRecordPermalink()`
 	// calls (there's no single "current row" to hoist it out to).
 	const editingPermalink = editingRecord
-		? getRecordPermalink( fields, editingRecord )
+		? getRecordPermalink( fields, editingRecord, hasTemplate )
 		: null;
 
 	const isSensitive = ( type ) =>
@@ -1081,7 +1105,7 @@ export default function RecordsCrud() {
 	 * `<thead>`'s own columns the moment reordering toggles on/off).
 	 */
 	const renderRecordCells = ( record ) => {
-		const recordPermalink = getRecordPermalink( fields, record );
+		const recordPermalink = getRecordPermalink( fields, record, hasTemplate );
 
 		return (
 			<>

@@ -22,8 +22,8 @@
  * is in).
  *
  * `supports_permalink_settings()` is `true` -- see that interface
- * method's own docblock for the `source_field`/`root`/`template_page_id`
- * bundle it gates. `max_one_per_model()` is also `true` -- see that
+ * method's own docblock for the `source_field`/`root` bundle it gates.
+ * `max_one_per_model()` is also `true` -- see that
  * interface method's own docblock for why a model only ever configures
  * one of these.
  *
@@ -235,8 +235,7 @@ class Permalink_Field_Type implements Field_Type {
 	 * @inheritDoc
 	 *
 	 * The only type this applies to -- see this interface method's own
-	 * docblock for the full `source_field`/`root`/`template_page_id`
-	 * bundle it gates.
+	 * docblock for the full `source_field`/`root` bundle it gates.
 	 */
 	public static function supports_permalink_settings() {
 		return true;

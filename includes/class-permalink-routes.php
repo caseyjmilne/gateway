@@ -2,56 +2,57 @@
 /**
  * WordPress routing for single-page records -- the last piece of the
  * plan described in Model_Fields::permalink_field_for()'s own docblock:
- * a model with a fully-configured Permalink field (both `root` and
- * `template_page_id` set) gets one rewrite rule, resolving
- * `/{root}/{slug}` through a real, site-owner-authored WordPress Page
- * acting as that model's own "single record" template.
+ * a model with a fully-configured Permalink field (`root` set) AND a
+ * real Template post declaring itself for that model
+ * (`Template_Post_Type::find_for_class()`) gets one rewrite rule,
+ * resolving `/{root}/{slug}` through that Template post.
  *
  * The mechanism, end to end:
  * - `register_rules()` (on `init`) adds `^{root}/([^/]+)/?$ ->
- *   index.php?page_id={template_page_id}&gateway_model={class}&
- *   gateway_slug=$matches[1]` for every currently routable model, then
- *   flushes -- but only when this plugin's own permalink configuration
- *   has actually changed since the last flush (a stored version compare,
- *   mirroring Migration_Runner's own has_run()/latest_ran_version()
- *   versioning rather than, say, a periodic TTL: a stale rewrite rule
- *   means genuinely broken URLs, not tolerably-stale status info, so
- *   this needs to flush exactly on change, not just eventually).
- *   `bump_config_version()` is called by `Model_Fields` itself wherever
- *   a Permalink field's own config actually changes (see that class's
- *   own add()/update()/remove()) -- this class never needs to know WHY
- *   a flush is due, only THAT one is.
+ *   index.php?p={template_id}&post_type=gateway_templates&
+ *   gateway_model={class}&gateway_slug=$matches[1]` for every currently
+ *   routable model, then flushes -- but only when this plugin's own
+ *   permalink configuration has actually changed since the last flush (a
+ *   stored version compare, mirroring Migration_Runner's own
+ *   has_run()/latest_ran_version() versioning rather than, say, a
+ *   periodic TTL: a stale rewrite rule means genuinely broken URLs, not
+ *   tolerably-stale status info, so this needs to flush exactly on
+ *   change, not just eventually). `bump_config_version()` is called by
+ *   `Model_Fields` itself wherever a Permalink field's own config
+ *   actually changes (see that class's own add()/update()/remove()) --
+ *   this class never needs to know WHY a flush is due, only THAT one is.
  * - `register_query_vars()` (on `query_vars`) makes `gateway_model`/
  *   `gateway_slug` visible to `get_query_var()` at all -- WordPress
  *   ignores any query var a rewrite rule produces that isn't on this
  *   allow-list.
  * - `resolve_record()` (on `wp`, after the main query already ran and
- *   matched the real `page_id`) looks the record up by the model's own
- *   current permalink field/slug. Not found -- or the model/field named
- *   in the URL no longer actually exists or routes at all -- forces a
- *   real 404 even though `page_id` already matched a real page: that
- *   page is only ever a template, never itself the thing being
- *   requested.
- * - A visit straight to the Template Page's OWN url (e.g.
- *   `/portfolio-item-template/`, as opposed to `/{root}/{slug}`) never
- *   matches the rewrite rule above at all -- there's no slug in the URL
- *   for `gateway_model`/`gateway_slug` to resolve -- so `resolve_record()`
+ *   matched the real `p`/`post_type`) looks the record up by the model's
+ *   own current permalink field/slug. Not found -- or the model/field
+ *   named in the URL no longer actually exists or routes at all --
+ *   forces a real 404 even though the query already matched a real
+ *   post: that post is only ever a template, never itself the thing
+ *   being requested.
+ * - A visit straight to the Template post's OWN url (e.g.
+ *   `/?p=123`, as opposed to `/{root}/{slug}`) never matches the
+ *   rewrite rule above at all -- there's no slug in the URL for
+ *   `gateway_model`/`gateway_slug` to resolve -- so `resolve_record()`
  *   falls through to `resolve_preview_record()` instead of forcing a 404
- *   (this IS a real, valid page to look at). It mirrors
- *   `gateway/single-record/edit.js`'s own editor preview exactly: find
- *   that model's own `gateway/single-record` block on the page (by its
- *   already-saved `collection` attribute) and honor whichever
- *   `previewRecordId` was chosen there (0 meaning "first record found,"
- *   the same default), so a direct look at the template shows the SAME
- *   record a site owner already chose to preview it with -- not a
- *   second, independent notion of "which record."
+ *   (this IS a real, valid post to look at). It mirrors
+ *   `gateway/single-record`'s own editor preview exactly: read the SAME
+ *   `Template_Post_Type::META_PREVIEW_RECORD_ID` meta the block's own
+ *   `template-panel.js` sidebar setting wrote, so a direct look at the
+ *   Template shows the SAME record a site owner already chose to
+ *   preview it with -- not a second, independent notion of "which
+ *   record."
  * - `inject_record_context()` (on `render_block_context`, priority 1,
  *   mirroring Data_Cards_Renderer's own identical-shaped filter) sets
- *   `$context['record']` to whatever `resolve_record()` found, for
- *   every block rendered for the rest of this request -- which is all
- *   `blocks/single-record/render.php` (and, transparently, any
- *   `gateway/card-field-text`/`gateway/related-items` inside it) ever
- *   needs to actually render the resolved record's real data.
+ *   `$context['record']` to whatever `resolve_record()` found, plus
+ *   `gateway/data-cards/sourceType`/`collection` context derived from
+ *   that same record's own class -- for every block rendered for the
+ *   rest of this request. This is what lets `gateway/card-field-text`/
+ *   `gateway/related-items` work ANYWHERE on a Template post (not just
+ *   nested inside `gateway/single-record`'s own InnerBlocks) without
+ *   that block needing to declare `providesContext` of its own at all.
  *
  * @package Gateway
  */
@@ -65,9 +66,9 @@ class Permalink_Routes {
 	/**
 	 * Bumped by Model_Fields every time a Permalink field's own config
 	 * changes in a way that could affect routing (added, removed, retyped
-	 * into/out of Permalink, or its root/template_page_id settings
-	 * edited) -- compared against OPTION_FLUSHED_VERSION below to decide
-	 * whether register_rules() needs to actually flush this request.
+	 * into/out of Permalink, or its root setting edited) -- compared
+	 * against OPTION_FLUSHED_VERSION below to decide whether
+	 * register_rules() needs to actually flush this request.
 	 */
 	const OPTION_CONFIG_VERSION = 'gateway_permalink_config_version';
 
@@ -90,8 +91,8 @@ class Permalink_Routes {
 	 * thing that ever needs to pass this one value from one hook to a
 	 * later one within the SAME request; there's no multi-record case
 	 * here the way Data_Cards_Renderer::$current has to handle (see that
-	 * property's own docblock), since a single-record template page only
-	 * ever has one record for the whole request.
+	 * property's own docblock), since a single-record Template only ever
+	 * has one record for the whole request.
 	 *
 	 * @var \Illuminate\Database\Eloquent\Model|null
 	 */
@@ -109,15 +110,10 @@ class Permalink_Routes {
 		// and doing it here means it can never be forgotten on some path
 		// through resolve_record() that returns early.
 		add_filter( 'render_block_context', array( __CLASS__, 'inject_record_context' ), 1 );
-		// Priority 81 -- one after core's own wp_admin_bar_edit_menu()
-		// (always registered at 80), specifically so the "edit" node it
-		// adds already exists by the time rename_edit_node() runs; see
-		// that method's own docblock for why it exists at all.
-		add_action( 'admin_bar_menu', array( __CLASS__, 'rename_edit_node' ), 81 );
 		// Registered unconditionally, same reasoning as inject_record_context()
-		// above -- suppress_template_page_title() itself is a no-op the
+		// above -- suppress_template_title() itself is a no-op the
 		// instant $current_record is still null.
-		add_filter( 'the_title', array( __CLASS__, 'suppress_template_page_title' ), 10, 2 );
+		add_filter( 'the_title', array( __CLASS__, 'suppress_template_title' ), 10, 2 );
 	}
 
 	/**
@@ -137,14 +133,14 @@ class Permalink_Routes {
 	 * register_rules() and resolve_record() build off this SAME method
 	 * (rather than each re-deriving its own notion of "routable") so the
 	 * two can never disagree about which models have a real route.
-	 * "Routable" means: has a Permalink field at all, AND that field's
-	 * own `root` and `template_page_id` are both non-blank -- a `root`
-	 * with no template page chosen yet (or vice versa) simply doesn't
-	 * route, the deliberately scoped-down phase-1 answer described in
-	 * this plugin's own README rather than a bare built-in fallback
-	 * template.
+	 * "Routable" means: has a Permalink field at all, its own `root` is
+	 * non-blank, AND a `gateway_templates` post declares itself for this
+	 * model (`Template_Post_Type::find_for_class()`) -- a `root` with no
+	 * Template built yet (or vice versa) simply doesn't route, the
+	 * deliberately scoped-down phase-1 answer described in this plugin's
+	 * own README rather than a bare built-in fallback template.
 	 *
-	 * @return array<int,array{class:string,field:string,root:string,template_page_id:int}>
+	 * @return array<int,array{class:string,field:string,root:string,template_id:int}>
 	 */
 	private static function routable_models() {
 		$routes = array();
@@ -156,19 +152,24 @@ class Permalink_Routes {
 				continue;
 			}
 
-			$settings         = $field['settings'] ?? array();
-			$root             = is_array( $settings ) ? (string) ( $settings['root'] ?? '' ) : '';
-			$template_page_id = is_array( $settings ) ? (int) ( $settings['template_page_id'] ?? 0 ) : 0;
+			$settings = $field['settings'] ?? array();
+			$root     = is_array( $settings ) ? (string) ( $settings['root'] ?? '' ) : '';
 
-			if ( '' === $root || $template_page_id <= 0 ) {
+			if ( '' === $root ) {
+				continue;
+			}
+
+			$template_id = Template_Post_Type::find_for_class( $class_name );
+
+			if ( $template_id <= 0 ) {
 				continue;
 			}
 
 			$routes[] = array(
-				'class'             => $class_name,
-				'field'             => $field['name'],
-				'root'              => $root,
-				'template_page_id'  => $template_page_id,
+				'class'       => $class_name,
+				'field'       => $field['name'],
+				'root'        => $root,
+				'template_id' => $template_id,
 			);
 		}
 
@@ -185,7 +186,7 @@ class Permalink_Routes {
 	 * rendering a single record).
 	 *
 	 * @param string $class_name Model class name.
-	 * @return array{class:string,field:string,root:string,template_page_id:int}|null
+	 * @return array{class:string,field:string,root:string,template_id:int}|null
 	 */
 	public static function route_for_class( $class_name ) {
 		foreach ( self::routable_models() as $route ) {
@@ -198,40 +199,6 @@ class Permalink_Routes {
 	}
 
 	/**
-	 * Whether the CURRENT front-end request is genuinely serving
-	 * `$class_name`'s own single-record content right now -- either a
-	 * real `/{root}/{slug}` request that actually resolved to this model
-	 * (`gateway_model` query var), or a direct visit to this model's own
-	 * Template Page itself (the "preview" case `resolve_preview_record()`
-	 * handles -- see that method's own docblock). `gateway_model` alone
-	 * isn't enough for the second case: it's never set at all for a
-	 * direct Template Page visit (there's no slug in the URL for it to
-	 * have come from), even though that request is every bit as
-	 * genuinely "serving this model" as a real resolved one.
-	 *
-	 * `blocks/single-record/render.php` is this method's one caller --
-	 * its own "is my `collection` attribute still the model this page is
-	 * actually serving" re-validation, replacing a bare
-	 * `get_query_var('gateway_model')` comparison.
-	 *
-	 * @param string $class_name
-	 * @return bool
-	 */
-	public static function matches_current_request( $class_name ) {
-		if ( '' === $class_name ) {
-			return false;
-		}
-
-		if ( $class_name === (string) get_query_var( 'gateway_model' ) ) {
-			return true;
-		}
-
-		$route = self::route_for_class( $class_name );
-
-		return $route && $route['template_page_id'] === get_queried_object_id();
-	}
-
-	/**
 	 * A real record's own front-end URL, if its model is currently
 	 * routable AND this particular record already has a slug of its
 	 * own -- the PHP counterpart to admin-app/src/utils/permalink.js's
@@ -240,9 +207,9 @@ class Permalink_Routes {
 	 * gateway/card-link's own render.php to build the real `<a href>` it
 	 * wraps its inner blocks with. Null for anything short of that: not
 	 * a real Eloquent record at all, its model isn't routable (no
-	 * Permalink field, or one with no Root/Template Page set yet), or
-	 * this specific record has never had a slug computed (e.g. Auto mode
-	 * with nothing yet to slugify from).
+	 * Permalink field, or one with no Root set or no Template built
+	 * yet), or this specific record has never had a slug computed (e.g.
+	 * Auto mode with nothing yet to slugify from).
 	 *
 	 * @param mixed $record Expected to be a real Eloquent model instance.
 	 * @return string|null
@@ -282,7 +249,8 @@ class Permalink_Routes {
 		foreach ( self::routable_models() as $route ) {
 			add_rewrite_rule(
 				'^' . preg_quote( $route['root'], '#' ) . '/([^/]+)/?$',
-				'index.php?page_id=' . $route['template_page_id']
+				'index.php?p=' . $route['template_id']
+					. '&post_type=' . Template_Post_Type::POST_TYPE
 					. '&gateway_model=' . rawurlencode( $route['class'] )
 					. '&gateway_slug=$matches[1]',
 				'top'
@@ -314,11 +282,11 @@ class Permalink_Routes {
 
 	/**
 	 * Resolves the record a single-record URL actually asked for, once
-	 * the main query has already run and matched the real template
-	 * `page_id` -- and forces a genuine 404 the moment anything about
-	 * that resolution doesn't check out, exactly as if the page itself
-	 * didn't exist. `page_id` matching is never enough on its own: that
-	 * page is only ever a template, so a slug this model doesn't
+	 * the main query has already run and matched the real template post
+	 * -- and forces a genuine 404 the moment anything about that
+	 * resolution doesn't check out, exactly as if the post itself didn't
+	 * exist. Matching the template post is never enough on its own: that
+	 * post is only ever a template, so a slug this model doesn't
 	 * actually have is precisely as much a 404 as a URL for a real post
 	 * that was never published.
 	 */
@@ -336,7 +304,7 @@ class Permalink_Routes {
 		$slug       = (string) get_query_var( 'gateway_slug' );
 
 		if ( '' === $class_name || '' === $slug ) {
-			// No slug at all -- a direct visit to the Template Page's own
+			// No slug at all -- a direct visit to the Template post's own
 			// URL, not a real `/{root}/{slug}` request. Never a 404 on its
 			// own (see this class's own docblock); see
 			// resolve_preview_record()'s own docblock for what happens
@@ -357,7 +325,7 @@ class Permalink_Routes {
 		// keep resolving correctly, because this always asks "what's the
 		// permalink field right now" rather than trusting anything fixed
 		// at rule-registration time beyond the class name and root/
-		// template_page_id already embedded in the URL itself.
+		// template id already embedded in the URL itself.
 		$field = Model_Fields::permalink_field_for( $class_name );
 
 		if ( ! $field || ! Database_Connection::is_healthy() ) {
@@ -376,21 +344,21 @@ class Permalink_Routes {
 	}
 
 	/**
-	 * A direct visit to a model's own Template Page -- reported directly:
-	 * "when I preview it the page is empty. It's populated only in the
-	 * editor but not on the front-end." Without this, `$current_record`
-	 * would simply stay null for the rest of the request (there's no
-	 * `gateway_model`/`gateway_slug` to resolve it from at all), so
+	 * A direct visit to a model's own Template post -- reported directly
+	 * against the earlier Page-based design: "when I preview it the page
+	 * is empty. It's populated only in the editor but not on the
+	 * front-end." Without this, `$current_record` would simply stay null
+	 * for the rest of the request (there's no `gateway_model`/
+	 * `gateway_slug` to resolve it from at all), so
 	 * `inject_record_context()` below would never set `record` in block
 	 * context, and every `gateway/card-field-text`/`-image`/
-	 * `related-items` inside the page's own `gateway/single-record` block
-	 * would render nothing -- exactly the empty page reported.
+	 * `related-items` on the page would render nothing -- exactly the
+	 * empty page reported.
 	 *
-	 * Only ever does anything when the page actually being viewed is
-	 * itself a currently-routable model's own `template_page_id` --
-	 * every other ordinary page on the site (there being nothing to
-	 * preview) is completely untouched, `$current_record` simply stays
-	 * null.
+	 * Only ever does anything when the post actually being viewed is
+	 * itself a currently-routable model's own Template post -- every
+	 * other post on the site (there being nothing to preview) is
+	 * completely untouched, `$current_record` simply stays null.
 	 */
 	private static function resolve_preview_record() {
 		$page_id = get_queried_object_id();
@@ -402,7 +370,7 @@ class Permalink_Routes {
 		$route = null;
 
 		foreach ( self::routable_models() as $candidate ) {
-			if ( $candidate['template_page_id'] === $page_id ) {
+			if ( $candidate['template_id'] === $page_id ) {
 				$route = $candidate;
 				break;
 			}
@@ -412,14 +380,14 @@ class Permalink_Routes {
 			return;
 		}
 
-		$preview_record_id = self::find_preview_record_id( $page_id, $route['class'] );
+		$preview_record_id = (int) get_post_meta( $page_id, Template_Post_Type::META_PREVIEW_RECORD_ID, true );
 		$record             = null;
 
 		if ( $preview_record_id > 0 ) {
 			// A deliberately-chosen record, looked up directly rather than
 			// re-deriving it from the "first record found" list below --
 			// same "a deliberately-searched-for OLDER record would
-			// otherwise never resolve" reasoning gateway/single-record/edit.js's
+			// otherwise never resolve" reasoning gateway/single-record's
 			// own docblock already gives for the identical lookup. A
 			// record since deleted (this id no longer exists) falls
 			// through to the same "first record found" default below,
@@ -447,91 +415,39 @@ class Permalink_Routes {
 	}
 
 	/**
-	 * Reads the configured `previewRecordId` straight off the Template
-	 * Page's own real, saved content -- the one place that choice lives
-	 * (gateway/single-record's own block attribute, serialized into the
-	 * page's post_content the normal way; never a separate option or
-	 * postmeta of its own). Searched recursively through `parse_blocks()`'s
-	 * own `innerBlocks` tree (the block could sit inside a Group/Columns
-	 * wrapper, not necessarily at the top level), matching on `collection`
-	 * too -- the same guard blocks/single-record/render.php itself already
-	 * applies -- so a Template Page innocently shared by (or not yet
-	 * configured for) a DIFFERENT model is never mistaken for a real
-	 * match.
-	 *
-	 * @param int    $page_id    Template page id.
-	 * @param string $class_name The model this page is routable for --
-	 *                            only a gateway/single-record block
-	 *                            genuinely configured for THIS model counts.
-	 * @return int 0 whenever nothing configured (no such block on the
-	 *              page yet, or its own previewRecordId is unset) --
-	 *              callers already treat that identically to a
-	 *              deliberately-chosen `0`: "first record found."
-	 */
-	private static function find_preview_record_id( $page_id, $class_name ) {
-		$post = get_post( $page_id );
-
-		if ( ! $post || '' === (string) $post->post_content ) {
-			return 0;
-		}
-
-		$found = self::find_single_record_block( parse_blocks( $post->post_content ), $class_name );
-
-		return $found ? (int) ( $found['attrs']['previewRecordId'] ?? 0 ) : 0;
-	}
-
-	/**
-	 * @param array  $blocks     A parse_blocks() result (or one block's own innerBlocks).
-	 * @param string $class_name Only a block whose own `collection` attribute matches this counts.
-	 * @return array|null The matching block, or null if none found at any depth.
-	 */
-	private static function find_single_record_block( array $blocks, $class_name ) {
-		foreach ( $blocks as $block ) {
-			if ( isset( $block['blockName'], $block['attrs']['collection'] )
-				&& 'gateway/single-record' === $block['blockName']
-				&& $class_name === $block['attrs']['collection']
-			) {
-				return $block;
-			}
-
-			if ( ! empty( $block['innerBlocks'] ) ) {
-				$found = self::find_single_record_block( $block['innerBlocks'], $class_name );
-
-				if ( $found ) {
-					return $found;
-				}
-			}
-		}
-
-		return null;
-	}
-
-	/**
 	 * @param array $context Block context being resolved for the current block.
 	 * @return array
 	 */
 	public static function inject_record_context( $context ) {
 		if ( self::$current_record ) {
-			$context['record'] = self::$current_record;
+			$context['record']                        = self::$current_record;
+			// Populated page-wide from here, not from gateway/single-record's
+			// own attributes (it no longer has any) -- this is what lets
+			// gateway/card-field-text's/gateway/related-items' own Field/
+			// Relationship pickers work anywhere on a Template post, not
+			// just nested inside that block's own InnerBlocks.
+			$context['gateway/data-cards/sourceType'] = 'collection';
+			$context['gateway/data-cards/collection'] = get_class( self::$current_record );
 		}
 
 		return $context;
 	}
 
 	/**
-	 * Blanks out the template Page's own title while viewing a single
-	 * -record page -- reported directly: a template Page is typically
-	 * named something like "Portfolio Item Template," which is exactly
-	 * the kind of internal, site-owner-facing label that was never meant
-	 * to be shown to an actual visitor looking at one real record, yet a
-	 * theme's own page template (classic `the_title()` inside the Loop,
-	 * or a block theme's own `core/post-title` -- both read through this
-	 * same `the_title` filter, `get_the_title()`'s own filter under the
-	 * hood) would otherwise print it verbatim. The right way to show a
-	 * MEANINGFUL heading here is a `gateway/card-field-text` bound to
-	 * whichever of the record's own fields reads as its title -- this
-	 * only ever removes the template's own irrelevant placeholder, it
-	 * never invents a replacement of its own.
+	 * Blanks out the Template post's own title while viewing a single
+	 * -record page -- reported directly against the earlier Page-based
+	 * design: a Template is typically named something like "Ticket
+	 * Template," which is exactly the kind of internal, site-owner-facing
+	 * label that was never meant to be shown to an actual visitor looking
+	 * at one real record, yet a theme's own page template (classic
+	 * `the_title()` inside the Loop, or a block theme's own `core/post
+	 * -title` -- both read through this same `the_title` filter,
+	 * `get_the_title()`'s own filter under the hood) would otherwise
+	 * print it verbatim. The right way to show a MEANINGFUL heading here
+	 * is a `gateway/card-field-text` bound to whichever of the record's
+	 * own fields reads as its title -- this only ever removes the
+	 * template's own irrelevant placeholder, it never invents a
+	 * replacement of its own.
 	 *
 	 * Filters `the_title` rather than something document-title-specific:
 	 * `wp_get_document_title()` itself builds a singular page's own title
@@ -540,18 +456,18 @@ class Permalink_Routes {
 	 * browser tab/SEO title too, not just the on-page heading, with
 	 * nothing extra needed.
 	 *
-	 * Scoped to exactly the template Page's OWN title -- `$post_id` is
-	 * compared against `get_queried_object_id()` (the one post/page this
+	 * Scoped to exactly the Template post's OWN title -- `$post_id` is
+	 * compared against `get_queried_object_id()` (the one post this
 	 * specific request is actually FOR) rather than blanking every title
-	 * unconditionally, so a query loop or a list of other pages placed
+	 * unconditionally, so a query loop or a list of other posts placed
 	 * somewhere in the same template keeps showing ITS OWN items' real
 	 * titles untouched.
 	 *
 	 * @param string $title   The title WordPress core resolved.
-	 * @param int    $post_id Post/page id the title belongs to.
+	 * @param int    $post_id Post id the title belongs to.
 	 * @return string
 	 */
-	public static function suppress_template_page_title( $title, $post_id = 0 ) {
+	public static function suppress_template_title( $title, $post_id = 0 ) {
 		if ( ! self::$current_record ) {
 			return $title;
 		}
@@ -564,53 +480,11 @@ class Permalink_Routes {
 	}
 
 	/**
-	 * Retitles core's own admin-bar "Edit Page" node to "Edit Template"
-	 * while viewing a single-record page -- the destination is already
-	 * correct (it's the model's own designated template Page,
-	 * `resolve_record()`'s `page_id`), but "Edit Page" is a misleading
-	 * label for what's actually on screen: a site owner looking at, say,
-	 * one Ticket record has no reason to think of it as "a Page" at all.
-	 * Renaming rather than removing and re-adding: `WP_Admin_Bar::add_node()`
-	 * called again with the same `id` merges in only the keys given,
-	 * filling in everything else (href, parent, group, meta) from the
-	 * node's own current values -- passing just `id`/`title` here changes
-	 * the label without having to know or reproduce the href core's own
-	 * `wp_admin_bar_edit_menu()` already built.
-	 *
-	 * Hooked at `admin_bar_menu` priority 81 (core's own node is added at
-	 * 80, unconditionally on every request), and only ever does anything
-	 * when `resolve_record()` actually resolved a record for THIS
-	 * request (`$current_record`) -- an ordinary Page with nothing to do
-	 * with this feature keeps its own accurate "Edit Page" label
-	 * untouched, and there's nothing to rename at all for a visitor who
-	 * can't see the admin bar (no "edit" node exists for them in the
-	 * first place, so `get_node()` below is simply null).
-	 *
-	 * @param \WP_Admin_Bar $wp_admin_bar
-	 */
-	public static function rename_edit_node( $wp_admin_bar ) {
-		if ( ! self::$current_record ) {
-			return;
-		}
-
-		if ( ! $wp_admin_bar->get_node( 'edit' ) ) {
-			return;
-		}
-
-		$wp_admin_bar->add_node(
-			array(
-				'id'    => 'edit',
-				'title' => __( 'Edit Template', 'gateway' ),
-			)
-		);
-	}
-
-	/**
 	 * Forces a real 404 -- the same trio WordPress core's own
 	 * WP::handle_404() applies, reproduced here since this runs on `wp`,
 	 * after core's own 404 handling for THIS request already ran (and
-	 * found nothing wrong, since `page_id` genuinely matched a real
-	 * page).
+	 * found nothing wrong, since the query genuinely matched a real
+	 * post).
 	 */
 	private static function force_404() {
 		global $wp_query;

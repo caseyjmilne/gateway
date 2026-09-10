@@ -1,9 +1,11 @@
 <?php
 /**
- * REST API route the block editor uses to detect whether a Collection
- * currently has a working Permalink -- gateway/card-link's own edit.js
- * is the only consumer, so it knows whether to warn ("no Permalink
- * available") or show its own live preview link.
+ * REST API route that answers "is a Collection's Permalink fully routed
+ * right now" -- three consumers: `gateway/card-link`'s own edit.js
+ * (knows whether to warn "no Permalink available" or show its own live
+ * preview link), `PermalinkEditor.jsx` (the Model's own Permalinks tab
+ * status/deep-link to its Template post), and `RecordsCrud.jsx`
+ * (whether a per-record "View" link has anywhere real to point to).
  *
  * Deliberately its own tiny controller rather than folded into
  * Model_REST_Controller/Columns_REST_Controller: this is neither "manage
@@ -83,13 +85,22 @@ class Permalink_REST_Controller {
 			);
 		}
 
-		$route = Permalink_Routes::route_for_class( $class );
+		$route       = Permalink_Routes::route_for_class( $class );
+		$template_id = Template_Post_Type::find_for_class( $class );
 
 		return rest_ensure_response(
 			array(
-				'available' => null !== $route,
-				'field'     => $route['field'] ?? null,
-				'root'      => $route['root'] ?? null,
+				'available'  => null !== $route,
+				'field'      => $route['field'] ?? null,
+				'root'       => $route['root'] ?? null,
+				// The Model's own Template post id, if one has declared
+				// itself for this Collection at all -- independent of
+				// `available` above (a Template can exist before Root is
+				// ever set, or vice versa; `PermalinkEditor.jsx` uses this
+				// to link straight to an existing Template, or offer to
+				// create one, regardless of whether the route is fully
+				// live yet).
+				'templateId' => $template_id > 0 ? $template_id : null,
 			)
 		);
 	}

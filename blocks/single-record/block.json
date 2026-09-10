@@ -5,28 +5,10 @@
 	"title": "Single Record",
 	"category": "gateway",
 	"icon": "admin-page",
-	"description": "Wraps the one record a single-page Permalink URL resolves to -- place this on a model's own configured Template Page (Gateway > Models > Permalinks), then design its contents with gateway/card-field-text, gateway/related-items, etc., the same way you would inside a Data Cards grid.",
+	"description": "Wraps the one record a single-page Permalink URL resolves to -- automatically scaffolded onto every new Template post (Gateway > Templates), then design its contents with gateway/card-field-text, gateway/related-items, etc., the same way you would inside a Data Cards grid.",
 	"keywords": [ "permalink", "single", "record", "template" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"attributes": {
-		"collection": {
-			"type": "string",
-			"default": ""
-		},
-		"sourceType": {
-			"type": "string",
-			"default": "collection"
-		},
-		"previewRecordId": {
-			"type": "number",
-			"default": 0
-		}
-	},
-	"providesContext": {
-		"gateway/data-cards/sourceType": "sourceType",
-		"gateway/data-cards/collection": "collection"
-	},
 	"supports": {
 		"html": false,
 		"anchor": true

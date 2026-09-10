@@ -129,6 +129,7 @@ require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-columns.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-model-column-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-records-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-media-rest-controller.php';
+require_once GATEWAY_PLUGIN_DIR . 'includes/class-template-post-type.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-routes.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-permalink-rest-controller.php';
 require_once GATEWAY_PLUGIN_DIR . 'includes/class-number-formatter.php';
@@ -162,6 +163,7 @@ function gateway_boot() {
 	\Gateway\Media_REST_Controller::init();
 	\Gateway\User_REST_Controller::init();
 	\Gateway\Post_REST_Controller::init();
+	\Gateway\Template_Post_Type::init();
 	\Gateway\Permalink_Routes::init();
 	\Gateway\Permalink_REST_Controller::init();
 

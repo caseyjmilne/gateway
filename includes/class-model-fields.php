@@ -1228,17 +1228,20 @@ class Model_Fields {
 
 		if ( $type_class::supports_permalink_settings() ) {
 			// Permalink_Field_Type's own -- see that interface method's
-			// own docblock for what each of these three keys means.
+			// own docblock for what each of these two keys means.
 			// `source_field`'s own deeper validation (must name a real,
 			// is_text_renderable() sibling field) needs model context
 			// this method doesn't have -- see validate_permalink_settings(),
-			// called separately by add()/update().
+			// called separately by add()/update(). "Which post renders
+			// this model" is no longer a third key here at all -- it now
+			// lives on the Template post itself (a `gateway_templates`
+			// post's own `_gateway_template_collection` meta), not in
+			// this field's own settings -- see `Template_Post_Type`.
 			$recognized_keys = array_merge(
 				$recognized_keys,
 				array(
 					'source_field',
 					'root',
-					'template_page_id',
 				)
 			);
 		}
@@ -1454,19 +1457,11 @@ class Model_Fields {
 				continue;
 			}
 
-			// 'template_page_id' is Permalink_Field_Type's own -- a real
-			// WP post id, meaningless as anything but a positive whole
-			// number, the same "positive whole number or dropped"
-			// treatment 'character_limit' already gets above.
-			if ( 'template_page_id' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
-				continue;
-			}
-
 			// 'rows' is Text_Area_Field_Type's own -- a <textarea>'s own
 			// `rows` attribute, meaningless as anything but a positive
 			// whole number, the same "positive whole number or dropped"
-			// treatment 'character_limit'/'template_page_id' already get
-			// above (RecordForm.jsx's own <textarea> falls back to its
+			// treatment 'character_limit' already gets above
+			// (RecordForm.jsx's own <textarea> falls back to its
 			// existing fixed default when this is absent).
 			if ( 'rows' === $key && ( ! ctype_digit( $value ) || 0 === (int) $value ) ) {
 				continue;
@@ -2014,8 +2009,9 @@ class Model_Fields {
 		}
 
 		// A brand new Permalink field is never itself routable yet (no
-		// root/template_page_id configured on the way in here -- add()
-		// has no parameter for either), but bumping unconditionally
+		// root configured on the way in here -- add() has no parameter
+		// for it, and there's certainly no Template post pointing at it
+		// yet either), but bumping unconditionally
 		// anyway is simpler and cheaper than trying to prove it can't
 		// matter: Permalink_Routes::register_rules() only actually
 		// reflushes when the compared version differs at all, so one
@@ -2231,13 +2227,14 @@ class Model_Fields {
 		if ( ! $name_changed && ! $type_changed ) {
 			$saved = self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings, $sanitized_cl );
 
-			// Root/template_page_id (the only two settings that actually
-			// affect routing) live in this same $sanitized_settings object
-			// as source_field -- rather than pick those two keys out
-			// specifically, bumping on any settings change to an
-			// already-Permalink field costs nothing beyond one harmless
-			// extra version comparison on the next request (see add()'s
-			// own comment on this same trade-off).
+			// Root (the only setting here that actually affects routing --
+			// "which post renders this model" no longer lives in settings
+			// at all, see Template_Post_Type) lives in this same
+			// $sanitized_settings object alongside source_field -- rather
+			// than pick it out specifically, bumping on any settings
+			// change to an already-Permalink field costs nothing beyond
+			// one harmless extra version comparison on the next request
+			// (see add()'s own comment on this same trade-off).
 			if ( $settings_changed && $new_type_class_for_check && $new_type_class_for_check::supports_permalink_settings() ) {
 				Permalink_Routes::bump_config_version();
 			}
@@ -2305,9 +2302,9 @@ class Model_Fields {
 		$saved = self::save_updated_field( $class_name, $table, $old_field['id'], $old_field['name'], $new_field, $new_type_is_choice, $validated_choices, $required, $sanitized_settings );
 
 		// A rename/retype that's still Permalink either side never
-		// changes routability (root/template_page_id ride along in
-		// $sanitized_settings untouched by a pure name/type edit here --
-		// this method only runs when one of those DID change), but a
+		// changes routability (root rides along in $sanitized_settings
+		// untouched by a pure name/type edit here -- this method only
+		// runs when one of those DID change), but a
 		// retype INTO or AWAY from Permalink always does: the model
 		// either just started or just stopped being routable outright.
 		if ( $old_is_permalink !== $new_is_permalink ) {

@@ -17,7 +17,7 @@ import { __ } from '@wordpress/i18n';
  * literally a column list.
  *
  * **The warning.** No Permalink field on this Collection at all, or one
- * with no Root/Template Page configured yet (`available: false`), shows
+ * with no Root set or no Template built yet (`available: false`), shows
  * a plain Notice explaining why -- this block would otherwise silently
  * do nothing useful on the front end (render.php's own docblock: no
  * permalink available just prints the inner blocks unwrapped, never an
@@ -114,7 +114,7 @@ export default function Edit( { context } ) {
 			{ isCollection && collection && ! isLoading && ! isAvailable && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'This Model has no Permalink available yet -- add a Permalink field to it, and set its Root and Template Page on the Permalinks tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
+						'This Model has no Permalink available yet -- add a Permalink field to it, and set its Root and Template on the Permalinks tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
 						'gateway'
 					) }
 				</Notice>
