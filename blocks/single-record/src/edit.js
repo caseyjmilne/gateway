@@ -143,6 +143,27 @@ function SingleRecordInnerBlocks( {
 		onStalePreviewRecord
 	);
 
+	// `sourceType`/`collection` are provided here unconditionally (not just
+	// alongside a resolved `record`) -- descendant blocks' own Field/
+	// Relationship pickers (`gateway/card-field-text`'s own "Choose a
+	// Model" gate, in particular) need these to know which Collection's
+	// fields to offer, regardless of whether a live preview record has
+	// resolved yet. `gateway/single-record` no longer has its own
+	// `collection`/`sourceType` attributes or `providesContext` map (see
+	// this file's own top docblock) -- on the front end,
+	// `Permalink_Routes::inject_record_context()` injects the equivalent
+	// page-wide context via `render_block_context`, but that PHP filter
+	// never runs in the block editor at all, so this is the one place
+	// the editor's own descendant blocks can still get it from.
+	const context = {
+		'gateway/data-cards/sourceType': 'collection',
+		'gateway/data-cards/collection': collection,
+	};
+
+	if ( record ) {
+		context.record = record;
+	}
+
 	return (
 		<>
 			{ hasNoRecords && (
@@ -158,7 +179,7 @@ function SingleRecordInnerBlocks( {
 					<Spinner />
 				</div>
 			) : (
-				<BlockContextProvider value={ record ? { record } : {} }>
+				<BlockContextProvider value={ context }>
 					<div { ...innerBlocksProps } />
 				</BlockContextProvider>
 			) }

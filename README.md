@@ -9628,3 +9628,48 @@ from any surviving Data Cards block into the Data Table family was
 ever found (only comparative docblock comments, confirmed via a direct
 quoted-literal grep pass) -- Data Cards was unaffected by this removal
 beyond the shared-file/PHP trims documented above.
+
+## Fix: fields empty on Single Record Templates (missing block context)
+
+Reported directly: fields (`gateway/card-field-text` and its siblings)
+showed "This block only displays a value when the Data Cards block's
+Source is set to Model" inside a `gateway/single-record` Template --
+even though a Collection was genuinely chosen in the "Gateway Template"
+sidebar panel.
+
+Root cause: before the `gateway_templates` CPT redesign (see above),
+`gateway/single-record` supplied `gateway/data-cards/sourceType`/
+`collection` context automatically via its own `block.json`
+`providesContext` map, driven off its own `collection`/`sourceType`
+attributes -- Gutenberg wires attribute-to-context automatically in
+BOTH the editor and the front end. That redesign removed those
+attributes and the `providesContext` map entirely, moving the
+association to post meta instead. On the front end this is fine --
+`Permalink_Routes::inject_record_context()` now injects the equivalent
+context page-wide via `render_block_context`. But that's a PHP filter;
+it never runs in the JS block editor at all. `single-record/src/edit.js`'s
+own `BlockContextProvider` only ever supplied `{ record }` -- nothing
+told a descendant field block's own `edit.js` which Collection it was
+even in, so every one of them fell back to their "no Collection
+context" warning state.
+
+Fixed in `blocks/single-record/src/edit.js`: its `BlockContextProvider`
+now always includes `'gateway/data-cards/sourceType': 'collection'`
+and `'gateway/data-cards/collection': collection` (the same value
+already read from post meta), not just `record` once a preview
+resolves. This is the one place the editor's own descendant blocks
+(`card-field-text`/`-number`/`-image`/`-email`/`-markdown`, `card-link`,
+`related-items`) can still get that context from, now that
+`providesContext` is gone.
+
+**Also fixed, reported directly**: the warning text itself named "the
+Data Cards block" specifically, which was misleading -- every one of
+these field/link/related-items blocks has always legitimately worked
+as a child of `gateway/data-cards-body`, `gateway/data-display`, OR
+`gateway/single-record` (`block.json`'s own `ancestor` list), not just
+Data Cards. Reworded across all 7 affected blocks to name "its parent"/
+"the parent block" generically, and to mention the Template's own
+"Gateway Template" sidebar panel as an equally valid place to choose a
+Model, alongside a Data Cards/Data Display block's own Source setting.
+
+Verified with `npm run build` (blocks) compiling cleanly.

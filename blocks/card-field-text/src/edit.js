@@ -158,14 +158,17 @@ export default function Edit( { attributes, setAttributes, context } ) {
 					{ ! isCollection && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'This block only displays a value when the Data Cards block’s Source is set to Model.',
+								'This block only displays a value when its parent’s Source is set to Model.',
 								'gateway'
 							) }
 						</Notice>
 					) }
 					{ isCollection && ! collection && (
 						<Notice status="info" isDismissible={ false }>
-							{ __( 'Choose a Model on the Data Cards block first.', 'gateway' ) }
+							{ __(
+								'Choose a Model on the parent block, or in this Template’s own “Gateway Template” panel, first.',
+								'gateway'
+							) }
 						</Notice>
 					) }
 					{ isCollection && collection && (

@@ -101,14 +101,17 @@ export default function Edit( { context } ) {
 			{ ! isCollection && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'This block only links to a permalink when the Data Cards block’s Source is set to Model.',
+						'This block only links to a permalink when its parent’s Source is set to Model.',
 						'gateway'
 					) }
 				</Notice>
 			) }
 			{ isCollection && ! collection && (
 				<Notice status="info" isDismissible={ false }>
-					{ __( 'Choose a Model on the Data Cards block first.', 'gateway' ) }
+					{ __(
+						'Choose a Model on the parent block, or in this Template’s own “Gateway Template” panel, first.',
+						'gateway'
+					) }
 				</Notice>
 			) }
 			{ isCollection && collection && ! isLoading && ! isAvailable && (

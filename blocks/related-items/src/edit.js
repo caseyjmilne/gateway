@@ -244,7 +244,7 @@ export default function Edit( {
 				{ ! collection && (
 					<Notice status="info" isDismissible={ false }>
 						{ __(
-							'Choose a Model on the Data Cards block first.',
+							'Choose a Model on the parent block, or in this Template’s own “Gateway Template” panel, first.',
 							'gateway'
 						) }
 					</Notice>
