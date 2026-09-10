@@ -414,13 +414,12 @@ class Model_Fields {
 	/**
 	 * Validates a candidate `orderby` field name against what's actually
 	 * safe and meaningful to sort `$class_name` by right now -- the
-	 * `gateway/data-display` block's own equivalent of
+	 * `gateway/data-cards` block's own equivalent of
 	 * `Records_REST_Controller::resolve_sort()`, for a genuinely
 	 * different situation that method's own per-model, admin-opted-in
-	 * `Model_Columns` "Sortable" gate doesn't fit: a Data Display block's
-	 * Order By pickers (one for its Parent collection, one for its
-	 * Child/related collection -- see that block's own edit.js/render.php)
-	 * are set directly by whoever is BUILDING the page in the block
+	 * `Model_Columns` "Sortable" gate doesn't fit: a Data Cards block's
+	 * own Order By picker (see that block's own edit.js/render.php)
+	 * is set directly by whoever is BUILDING the page in the block
 	 * editor, the same trusted, authenticated context `Position_Field_Type`'s
 	 * own always-allowed sort already treats as needing no separate
 	 * per-model opt-in either -- there's no public, unauthenticated

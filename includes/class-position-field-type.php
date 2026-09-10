@@ -123,7 +123,7 @@ class Position_Field_Type implements Field_Type {
 	 * Already unconditionally sortable via Records_REST_Controller::
 	 * resolve_sort()'s own separate, pre-existing special case for the
 	 * REST records-listing endpoint -- declaring `true` here too is what
-	 * lets gateway/data-display's own Order By picker offer it as well,
+	 * lets gateway/data-cards's own Order By picker offer it as well,
 	 * the same field a model's drag-and-drop reordering already manages.
 	 */
 	public static function is_orderable() {

@@ -1,9 +1,6 @@
 /**
  * "Order By" + "Order" picker pair, shared by any block that runs a real,
- * server-sorted query (currently only gateway/data-cards -- gateway/
- * data-display's own Parent/Child Order panels predate this file and build
- * their own two SelectControls inline; this is the same shape, pulled out
- * once a second consumer needed it).
+ * server-sorted query (currently only gateway/data-cards).
  *
  * Both attributes default to `''` -- "leave this source type's own
  * existing default order alone" (see gateway/data-cards/render.php's own

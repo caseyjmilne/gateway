@@ -192,9 +192,8 @@ class Data_Cards_Renderer {
 	 * @param string $search          Free-text search term, or '' for none.
 	 * @param string $order_by        Block's configured Order By field, or ''
 	 *                                for the default ('id') -- re-validated
-	 *                                here via `Model_Fields::resolve_orderby()`
-	 *                                (the same resolver gateway/data-display
-	 *                                already uses), never trusted as-is.
+	 *                                here via `Model_Fields::resolve_orderby()`,
+	 *                                never trusted as-is.
 	 * @param string $order           'asc'/'desc', or '' for the default
 	 *                                ('desc') -- matching this method's own
 	 *                                previous, hardcoded `orderBy( 'id', 'desc' )`.
@@ -432,11 +431,8 @@ class Data_Cards_Renderer {
 	 * relation instead of a top-level query) and a different `$item_class`
 	 * (so a nested related-items list never carries the outer grid's own
 	 * `gateway-data-cards-grid__item` class, which a site's own CSS
-	 * targeting that class shouldn't also match). `gateway/data-display/render.php`
-	 * reuses it a third way, for its own main-pane detail panels -- one
-	 * per child record, each needing its own `data-child-id`/`hidden`
-	 * markers for the front end's plain JS to toggle between, hence
-	 * `$extra_attributes`.
+	 * targeting that class shouldn't also match). `$extra_attributes` exists
+	 * for exactly this kind of per-caller customization.
 	 *
 	 * @param \Illuminate\Support\Collection $records          Records for the current page (get_collection_page()'s own 'records').
 	 * @param array                          $template_blocks  Parsed block list (the card's contents).

@@ -9673,3 +9673,101 @@ Data Cards. Reworded across all 7 affected blocks to name "its parent"/
 Model, alongside a Data Cards/Data Display block's own Source setting.
 
 Verified with `npm run build` (blocks) compiling cleanly.
+
+## Remove the Data Display block family, keep Cards
+
+Decided: only one "loop over a Collection and design a per-record
+layout" block family is worth maintaining going forward. Following the
+same reasoning (and the same removal process) as the Data Table
+removal above, `gateway/data-display` -- and its two ancestor-restricted
+children, `gateway/data-display-prev-next` and `gateway/data-display-toc`
+-- is removed entirely. `gateway/data-cards` (and everything in its own
+family) keeps everything it has, unaffected.
+
+Confirmed by two parallel, independent investigations (block-family/JS
+cross-reference and PHP `includes/`/`gateway.php` review) that this was
+a clean, self-contained removal: **no Data Cards or Single Record block
+depends on Data Display in either direction** -- the only place any
+survivor's own code referenced it at all was inside historical/
+comparative docblock comments, never an import, an `ancestor`/`parent`
+restriction, or a runtime string check. The reverse dependency does
+exist (Data Display's own `render.php` called into
+`Data_Cards_Renderer::render_items_for_collection()`, one of three
+reuse sites alongside `gateway/data-cards` and `gateway/related-items`),
+but removing Data Display only shrinks that method's own caller list by
+one -- nothing else changes.
+
+### 1. Deleted these 3 block directories entirely
+
+```
+blocks/data-display/
+blocks/data-display-prev-next/
+blocks/data-display-toc/
+```
+
+`Block_Loader::register_blocks()` globs `blocks/*` for a `block.json` --
+same as the Data Table removal, deleting these directories is the
+entire "unregister" step; `gateway.php` needed zero edits.
+
+### 2. Trimmed the `ancestor` array on 7 shared child blocks
+
+`gateway/card-field-text`, `-number`, `-image`, `-email`, `-markdown`,
+`gateway/card-link`, and `gateway/related-items` each declared
+`"ancestor": [ "gateway/data-cards-body", "gateway/data-display",
+"gateway/single-record" ]` -- `"gateway/data-display"` removed from all
+seven, leaving `[ "gateway/data-cards-body", "gateway/single-record" ]`.
+These blocks are still fully shared between Data Cards and Single
+Record Templates; only their (now-deleted) third possible ancestor is
+gone.
+
+### 3. No `blocks/shared/*` file needed deleting
+
+Unlike the Data Table removal, no shared file turned out to be
+exclusively Data-Display's own, transitively or otherwise. The three
+shared files Data Display's own `edit.js` imported --
+`shared/controls/collection-control.js`, `shared/use-available-columns.js`,
+and `shared/use-loopable-relationships.js` -- are each also imported
+directly by a surviving block (`gateway/data-cards`/`gateway/single-record`,
+nearly every field/facet block, and `gateway/related-items`
+respectively), confirmed via a repo-wide grep on their actual import
+lines, including an explicit check for the same "transitive chain
+through another shared file" trap the Data Table removal's own
+`classnames.js`/`available-columns-list.js` finding surfaced -- no such
+chain exists here.
+
+### 4. No `includes/` PHP file needed deleting
+
+No dedicated `Data_Display`/`class-data-display*.php` class ever
+existed. Every `includes/` symbol `blocks/data-display/render.php`
+called (`Model_Registry::has()`, `Model_Relationships::find()`,
+`Model_Builder::slug_for_class()`/`get_plural_title()`,
+`Model_Fields::permalink_field_for()`/`resolve_orderby()`,
+`Records_REST_Controller::resolve_display_field()`/`record_option()`,
+`Data_Cards_Renderer::render_items_for_collection()`) is genuinely
+shared infrastructure with other real callers (Data Cards, Related
+Items, the Records/Model REST controllers) -- confirmed via grep, none
+became dead code. `blocks/data-display-prev-next/render.php` called no
+`includes/` class at all; `blocks/data-display-toc/render.php` called
+only the widely-shared `Column_Registry::get_columns_for_collection()`.
+
+### 5. Documentation cleanup
+
+~20 stray docblock/comment mentions of "Data Display"/`gateway/data-display`
+across `includes/` and surviving `blocks/` files -- all purely
+descriptive prose, never executable references -- were reworded to
+either drop the now-nonexistent example or point at `gateway/data-cards`,
+which turned out to be sharing the same reasoning (e.g. `isOrderable`'s
+own docblock named Data Display's Order By pickers specifically, but
+Data Cards has always read the exact same flag for its own Order By
+picker). `class-block-loader.php`'s own "Gateway" category docblock,
+which had listed `gateway/data-display`/`gateway/datatable` alongside
+the two blocks that now make up the entire top-level list, was trimmed
+to match.
+
+Verified: `npm run build` (blocks) compiles cleanly with the 3
+directories gone (86 build assets vs. 104 before this removal,
+consistent with removing 3 whole blocks). `php -l` clean on every
+`includes/` file touched by the documentation pass. A repo-wide,
+case-insensitive grep for `data-display`/`data_display`/`DataDisplay`
+across `blocks/`, `includes/`, and `gateway.php` after the removal
+returns zero matches.

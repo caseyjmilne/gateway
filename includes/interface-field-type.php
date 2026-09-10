@@ -125,8 +125,7 @@ interface Field_Type {
 	 * Whether a field of this type is ever a sensible thing to sort a
 	 * query BY -- what `Column_Registry::get_columns_for_collection()`
 	 * reads to decide a field's own `isOrderable` (consumed by
-	 * `gateway/data-display`'s own Order By pickers, one for its Parent
-	 * collection and one for its Child/related collection -- see that
+	 * `gateway/data-cards`'s own Order By picker -- see that
 	 * block's own edit.js/render.php) and what `Model_Fields::
 	 * resolve_orderby()` re-checks server-side before ever letting a
 	 * stored `orderBy`/`orderByChild` block attribute reach a raw SQL
@@ -169,7 +168,7 @@ interface Field_Type {
 	 * all) and `Position_Field_Type` (already unconditionally sortable
 	 * via `Records_REST_Controller::resolve_sort()`'s own separate,
 	 * pre-existing special case for the REST records-listing endpoint;
-	 * declaring `true` here as well is what lets `gateway/data-display`'s
+	 * declaring `true` here as well is what lets `gateway/data-cards`'s
 	 * own Order By picker offer it too, the same field a model's drag
 	 * -and-drop reordering already manages).
 	 *

@@ -109,8 +109,8 @@ $wrapper_attributes = get_block_wrapper_attributes( array(
 	// Purely descriptive metadata -- same "make rendered output
 	// self-describing" convention gateway/card-field-text's own wrapper
 	// already carries (see that block's own render.php docblock) -- lets
-	// e.g. gateway/data-display-toc's own "only parse these fields"
-	// setting scope itself to this field's own rendered content too.
+	// a sibling block elsewhere in the same template scope itself to
+	// this field's own rendered content too.
 	'data-field-key' => $field_key,
 ) );
 ?>

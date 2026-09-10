@@ -235,8 +235,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 
 	// gateway/data-cards' own Order By picker -- Column_Registry's own
 	// `isOrderable` flag, computed for a Collection's fields via
-	// `Field_Type::is_orderable()` (the exact same flag/reasoning gateway/
-	// data-display's own Order By pickers already use) and, for a post
+	// `Field_Type::is_orderable()`, and, for a post
 	// type, via the narrower ORDERABLE_CORE_COLUMNS allowlist (see that
 	// const's own docblock for why it's smaller than isFilterable's own
 	// list). 'id'/'post_date' below are this source type's own REAL

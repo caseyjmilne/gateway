@@ -1145,9 +1145,8 @@ class Records_REST_Controller {
 	const DISPLAY_FIELD_TYPES = array( 'text', 'textarea', 'email', 'url' );
 
 	/**
-	 * Public (not just this controller's own concern any more): `gateway/
-	 * data-display/render.php` calls this directly to label a sidebar
-	 * item -- a parent group heading, or a child link -- the exact same
+	 * Public (not just this controller's own concern any more): a PHP
+	 * caller elsewhere in the plugin can label a record the exact same
 	 * way this controller already labels a related record's own option.
 	 * One definition of "what a record's own display name is," reused
 	 * everywhere that needs one instead of a second copy.
@@ -1242,11 +1241,10 @@ class Records_REST_Controller {
 	 * value `record_option()`/`search_records()` already compute for a
 	 * *related* record, now on the record's own top-level response too,
 	 * so a caller needing a human label to show alongside (not instead
-	 * of) the full record -- `gateway/data-display`'s own sidebar
-	 * headings/child links, currently the only one -- never has to
-	 * re-derive `resolve_display_field()`'s own "first genuinely
-	 * free-text field" rule a second time, client-side, where none of
-	 * this method's own field-type information is actually available.
+	 * of) the full record never has to re-derive `resolve_display_field()`'s
+	 * own "first genuinely free-text field" rule a second time,
+	 * client-side, where none of this method's own field-type
+	 * information is actually available.
 	 *
 	 * @param string                                     $class_name Model class name.
 	 * @param \Illuminate\Database\Eloquent\Collection $records    Records of $class_name.

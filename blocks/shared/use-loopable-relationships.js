@@ -9,11 +9,10 @@
  * surfaces as a plain value, not a repeated list.
  *
  * `gateway/related-items` uses the default (either type -- a many-to-many
- * "loop" is just as coherent as a one-to-many one there). `gateway/data-display`
- * passes `['hasMany']` alone: its own parent/child sidebar hierarchy
- * (e.g. Doc Groups -> Docs) is specifically a one-to-many shape --
- * `belongsToMany` has no single "owning" side for a child to belong
- * under, so it's not offered there at all.
+ * "loop" is just as coherent as a one-to-many one there). The optional
+ * `types` filter exists for a future consumer that only wants "to one"
+ * -owning ("to many" from its own side) shapes, e.g. `['hasMany']` alone,
+ * where `belongsToMany` has no single "owning" side to loop under.
  */
 
 import { useEffect, useState } from '@wordpress/element';
@@ -31,10 +30,9 @@ export function useLoopableRelationships( collection, types = DEFAULT_LOOPABLE_T
 	const [ relationships, setRelationships ] = useState( [] );
 	const [ isLoading, setIsLoading ] = useState( true );
 
-	// Stringified so a caller passing a fresh `['hasMany']` array literal
-	// on every render (the common case -- see gateway/data-display's own
-	// edit.js) doesn't retrigger this effect every render the way a raw
-	// array in the dependency list would.
+	// Stringified so a caller passing a fresh array literal for `types`
+	// on every render doesn't retrigger this effect every render the
+	// way a raw array in the dependency list would.
 	const typesKey = types.join( ',' );
 
 	useEffect( () => {

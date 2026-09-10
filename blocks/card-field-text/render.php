@@ -150,11 +150,9 @@ $wrapper_attributes = get_block_wrapper_attributes( array(
 	// Purely descriptive metadata -- doesn't affect rendering/display at
 	// all -- but it's what lets a sibling block elsewhere in the SAME
 	// template scope itself to "only within field X's own rendered
-	// value" (currently gateway/data-display-toc's own optional "only
-	// parse these fields" setting; see that block's own view.js). Always
-	// printed, whether or not anything happens to be reading it right
-	// now, the same "make rendered output self-describing" reasoning
-	// already behind gateway/data-display's own data-child-id/-slug.
+	// value". Always printed, whether or not anything happens to be
+	// reading it right now, the same "make rendered output
+	// self-describing" reasoning this plugin's other data attributes use.
 	'data-field-key' => $field_key,
 ) );
 $new_lines = $column['newLines'] ?? '';

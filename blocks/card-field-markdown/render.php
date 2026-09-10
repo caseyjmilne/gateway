@@ -86,9 +86,8 @@ if ( '' === $html ) {
 $wrapper_attributes = get_block_wrapper_attributes( array(
 	'class'          => 'gateway-card-field-markdown',
 	// Same purely-descriptive metadata gateway/card-field-text's own
-	// wrapper now carries -- lets gateway/data-display-toc's own
-	// optional "only parse these fields" setting scope itself to this
-	// field's own rendered content (see that block's own view.js).
+	// wrapper now carries -- lets a sibling block elsewhere in the same
+	// template scope itself to this field's own rendered content.
 	'data-field-key' => $field_key,
 ) );
 ?>

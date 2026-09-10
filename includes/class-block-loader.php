@@ -28,8 +28,7 @@ class Block_Loader {
 	/**
 	 * Registers a dedicated "Gateway" block category -- every TOP-LEVEL
 	 * block this plugin ships (the one a site owner actually starts a
-	 * layout with: gateway/data-cards, gateway/data-display,
-	 * gateway/datatable, gateway/single-record) sets its own block.json
+	 * layout with: gateway/data-cards, gateway/single-record) sets its own block.json
 	 * `category` to this slug, rather than the generic core "widgets"
 	 * category they used to share with every other plugin's own
 	 * non-top-level blocks -- so the inserter has one obvious place to

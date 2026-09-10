@@ -76,8 +76,8 @@ export default function Edit( { attributes, setAttributes, context } ) {
 	// itself, which render.php can't cast to a string at all). Neither
 	// ever belongs in this block's own picker -- a related record's own
 	// label needs the dedicated relate-field handling
-	// gateway/related-items/gateway/data-display already do, not this
-	// generic "print the raw attribute" block. A WYSIWYG field (only
+	// gateway/related-items already does, not this generic "print the
+	// raw attribute" block. A WYSIWYG field (only
 	// isHtmlRenderable, never isTextRenderable -- see that flag's own
 	// docblock) IS offered here now, per a direct request to display it
 	// through this same block rather than a second one of its own.

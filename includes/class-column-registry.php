@@ -385,8 +385,7 @@ class Column_Registry {
 	 *
 	 * `isOrderable` is the same "a field type declares this about itself"
 	 * pattern once more, via `Field_Type::is_orderable()` -- what
-	 * `gateway/data-display`'s own Order By pickers (one for its Parent
-	 * collection, one for its Child/related collection) read to decide
+	 * `gateway/data-cards`'s own Order By picker reads to decide
 	 * which fields to offer at all, and what `Model_Fields::
 	 * resolve_orderby()` re-checks server-side before that block's own
 	 * render.php ever runs an `ORDER BY` against one -- `true` for the
@@ -585,9 +584,8 @@ class Column_Registry {
 				'isImage'              => $is_image,
 				'returnFormat'         => $return_format,
 				'newLines'             => $new_lines,
-				// gateway/data-display's own Order By pickers (one for its
-				// Parent collection, one for its Child/related collection)
-				// read this to decide which fields to offer at all -- see
+				// gateway/data-cards's own Order By picker reads this to
+				// decide which fields to offer at all -- see
 				// Field_Type::is_orderable()'s own docblock.
 				'isOrderable'          => $is_orderable,
 			);
@@ -674,9 +672,9 @@ class Column_Registry {
 					'isFilterable'         => false,
 					'facetType'            => array(),
 					// Same reasoning as isFilterable above -- neither
-					// Facet_Query nor (now) gateway/data-display's own
-					// Order By pickers can filter/sort THROUGH a
-					// relationship, only against $class_name's own table.
+					// Facet_Query nor gateway/data-cards's own Order By
+					// picker can filter/sort THROUGH a relationship, only
+					// against $class_name's own table.
 					'isOrderable'          => false,
 					// False only for a related WYSIWYG field today (see
 					// isHtmlRenderable below for that one instead) -- the

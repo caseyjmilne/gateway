@@ -32,9 +32,8 @@ class Markdown_Converter {
 	 * a `CommonMarkConverter` does some real (if small) one-time setup work
 	 * (building its own extension/parser/renderer environment), and a
 	 * single page can easily render more than one Markdown field (multiple
-	 * `gateway/card-field-markdown` instances across a Data Cards grid, or
-	 * one per child in a Data Display), so this avoids repeating that setup
-	 * once per field.
+	 * `gateway/card-field-markdown` instances across a Data Cards grid),
+	 * so this avoids repeating that setup once per field.
 	 *
 	 * @var \League\CommonMark\CommonMarkConverter|null
 	 */

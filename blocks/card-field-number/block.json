@@ -9,7 +9,7 @@
 	"keywords": [ "field", "number", "currency", "percent", "format", "model", "collection", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"ancestor": [ "gateway/data-cards-body", "gateway/data-display", "gateway/single-record" ],
+	"ancestor": [ "gateway/data-cards-body", "gateway/single-record" ],
 	"usesContext": [
 		"gateway/data-cards/sourceType",
 		"gateway/data-cards/collection",
