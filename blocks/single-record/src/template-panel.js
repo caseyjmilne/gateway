@@ -42,7 +42,7 @@ function GatewayTemplatePanel() {
 	const [ meta, setMeta ] = useEntityProp( 'postType', postType, 'meta' );
 
 	// Pre-selects the Collection when arriving here via a Model's own
-	// Permalinks tab "Add Template" link (`?model=<class>` on
+	// Single Record tab "Add Template" link (`?model=<class>` on
 	// `post-new.php`) -- that link already knows exactly which Model this
 	// fresh Template is for; without this, a site owner would have to
 	// re-pick it here immediately after just having come from there. The
@@ -100,7 +100,7 @@ function GatewayTemplatePanel() {
 			/>
 			<p className="description">
 				{ __(
-					'Root is configured on this Model’s own Permalinks tab, under Gateway › Models.',
+					'Root is configured on this Model’s own Single Record tab, under Gateway › Models.',
 					'gateway'
 				) }
 			</p>

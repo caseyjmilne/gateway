@@ -33,12 +33,14 @@ const TABS = [ 'general', 'fields', 'relationships', 'permalinks', 'columns' ];
  * Single-model detail view -- shows what's known about one registered
  * model (its table, and its migration's version + whether it has actually
  * run), lets its Title and Plural Title be changed, and hosts its own
- * Fields/Relationships/Permalinks/Columns editors, all five behind one
+ * Fields/Relationships/Single Record/Columns editors, all five behind one
  * text-based tab strip: **General** (Title/Plural Title/Table/Migration/
  * Status), **Fields** (`FieldEditor`), **Relationships**
- * (`RelationshipEditor`), **Permalinks** (`PermalinkEditor`), **Columns**
- * (`ColumnsEditor` -- which of this model's own fields show as columns
- * on its Records table, their order, and which are sortable).
+ * (`RelationshipEditor`), **Single Record** (`PermalinkEditor` -- named
+ * "Permalinks" until a direct request to better describe what it
+ * actually configures now: the URL Root plus this model's Template),
+ * **Columns** (`ColumnsEditor` -- which of this model's own fields show
+ * as columns on its Records table, their order, and which are sortable).
  *
  * Each tab is its own real route (`/models/:modelSlug` for General,
  * `/models/:modelSlug/fields` for Fields, etc. -- see App.jsx's own
@@ -71,7 +73,7 @@ const TABS = [ 'general', 'fields', 'relationships', 'permalinks', 'columns' ];
  * that this screen's own title read visually smaller than that one's
  * "Records" heading (both plain, unstyled `<h2><code>` before this) and
  * sat with roughly the same gap above it (this page's OWN General/Fields/
- * Relationships/Permalinks/Columns tab strip) as below it (WordPress's
+ * Relationships/Single Record/Columns tab strip) as below it (WordPress's
  * own primary Models/Records/Database tabs) -- ambiguous about which it
  * actually belongs to. The explicit `margin-bottom` here (matching
  * `gateway-records-crud-heading`'s own exact value) tightens that gap so
@@ -177,7 +179,7 @@ export default function ModelDetail() {
 	// had.
 	const [ fields, setFields ] = useState( [] );
 
-	// Which of General/Fields/Relationships/Permalinks/Columns is showing --
+	// Which of General/Fields/Relationships/Single Record/Columns is showing --
 	// driven by the URL's own `:tab` param now (see this component's own
 	// docblock), not local state. `undefined` (the bare `/models/:modelSlug`
 	// route, no `:tab` segment matched at all) and an unrecognized `:tab`
@@ -408,7 +410,7 @@ export default function ModelDetail() {
 							to={ `/models/${ modelSlug }/permalinks` }
 							className={ subtabClass( 'permalinks' === activeTab ) }
 						>
-							Permalinks
+							Single Record
 						</Link>
 						<Link
 							to={ `/models/${ modelSlug }/columns` }

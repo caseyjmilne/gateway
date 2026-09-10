@@ -8,7 +8,7 @@ import DndSortableGroup from './DndSortableGroup.jsx';
 
 /**
  * Model-level Records-table column configuration -- the **Columns** tab
- * on `ModelDetail`, beside Permalinks. What this solves: `RecordsCrud.jsx`
+ * on `ModelDetail`, beside Single Record. What this solves: `RecordsCrud.jsx`
  * used to render every one of a model's own fields as a table column
  * unconditionally, which gets cluttered fast on a model with a lot of
  * fields.

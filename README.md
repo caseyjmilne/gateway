@@ -9771,3 +9771,83 @@ consistent with removing 3 whole blocks). `php -l` clean on every
 case-insensitive grep for `data-display`/`data_display`/`DataDisplay`
 across `blocks/`, `includes/`, and `gateway.php` after the removal
 returns zero matches.
+
+## Fix: 404 on a single record's own URL despite Root + Template set
+
+Reported directly: visiting a record's real front-end URL
+(`/{root}/{slug}`) 404s even though its Model's Permalink field has a
+Root configured AND a `gateway_templates` post already declares itself
+for that Model -- not just a direct visit either; the URL 404s no
+matter how it's reached (the `gateway/card-link` block's own `<a href>`
+always builds the right string, it just never does anything special to
+GET the page beyond a normal navigation to that same URL).
+
+Root cause: `Permalink_Routes::register_rules()` only calls the real,
+expensive `flush_rewrite_rules()` -- the one thing that actually
+updates the persisted rewrite-rules option WordPress matches incoming
+URLs against -- when `OPTION_CONFIG_VERSION` has moved since the last
+flush (see that method's own docblock for why: every request still
+rebuilds the in-memory rule set regardless, but only a genuine change
+needs to pay for a real flush). `bump_config_version()`, the only thing
+that ever advances that version, was called from exactly two places:
+`Model_Fields` (a Permalink field's own settings changing) and
+`Model_Builder` (rename). **Nothing called it when a `gateway_templates`
+post's own `_gateway_template_collection` meta was set** -- the other
+half of what `Permalink_Routes::routable_models()` needs before a Model
+routes at all. So the entirely correct setup sequence -- set a Root,
+then separately create a Template and choose its Collection on the
+"Gateway Template" sidebar panel -- left the real, persisted rewrite
+rule permanently missing for that Model, with nothing left to trigger a
+flush until some unrelated Permalink-field edit happened to bump the
+version again.
+
+Fixed in `includes/class-template-post-type.php`: two new hooks,
+`save_post_gateway_templates` (skipping autosaves/revisions) and
+`before_delete_post` (scoped to this post type), both call
+`Permalink_Routes::bump_config_version()` unconditionally on every real
+Template save or delete -- the same "cheap and unconditional, let the
+next request's version compare decide whether a flush is actually due"
+reasoning `bump_config_version()`'s own docblock already documents, not
+a narrower check for whether `META_COLLECTION` specifically changed.
+`save_post_{post_type}` covers creating a Template, a meta-only save
+from the sidebar panel, and publish/trash transitions alike
+(`wp_trash_post()` itself runs through `wp_update_post()`, which fires
+the same hook); `before_delete_post` covers a Template being
+permanently removed while still the only thing making its Model
+routable.
+
+Verified with a standalone PHP smoke test (stubbed WP functions, the
+real `Template_Post_Type` class loaded directly) confirming: a
+Template's own save bumps the config version; deleting an unrelated
+post type does not; deleting an actual Template post does.
+
+## Rename the Model "Permalinks" tab to "Single Record"
+
+Reported directly: the tab still read "Permalinks," but since the
+`gateway_templates` CPT redesign (see above) it's no longer just a URL
+-root setting -- it's the one place a site owner sees or creates the
+Template that renders a single record at all. "Single Record" better
+describes what the tab actually configures now.
+
+Renamed the visible tab label (`ModelDetail.jsx`) and both `<h3>`
+headings inside `PermalinkEditor.jsx`, plus every place in the UI that
+pointed at the tab by its old name: `blocks/single-record/src/template-panel.js`'s
+own "Root is configured on..." helper text, `blocks/card-link/src/edit.js`'s
+"no Permalink available" warning, and `admin-app/src/components/FieldEditor.jsx`'s
+Auto-Slug helper text. Docblock-only mentions that name the tab
+directly (`ModelDetail.jsx`'s own top-of-file comment,
+`PermalinkEditor.jsx`'s own docblock, `RecordsCrud.jsx`, `ColumnsEditor.jsx`,
+`FieldEditor.jsx`) got the same light-touch pass for consistency.
+
+Deliberately NOT renamed: the internal route segment/tab id
+(`/models/<slug>/permalinks`, `'permalinks' === activeTab`), the REST
+field name, and the `Permalink` field TYPE itself
+(`Permalink_Field_Type`, still named "Permalink" on the Fields tab) --
+none of those are the user-facing tab label this feedback was about,
+and changing them would be a much larger, unrequested refactor with no
+benefit (and would break any saved bookmarks/deep links to this tab).
+
+Verified with `npm run build` (blocks) and `admin-app`'s own `npm run
+build` (Vite) both compiling cleanly, and a grep confirming only the
+two intentional "named X until this rename" historical docblock notes
+still mention "Permalinks" anywhere in `admin-app/src`.

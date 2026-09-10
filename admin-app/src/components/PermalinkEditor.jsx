@@ -8,8 +8,10 @@ const normalizeSettings = ( settings ) =>
 	settings && ! Array.isArray( settings ) ? settings : {};
 
 /**
- * Model-level Permalink configuration -- the **Permalinks** tab on
- * `ModelDetail`, beside Relationships. Root isn't really a property of
+ * Model-level Permalink configuration -- the **Single Record** tab on
+ * `ModelDetail`, beside Relationships (named "Permalinks" until a
+ * direct request to better describe what it actually configures now --
+ * the URL Root plus this model's own Template). Root isn't really a property of
  * one field's own settings panel: it's validated for uniqueness across
  * every OTHER model's own permalink field
  * (`Model_Fields::validate_permalink_settings()`), which belongs with
@@ -114,7 +116,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 	if ( ! permalinkField ) {
 		return (
 			<div className="gateway-permalink-editor">
-				<h3>Permalinks</h3>
+				<h3>Single Record</h3>
 				<p className="description">
 					This model has no Permalink field yet -- add one on the
 					Fields tab (type &ldquo;Permalink&rdquo;) to give each
@@ -172,7 +174,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 
 	return (
 		<div className="gateway-permalink-editor">
-			<h3>Permalinks</h3>
+			<h3>Single Record</h3>
 			<p className="description">
 				Configures where{ ' ' }
 				<code>{ permalinkField.label || permalinkField.name }</code>

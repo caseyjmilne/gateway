@@ -115,7 +115,7 @@ const POSITION_PER_PAGE = 100;
  * below. Which of those fields actually show as TABLE columns, their
  * order, and which are clickable to sort by, is a separate, optional
  * per-model configuration (Gateway\Model_Columns -- the Columns tab on
- * ModelDetail, alongside Permalinks): unconfigured, every field still
+ * ModelDetail, alongside Single Record): unconfigured, every field still
  * shows exactly as it always has (see `displayedFields` below); this is
  * what a site owner reaches for once a model's own field count makes
  * this table cluttered.

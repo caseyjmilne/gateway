@@ -117,7 +117,7 @@ export default function Edit( { context } ) {
 			{ isCollection && collection && ! isLoading && ! isAvailable && (
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
-						'This Model has no Permalink available yet -- add a Permalink field to it, and set its Root and Template on the Permalinks tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
+						'This Model has no Permalink available yet -- add a Permalink field to it, and set its Root and Template on the Single Record tab (Gateway › Models). Until then, this block just shows its inner blocks unlinked.',
 						'gateway'
 					) }
 				</Notice>

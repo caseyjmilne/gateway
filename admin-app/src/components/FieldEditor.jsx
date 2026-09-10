@@ -382,7 +382,7 @@ const slugifyFieldName = ( value ) =>
  * fields, filtered client-side to `is_text_renderable` -- the exact
  * eligibility `Model_Fields::validate_permalink_settings()` enforces
  * server-side, mirrored here so an ineligible field is never even offered
- * -- plus a plain note pointing at the separate **Permalinks** tab
+ * -- plus a plain note pointing at the separate **Single Record** tab
  * (`PermalinkEditor.jsx`, on `ModelDetail`) for the URL root and template
  * page, which aren't per-field settings at all (Root is validated for
  * cross-model uniqueness, so it belongs with the rest of that
@@ -1987,7 +1987,7 @@ export default function FieldEditor( { modelClass, fields, onFieldsChange, relat
 								that field&rsquo;s value automatically
 								until switched to manual on a given record.
 								The URL root and Template are configured on
-								the Permalinks tab.
+								the Single Record tab.
 							</span>
 						</div>
 					) }

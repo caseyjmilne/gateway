@@ -75,6 +75,8 @@ class Template_Post_Type {
 		add_action( 'init', array( __CLASS__, 'register' ) );
 		add_filter( 'wp_sitemaps_post_types', array( __CLASS__, 'exclude_from_sitemaps' ) );
 		add_filter( 'rest_pre_insert_' . self::POST_TYPE, array( __CLASS__, 'validate_collection_uniqueness' ), 10, 2 );
+		add_action( 'save_post_' . self::POST_TYPE, array( __CLASS__, 'bump_routing_on_save' ) );
+		add_action( 'before_delete_post', array( __CLASS__, 'bump_routing_on_delete' ) );
 	}
 
 	/**
@@ -180,6 +182,73 @@ class Template_Post_Type {
 	 */
 	public static function meta_auth_callback() {
 		return current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * Keeps `Permalink_Routes`'s own rewrite rules in sync with which
+	 * Templates actually exist -- reported directly: a Model with a
+	 * Permalink field's `root` already set, plus a genuinely-published
+	 * Template declaring itself for that Model via META_COLLECTION,
+	 * still 404s on a direct `/{root}/{slug}` visit. Root cause:
+	 * `Permalink_Routes::routable_models()` needs BOTH a `root` AND a
+	 * found Template post before a Model routes at all, but
+	 * `Permalink_Routes::bump_config_version()` -- the only thing that
+	 * makes `register_rules()` actually re-flush the real, persisted
+	 * rewrite rules WordPress matches URLs against, not just the
+	 * in-memory set every request rebuilds regardless -- was only ever
+	 * called from `Model_Fields`/`Model_Builder`. Creating or editing a
+	 * Template (where META_COLLECTION is actually set, from this post
+	 * type's own "Gateway Template" sidebar panel) never told
+	 * `Permalink_Routes` anything relevant had changed, so a Model could
+	 * go from "not routable" to "routable" with the real rewrite rules
+	 * option never catching up -- until some unrelated Permalink-field
+	 * edit happened to bump the version again.
+	 *
+	 * Bumps unconditionally on every real save of a Template post,
+	 * without first checking whether META_COLLECTION specifically
+	 * changed -- the same "cheap and unconditional, let the next
+	 * request's version compare decide whether a real flush is due"
+	 * reasoning `bump_config_version()`'s own docblock already gives:
+	 * one harmless extra flush costs nothing beyond a single option
+	 * comparison on whichever request happens to run register_rules()
+	 * next (front or back end alike).
+	 *
+	 * Fires on `save_post_{post_type}`, which covers every REST-driven
+	 * editor save (the only save path this CPT has) -- a brand new
+	 * Template, a meta-only save from the sidebar panel with no content
+	 * change, and a publish/trash transition alike (`wp_trash_post()`
+	 * itself goes through `wp_update_post()`, which fires this same
+	 * hook). Skips autosaves/revisions -- neither one is a real,
+	 * user-visible save this plugin's own routing needs to react to.
+	 *
+	 * @param int $post_id Post id being saved.
+	 */
+	public static function bump_routing_on_save( $post_id ) {
+		if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
+			return;
+		}
+
+		Permalink_Routes::bump_config_version();
+	}
+
+	/**
+	 * The delete-side counterpart to bump_routing_on_save() above -- a
+	 * Template post being permanently removed (as opposed to trashed,
+	 * already covered by that method) is just as routing-relevant: a
+	 * Model this Template was the ONLY thing making routable needs the
+	 * real rewrite rules re-flushed to stop matching a Template post
+	 * that no longer exists. Hooked on the generic `before_delete_post`
+	 * (there's no `before_delete_post_{post_type}` core hook) and
+	 * filtered to this post type here instead.
+	 *
+	 * @param int $post_id Post id about to be deleted.
+	 */
+	public static function bump_routing_on_delete( $post_id ) {
+		if ( self::POST_TYPE !== get_post_type( $post_id ) ) {
+			return;
+		}
+
+		Permalink_Routes::bump_config_version();
 	}
 
 	/**
