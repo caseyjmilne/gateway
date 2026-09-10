@@ -77,8 +77,8 @@ class Admin_Page {
 
 		add_submenu_page(
 			self::PAGE_SLUG,
-			__( 'Gateway', 'gateway' ),
-			__( 'Gateway', 'gateway' ),
+			__( 'Dashboard', 'gateway' ),
+			__( 'Dashboard', 'gateway' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			array( __CLASS__, 'render_page' )

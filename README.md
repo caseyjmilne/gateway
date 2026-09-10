@@ -8046,6 +8046,11 @@ submenu's slug matches its own parent's, so this doesn't double
 -register or double-render `render_page()`, it just guarantees the
 top-level click always lands there regardless of how many other real
 submenus (the Templates CPT, or a future one) get added alongside it.
+Labeled **"Dashboard"** (per direct request, to avoid a redundant second
+"Gateway" appearing directly under the already-labeled "Gateway"
+top-level item) -- the resulting menu reads **Gateway / Dashboard /
+Templates** (`Template_Post_Type`'s own `all_items` label is already
+"Templates," so nothing else needed changing to get that third row).
 
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
