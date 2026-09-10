@@ -234,7 +234,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 								) : (
 									<p>
 										<a
-											href={ `${ WP_ADMIN_URL }post-new.php?post_type=gateway_templates` }
+											href={ `${ WP_ADMIN_URL }post-new.php?post_type=gateway_templates&model=${ encodeURIComponent( modelClass ) }` }
 											className="button"
 										>
 											Add Template

@@ -41,6 +41,39 @@ function GatewayTemplatePanel() {
 	);
 	const [ meta, setMeta ] = useEntityProp( 'postType', postType, 'meta' );
 
+	// Pre-selects the Collection when arriving here via a Model's own
+	// Permalinks tab "Add Template" link (`?model=<class>` on
+	// `post-new.php`) -- that link already knows exactly which Model this
+	// fresh Template is for; without this, a site owner would have to
+	// re-pick it here immediately after just having come from there. The
+	// `meta._gateway_template_collection` guard makes this a one-time,
+	// harmless no-op on any already-configured Template (edited later via
+	// `post.php?post=<id>&action=edit`, which never carries `model` at
+	// all) and on a second visit to this same URL. Runs unconditionally
+	// every render (the `postType` check moves INSIDE the effect, not
+	// before it) -- Hooks can't follow the early `return null` below.
+	useEffect( () => {
+		if ( 'gateway_templates' !== postType ) {
+			return;
+		}
+
+		if ( meta && meta._gateway_template_collection ) {
+			return;
+		}
+
+		const presetCollection = new URLSearchParams( window.location.search ).get( 'model' );
+
+		if ( presetCollection ) {
+			setMeta( { ...meta, _gateway_template_collection: presetCollection } );
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- meta/setMeta
+		// come from useEntityProp and meta's own identity changes on every
+		// write; only postType and meta's OWN presence should re-trigger
+		// this (re-running once more right after the write above is a
+		// harmless no-op, since _gateway_template_collection is then
+		// already set).
+	}, [ postType, meta ] );
+
 	if ( 'gateway_templates' !== postType ) {
 		return null;
 	}

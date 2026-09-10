@@ -8079,6 +8079,31 @@ test simulating the exact reported ordering (Templates registered
 first, Dashboard second) and confirming the function restores
 **Gateway / Dashboard / Templates** regardless.
 
+**Follow-up, reported directly**: clicking "Add Template" from a
+Model's own Permalinks tab already knows exactly which Collection the
+new Template is for (`PermalinkEditor.jsx`'s own `modelClass` prop),
+but threw that fact away -- a site owner landed on a brand-new
+Template with the "Gateway Template" panel's Collection picker sitting
+empty, forcing them to immediately re-pick what they just came from.
+
+Fixed by carrying it through the URL: the "Add Template" link now reads
+`post-new.php?post_type=gateway_templates&model={class}` (query param
+name `model`, per direct confirmation -- the plain, unencoded Model
+class name, matching what's already stored in this feature's own
+`_gateway_template_collection` meta). `template-panel.js`'s
+`GatewayTemplatePanel` reads it back exactly once, via a `useEffect`
+that checks `window.location.search` on mount and calls `setMeta()`
+only when `_gateway_template_collection` isn't already set -- so it's a
+pure no-op on an already-configured Template (`post.php?post=<id>&action=edit`
+never carries `model` at all) and can't clobber a real choice on a
+repeat visit to the same URL. No PHP changes, no validation against the
+real Models list before setting it (this whole flow is already
+`manage_options`-gated end to end, the same trust level every other
+value this app writes straight to REST/meta already carries) -- the
+first query-string-driven pre-fill in this codebase, standard,
+well-established WordPress behavior (`post-new.php` never strips
+unrecognized query params).
+
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
 Per a direct request: "copy ACF link field type, it has URL/Link Text
