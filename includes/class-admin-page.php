@@ -38,6 +38,10 @@ class Admin_Page {
 	 */
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_page' ) );
+		// Priority 999 -- see force_dashboard_first()'s own docblock for
+		// why this can't just be `add_submenu_page()`'s own `$position`
+		// argument.
+		add_action( 'admin_menu', array( __CLASS__, 'force_dashboard_first' ), 999 );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 	}
 
@@ -75,24 +79,76 @@ class Admin_Page {
 			75
 		);
 
-		// Explicit `$position = 0` -- WordPress core's own
-		// `_add_post_type_submenus()` (which registers `gateway_templates`'s
-		// own submenu row here, per that CPT's `show_in_menu`) is hooked on
-		// `admin_menu` too, added during core's bootstrap, well before this
-		// plugin's `Admin_Page::init()` (hooked from `plugins_loaded`) even
-		// runs -- so without an explicit position, Dashboard would always
-		// register SECOND, landing below Templates. Pinning this to 0
-		// guarantees Dashboard sorts first regardless of registration
-		// order, keeping the menu Gateway / Dashboard / Templates.
+		// No `$position` argument here -- see force_dashboard_first()'s
+		// own docblock for why that WP core parameter isn't what actually
+		// keeps this first in the menu.
 		add_submenu_page(
 			self::PAGE_SLUG,
 			__( 'Dashboard', 'gateway' ),
 			__( 'Dashboard', 'gateway' ),
 			'manage_options',
 			self::PAGE_SLUG,
-			array( __CLASS__, 'render_page' ),
-			0
+			array( __CLASS__, 'render_page' )
 		);
+	}
+
+	/**
+	 * Forces the self-referencing "Dashboard" row (see register_page()'s
+	 * own docblock for why it exists at all) to sort FIRST in
+	 * `$submenu['gateway']`, regardless of what order anything actually
+	 * registered in.
+	 *
+	 * `add_submenu_page()`'s own `$position` argument (WP 5.3+) is
+	 * documented to do exactly this, but is well known to be unreliable
+	 * in practice -- confirmed directly: passing `$position = 0` here
+	 * still left "Templates" sorting above "Dashboard". Core's own
+	 * position-based insertion (`WP_Admin_Bar`-style splice logic in
+	 * `add_submenu_page()`) only works cleanly when every OTHER submenu
+	 * competing for a slot was also registered with an explicit,
+	 * non-colliding position -- `gateway_templates`'s own submenu row
+	 * (added by WordPress core's `_add_post_type_submenus()`, hooked on
+	 * `admin_menu` during core's bootstrap, well before this plugin's own
+	 * `admin_menu` callbacks run at all) has no position of its own, so
+	 * the two can't be reliably reconciled by that mechanism alone.
+	 *
+	 * The deterministic fix: don't rely on core's own sort at all --
+	 * directly reorder the already-fully-populated `$submenu['gateway']`
+	 * array ourselves, on a priority (999) late enough to run after
+	 * EVERY other `admin_menu` callback that could still be adding a
+	 * submenu here (core's own CPT registration included, since that
+	 * fires at the default priority 10).
+	 */
+	public static function force_dashboard_first() {
+		global $submenu;
+
+		if ( empty( $submenu[ self::PAGE_SLUG ] ) || ! is_array( $submenu[ self::PAGE_SLUG ] ) ) {
+			return;
+		}
+
+		$items          = $submenu[ self::PAGE_SLUG ];
+		$dashboard_index = null;
+
+		foreach ( $items as $index => $item ) {
+			// $item[2] is this row's own menu slug -- the self-referencing
+			// Dashboard row is the only one that shares the parent's own
+			// slug (see register_page()'s own docblock).
+			if ( self::PAGE_SLUG === $item[2] ) {
+				$dashboard_index = $index;
+				break;
+			}
+		}
+
+		if ( null === $dashboard_index || 0 === $dashboard_index ) {
+			// Already first (or, unexpectedly, missing entirely) -- nothing
+			// to reorder.
+			return;
+		}
+
+		$dashboard_item = $items[ $dashboard_index ];
+		unset( $items[ $dashboard_index ] );
+		array_unshift( $items, $dashboard_item );
+
+		$submenu[ self::PAGE_SLUG ] = array_values( $items );
 	}
 
 	/**

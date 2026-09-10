@@ -8057,13 +8057,27 @@ Templates** (`Template_Post_Type`'s own `all_items` label is already
 `_add_post_type_submenus()` (which adds `gateway_templates`'s own
 submenu row here) is hooked on `admin_menu` too, registered during
 core's bootstrap, well before this plugin's `Admin_Page::init()`
-(hooked from `plugins_loaded`) ever runs -- so without an explicit
-sort position, Dashboard always registered SECOND into
-`$submenu['gateway']`, landing below Templates regardless of which one
-a person would expect first. Fixed by passing an explicit `$position = 0`
-to Dashboard's own `add_submenu_page()` call (a WP 5.3+ parameter),
-which pins it first regardless of registration order -- restoring
-**Gateway / Dashboard / Templates**.
+(hooked from `plugins_loaded`) ever runs -- so Dashboard always
+registered SECOND into `$submenu['gateway']`. First attempted with
+`add_submenu_page()`'s own `$position = 0` argument (a documented WP
+5.3+ parameter for exactly this) -- confirmed directly that it's
+unreliable in practice: Templates kept sorting first regardless, since
+core's own position-based splice logic only reconciles cleanly when
+every OTHER competing submenu was ALSO registered with an explicit,
+non-colliding position, which `gateway_templates`'s own row (added by
+core, with no position of its own) never is.
+
+Fixed deterministically instead: a new `Admin_Page::force_dashboard_first()`,
+hooked on `admin_menu` at priority 999 -- late enough to run after
+EVERY other `admin_menu` callback that could still be adding a submenu
+here, core's own CPT registration included (default priority 10) --
+that directly reorders the already-fully-populated `$submenu['gateway']`
+array, moving whichever row shares the parent's own slug (the
+self-referencing Dashboard row) to index 0. No dependency on core's own
+sort/position mechanism at all -- verified with a standalone PHP smoke
+test simulating the exact reported ordering (Templates registered
+first, Dashboard second) and confirming the function restores
+**Gateway / Dashboard / Templates** regardless.
 
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
