@@ -18,8 +18,8 @@
  * transforms it into), core/columns, or any other layout block. An
  * earlier version restricted this to a small, fixed set of allowed
  * DIRECT parents (a dedicated gateway/data-cards-facets zone -- since
- * removed entirely, the same way gateway/data-cards-header later was --
- * or gateway/data-cards-footer/itself) before this plugin started
+ * removed entirely, the same way gateway/data-cards-header and
+ * gateway/data-cards-footer later were) before this plugin started
  * preferring real core blocks for layout over
  * more bespoke container blocks of its own; see this plugin's own
  * README for the fuller reasoning. The one thing that hasn't changed:

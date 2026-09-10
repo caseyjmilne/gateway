@@ -6,7 +6,7 @@
  * cleared instead of showing nothing as we do now... give the user the
  * ability to setup a block for it... add this as a direct child of data
  * cards 'Data Cards Empty' and anything inside that we show only if
- * cards empty." Unlike gateway/data-cards-footer (locked to a specific
+ * cards empty." Unlike gateway/datatable-footer (locked to a specific
  * small set of sibling widgets, filtered by name off
  * `$block->inner_blocks`), this simply echoes `$content` -- the normal
  * WordPress dynamic-block shape, exactly like gateway/single-record's own

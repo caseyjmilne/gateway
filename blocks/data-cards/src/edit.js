@@ -54,11 +54,18 @@ import { useRequiredInnerBlocks } from '../../shared/hooks/use-required-inner-bl
 // when done remove the custom block entirely"), it's now a
 // `template`-seeded `core/group` Row too (see below), renamed to display
 // as "Cards Header" the same `metadata.name` way the Facets Row already
-// displays as "Facets."
+// displays as "Cards Facets."
+//
+// gateway/data-cards-footer was removed the exact same way, later still
+// -- its only real job was "an editable InnerBlocks area, holding
+// Pagination + Results," with a `space-between` flex layout. Per a
+// direct request ("convert Data Cards Footer to Row... remove the
+// custom block"), it's now a `template`-seeded `core/group` Row too (see
+// below), carrying `style.spacing` to preserve the old block's own
+// `gap`/`margin-top` CSS, renamed to display as "Cards Footer."
 const REQUIRED_BLOCKS = [
 	'gateway/data-cards-body',
 	'gateway/data-cards-empty',
-	'gateway/data-cards-footer',
 ];
 
 // gateway/card-facet stays optional and repeatable, unlike the four
@@ -89,13 +96,6 @@ const REQUIRED_BLOCKS = [
  * @return {Object} A freshly created block instance for that name, with its own default children where it needs them.
  */
 function buildRequiredBlock( name ) {
-	if ( 'gateway/data-cards-footer' === name ) {
-		return createBlock( name, {}, [
-			createBlock( 'gateway/data-cards-pagination' ),
-			createBlock( 'gateway/data-cards-results' ),
-		] );
-	}
-
 	if ( 'gateway/data-cards-empty' === name ) {
 		// A real, immediately-useful default rather than a blank box a
 		// site owner has to know to fill in themselves -- freely
@@ -134,7 +134,7 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			// 'left' }` -- the exact attributes core's own Row transform
 			// produces, confirmed against `packages/block-library/src/
 			// group/variations.js` in a `wordpress/gutenberg` checkout),
-			// renamed to display as "Facets" (see its own `metadata.name`
+			// renamed to display as "Cards Facets" (see its own `metadata.name`
 			// comment below), left empty for a site owner to drop
 			// gateway/card-facet controls into -- the direct replacement
 			// for the old, bespoke gateway/data-cards-facets container
@@ -148,14 +148,18 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				'core/group',
 				{
 					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'left' },
-					// Shows as "Facets" in the block editor's List View instead of
-					// the generic "Row" -- WordPress's Block Renaming feature (WP
-					// 6.5+, `metadata.name`, gated by `supports.renaming` which
-					// core/group doesn't opt out of; degrades gracefully -- simply
-					// ignored -- on older WordPress versions). Otherwise a site
-					// owner has no indication why an empty Row sits here, per a
-					// direct report.
-					metadata: { name: __( 'Facets', 'gateway' ) },
+					// Shows as "Cards Facets" in the block editor's List View
+					// instead of the generic "Row" -- WordPress's Block Renaming
+					// feature (WP 6.5+, `metadata.name`, gated by
+					// `supports.renaming` which core/group doesn't opt out of;
+					// degrades gracefully -- simply ignored -- on older WordPress
+					// versions). Otherwise a site owner has no indication why an
+					// empty Row sits here, per a direct report. "Cards " prefix
+					// (not plain "Facets") for naming congruency with this
+					// template's other Rows ("Cards Header," "Cards Footer") --
+					// gateway/datatable's own, separate Facets Row keeps its
+					// plain "Facets" label; this rename doesn't touch it.
+					metadata: { name: __( 'Cards Facets', 'gateway' ) },
 				},
 				[],
 			],
@@ -167,10 +171,10 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 			// looks identical the moment it's rebuilt from this template.
 			// Renamed to display as "Cards Header" (not the generic "Row")
 			// the same `metadata.name` way the Facets Row above displays as
-			// "Facets" -- otherwise a site owner has no indication what this
-			// one's for either. Ordinary, freely replaceable/transformable
-			// content from here on (`templateLock: false` below), exactly
-			// like the Facets Row.
+			// "Cards Facets" -- otherwise a site owner has no indication what
+			// this one's for either. Ordinary, freely replaceable/
+			// transformable content from here on (`templateLock: false`
+			// below), exactly like the Facets Row.
 			[
 				'core/group',
 				{
@@ -188,9 +192,25 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				{},
 				[ [ 'core/paragraph', { content: __( 'No results found.', 'gateway' ) } ] ],
 			],
+			// The Footer, formerly its own bespoke gateway/data-cards-footer
+			// container block -- removed entirely (see the REQUIRED_BLOCKS
+			// comment above), replaced by a plain `core/group` carrying the
+			// exact same `space-between` flex layout AND `blockGap`/
+			// `margin-top` spacing that block's own hand-written CSS used
+			// (`core/group` already supports both natively), so an already
+			// -published site's Footer looks identical the moment it's
+			// rebuilt from this template. Renamed to display as "Cards
+			// Footer" the same `metadata.name` way the Header/Facets Rows
+			// already display as "Cards Header"/"Cards Facets." Ordinary,
+			// freely replaceable/transformable content from here on
+			// (`templateLock: false` below), exactly like the other Rows.
 			[
-				'gateway/data-cards-footer',
-				{},
+				'core/group',
+				{
+					layout: { type: 'flex', flexWrap: 'nowrap', justifyContent: 'space-between' },
+					style: { spacing: { blockGap: '1em', margin: { top: '1em' } } },
+					metadata: { name: __( 'Cards Footer', 'gateway' ) },
+				},
 				[
 					[ 'gateway/data-cards-pagination', {} ],
 					[ 'gateway/data-cards-results', {} ],

@@ -2,7 +2,7 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "gateway/data-cards",
-	"title": "Data Cards",
+	"title": "Cards",
 	"category": "gateway",
 	"icon": "grid-view",
 	"description": "A paginated, searchable grid of posts for any registered post type -- or of a Gateway Model's records -- laid out as a repeated, user-designed card template.",

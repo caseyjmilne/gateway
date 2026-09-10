@@ -2,7 +2,7 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "gateway/data-cards-empty",
-	"title": "Data Cards Empty",
+	"title": "Cards Empty",
 	"category": "widgets",
 	"icon": "warning",
 	"description": "Shown in place of the grid whenever a Data Cards block's current search, facets, or pagination state matches no records at all -- design any content here (a message, an image, a button, ...). Hidden the rest of the time.",

@@ -5,7 +5,7 @@
  * conditionally hidden by a class based on the current recordsTotal (see
  * that file's own docblock) -- so save() only needs to persist the
  * InnerBlocks placeholder + wrapper markup, same shape as
- * gateway/data-cards-footer's own index.js.
+ * gateway/single-record's own index.js.
  */
 
 import { registerBlockType } from '@wordpress/blocks';

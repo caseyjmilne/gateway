@@ -2,8 +2,9 @@
  * A tiny custom @wordpress/data store, purely so gateway/data-cards-body's
  * editor preview can hand its own computed pager metadata (page/pages/
  * totals) to gateway/data-cards-pagination and gateway/data-cards-results
- * -- SIBLING blocks, both children of gateway/data-cards-footer, never
- * descendants of -body itself (see data-cards/render.php's own docblock).
+ * -- SIBLING blocks, both children of the same parent gateway/data-cards
+ * block, never descendants of -body itself (see data-cards/render.php's
+ * own docblock).
  * WordPress block context (`providesContext`/`usesContext`) only ever
  * flows from ancestor to descendant, so it can't carry this sideways; a
  * plain, global custom store has no such restriction -- exactly the same

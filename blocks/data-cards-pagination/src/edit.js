@@ -43,10 +43,10 @@ function StaticPreview( { blockProps } ) {
 
 /**
  * A real preview once gateway/data-cards-body -- a SIBLING, not an
- * ancestor (both are children of gateway/data-cards-footer/-body's own
- * parent gateway/data-cards; see blocks/shared/store/data-cards-preview.js's
- * own docblock for why a shared store, not block context, is what carries
- * this across) -- has computed its own query results. Reads that store,
+ * ancestor (both are children of the same parent gateway/data-cards
+ * block; see blocks/shared/store/data-cards-preview.js's own docblock
+ * for why a shared store, not block context, is what carries this
+ * across) -- has computed its own query results. Reads that store,
  * keyed by the ancestor gateway/data-cards block's own clientId, and
  * builds the same Previous/page-number/Next buttons the real front end's
  * own view.js builds via the identical shared getPageWindow() helper --

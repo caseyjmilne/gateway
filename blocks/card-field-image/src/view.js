@@ -5,7 +5,7 @@
  * extracts style.scss into build/style-view.css, matching block.json's
  * "style" field path -- block.json deliberately declares no "viewScript"
  * for this block, since there'd be nothing for one to do, the same
- * reasoning gateway/data-cards-footer's own identical-shaped view.js
+ * reasoning gateway/datatable-footer's own identical-shaped view.js
  * already gives.
  */
 import './style.scss';

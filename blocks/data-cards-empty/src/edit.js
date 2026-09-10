@@ -2,11 +2,11 @@ import { useBlockProps, useInnerBlocksProps, InnerBlocks } from '@wordpress/bloc
 
 /**
  * An editable InnerBlocks container with NO allowed-blocks restriction --
- * unlike gateway/data-cards-footer (locked to a specific small set of
+ * unlike gateway/datatable-footer (locked to a specific small set of
  * sibling widgets), this zone is meant for "anything" (a message, an
  * image, a button, ...), per a direct request: "anything inside that we
  * show only if cards empty." `renderAppender` is a real button appender
- * (not left unset the way Footer's own docblock explains for ITS
+ * (not left unset the way that block's own docblock explains for ITS
  * restricted single-slot shape) since an empty state
  * message is exactly the kind of thing a site owner starts from a blank,
  * genuinely open-ended (not fixed-count) block.

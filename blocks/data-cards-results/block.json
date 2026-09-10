@@ -2,14 +2,14 @@
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
 	"name": "gateway/data-cards-results",
-	"title": "Data Cards Results",
+	"title": "Cards Results",
 	"category": "widgets",
 	"icon": "info-outline",
 	"description": "The \"Showing X to Y of Z entries\" summary for a Data Cards block's grid.",
 	"keywords": [ "results", "info", "entries", "data cards" ],
 	"version": "0.1.0",
 	"textdomain": "gateway",
-	"parent": [ "gateway/data-cards-footer" ],
+	"ancestor": [ "gateway/data-cards" ],
 	"supports": {
 		"html": false
 	},

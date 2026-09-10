@@ -2132,6 +2132,58 @@ src/, build/) was deleted outright -- block registration
 calls `register_block_type()` per match, so removing the directory is
 the entire "unregister" step; no PHP registration list needed updating.
 
+### `gateway/data-cards-footer` removed -- replaced by a plain `core/group` Row
+
+Same conversion, same reasoning, applied to the Footer zone next (per a
+direct request: "convert Data Cards Footer to Row with title 'Cards
+Footer'... remove the custom block"): its only real job was "an
+editable InnerBlocks area, holding Pagination + Results," with a
+`space-between` flex layout -- a plain `core/group` already covers it.
+
+Unlike the Header conversion above, the removed block's own
+`style.scss` had a `gap`/`margin-top` worth preserving precisely rather
+than dropping -- both are real, natively-supported `core/group` Spacing
+attributes, so the new template entry carries them directly:
+`style: { spacing: { blockGap: '1em', margin: { top: '1em' } } }`,
+alongside the same `layout: { type: 'flex', flexWrap: 'nowrap',
+justifyContent: 'space-between' }` the old block used and the same
+`metadata: { name: 'Cards Footer' }` List View label mechanism the
+Header/Facets Rows already use. `gateway/data-cards-pagination` and
+`gateway/data-cards-results` both had their own `"parent": [
+"gateway/data-cards-footer"]` changed to `"ancestor": ["gateway/data-cards"]`,
+same fix as the Header conversion's Page Size change. `gateway/data-cards
+-footer/`'s directory was deleted outright, same "no PHP registration
+list to update" reasoning as above.
+
+(The Header conversion's own Row never got an equivalent Spacing fix --
+it currently has no gap/margin of its own, a gap in that earlier
+conversion rather than a deliberate choice, left as-is here since it
+wasn't part of this request.)
+
+### "Cards" naming congruency across the Data Cards family
+
+Per a direct request, every title/label in this family now starts with
+"Cards," never "Data Cards," and never omits "Cards" -- for consistency
+with the "Cards Header"/"Cards Footer" Row labels above. Display-only:
+no block's own registered `name` (the slug serialized into
+`post_content`) changed, only each `block.json`'s own `title` and one
+`metadata.name` Row label:
+
+| Block | Old title | New title |
+|---|---|---|
+| `gateway/data-cards` | `Data Cards` | `Cards` |
+| `gateway/data-cards-body` | `Data Cards Template` | `Cards Template` |
+| `gateway/data-cards-page-size` | `Data Cards Page Size` | `Cards Page Size` |
+| `gateway/data-cards-results` | `Data Cards Results` | `Cards Results` |
+| `gateway/data-cards-pagination` | `Data Cards Pagination` | `Cards Pagination` |
+| `gateway/data-cards-empty` | `Data Cards Empty` | `Cards Empty` |
+
+The Facets Row's own `metadata.name` (see the Header section above)
+changed from `Facets` to `Cards Facets` for the same reason.
+`gateway/datatable`'s own, separate Facets Row (and its whole
+`Facet: X`/`Field: X`/`Link` sibling-block naming convention, confirmed
+out of scope) are both untouched.
+
 ## Facets for Data Cards (`isFilterable`/`facetType` + `gateway/card-facet`)
 
 `gateway/datatable`'s own facets flow bundles two things together: a

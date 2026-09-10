@@ -478,9 +478,9 @@ export default function Edit( {
 
 	// The ancestor gateway/data-cards block's own clientId -- gateway/
 	// data-cards-pagination and gateway/data-cards-results are its
-	// SIBLINGS, not this block's own descendants (both live inside
-	// gateway/data-cards-footer instead -- see data-cards/render.php's own
-	// docblock), so this instance's computed pager meta is published into
+	// SIBLINGS, not this block's own descendants (both live inside the
+	// Footer Row instead -- see data-cards/render.php's own docblock),
+	// so this instance's computed pager meta is published into
 	// a shared store (blocks/shared/store/data-cards-preview.js) keyed by
 	// this ancestor id, rather than passed down through ordinary block
 	// context (which only ever flows ancestor -> descendant, never
