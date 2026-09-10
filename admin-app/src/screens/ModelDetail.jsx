@@ -27,7 +27,7 @@ const MODEL_TYPE_LABELS = {
 // reason to treat an explicit "general" in the URL as invalid when it's
 // unambiguous). Anything else lands here as an unrecognized `:tab` --
 // see the redirect effect below.
-const TABS = [ 'general', 'fields', 'relationships', 'permalinks', 'columns' ];
+const TABS = [ 'general', 'fields', 'relationships', 'single-record', 'columns' ];
 
 /**
  * Single-model detail view -- shows what's known about one registered
@@ -407,8 +407,8 @@ export default function ModelDetail() {
 							Relationships
 						</Link>
 						<Link
-							to={ `/models/${ modelSlug }/permalinks` }
-							className={ subtabClass( 'permalinks' === activeTab ) }
+							to={ `/models/${ modelSlug }/single-record` }
+							className={ subtabClass( 'single-record' === activeTab ) }
 						>
 							Single Record
 						</Link>
@@ -609,7 +609,7 @@ export default function ModelDetail() {
 						/>
 					</div>
 
-					<div hidden={ 'permalinks' !== activeTab }>
+					<div hidden={ 'single-record' !== activeTab }>
 						<PermalinkEditor
 							key={ model.class }
 							modelClass={ model.class }

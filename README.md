@@ -9851,3 +9851,16 @@ Verified with `npm run build` (blocks) and `admin-app`'s own `npm run
 build` (Vite) both compiling cleanly, and a grep confirming only the
 two intentional "named X until this rename" historical docblock notes
 still mention "Permalinks" anywhere in `admin-app/src`.
+
+**Follow-up, reported directly**: the URL still read
+`#/models/<slug>/permalinks` after the above -- asked to catch the path
+up to the label too. `admin-app/src/screens/ModelDetail.jsx`'s
+`'permalinks'` route-segment string (the `TABS` entry, the tab
+`Link`'s `to`/active-state check, and the panel's `hidden` toggle) is
+now `'single-record'`, confirmed via grep to be the only file in the
+whole admin app referencing that segment (`App.jsx` registers one
+generic `/models/:modelSlug/:tab` route, no per-tab route to update).
+An old bookmarked `.../permalinks` URL falls back to the General tab,
+the same graceful handling `ModelDetail.jsx` already gives any
+unrecognized `:tab` value. Verified with `admin-app`'s own `npm run
+build` (Vite) compiling cleanly.
