@@ -9,10 +9,25 @@
  * of whether the grid it's paired with would currently be empty. Same
  * min-height reasoning gateway/data-cards-header's own style.scss already
  * gives for its own empty-InnerBlocks editing UX.
+ *
+ * Centered (both axes) and given its own margin -- reported directly:
+ * this zone sat too close to its neighbors (gateway/data-cards-body above,
+ * gateway/data-cards-footer below) in the editor, and its default content
+ * (a single centered line of text) reads better centered than left
+ * -aligned against the grid's own centered card layout above it.
+ * `margin: 1em 0` matches gateway/data-cards-header's own established
+ * `margin-bottom: 1em` spacing value, for the same "give this zone some
+ * breathing room" reasoning, rather than inventing a new one.
  */
 
 .gateway-data-cards-empty {
 	min-height: 2em;
+	margin: 1em 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
 }
 
 .gateway-data-cards-empty--hidden {
