@@ -8027,6 +8027,26 @@ together, real-slug resolution (found and 404 cases), and
 checks, all passing -- alongside a clean `npm run build` (blocks) and
 `admin-app` production build.
 
+**Follow-up bug, reported directly**: clicking the top-level "Gateway"
+admin menu item opened `edit.php?post_type=gateway_templates` (the
+Templates list) instead of the Gateway app itself. Root cause: WordPress's
+admin menu renderer sends a top-level click to whatever its FIRST
+registered submenu item's URL is, unless one of those submenus shares
+the parent's own slug -- `add_menu_page()` alone never registers such a
+self-referencing submenu. Once `gateway_templates` registered itself as
+a submenu here (`Template_Post_Type`'s own `show_in_menu => 'gateway'`,
+via WordPress core's `_add_post_type_submenus()`), it became the ONLY
+submenu under `gateway`, so WordPress used IT as the top-level link's
+destination. Fixed in `Admin_Page::register_page()` with the standard
+WordPress idiom: an explicit `add_submenu_page( 'gateway', ..., 'gateway',
+[render_page] )` call right alongside `add_menu_page()`, giving `gateway`
+a submenu that shares its own slug -- WordPress resolves both calls'
+callbacks to the SAME hookname (`toplevel_page_gateway`) when a
+submenu's slug matches its own parent's, so this doesn't double
+-register or double-render `render_page()`, it just guarantees the
+top-level click always lands there regardless of how many other real
+submenus (the Templates CPT, or a future one) get added alongside it.
+
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
 Per a direct request: "copy ACF link field type, it has URL/Link Text

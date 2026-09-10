@@ -43,6 +43,26 @@ class Admin_Page {
 
 	/**
 	 * Register the top-level "Gateway" menu page.
+	 *
+	 * Also explicitly registers a SELF-referencing submenu (same slug as
+	 * the parent) -- `add_menu_page()` alone never does this on its own.
+	 * Without it, clicking the top-level "Gateway" item doesn't
+	 * necessarily land here at all: WordPress's admin menu renderer sends
+	 * a top-level click to whatever its FIRST registered submenu item's
+	 * URL is, UNLESS one of those submenus shares the parent's own slug
+	 * (in which case that one wins). Once `gateway_templates` registers
+	 * itself as a submenu here too (`Template_Post_Type`'s own
+	 * `show_in_menu => self::PAGE_SLUG`, handled by WordPress core's
+	 * `_add_post_type_submenus()`), it becomes the ONLY submenu unless
+	 * this one exists alongside it -- which is exactly what caused
+	 * "Gateway" to open `edit.php?post_type=gateway_templates` instead of
+	 * this page, reported directly. Registering this self-submenu FIRST
+	 * (order among `$submenu['gateway']` entries doesn't actually matter
+	 * for this specific behavior, but registering it here keeps the
+	 * reasoning next to the parent's own registration) guarantees the
+	 * top-level click always resolves back to `render_page()`, regardless
+	 * of how many other real submenus (the Templates CPT, or a future
+	 * one) get added alongside it.
 	 */
 	public static function register_page() {
 		self::$hook_suffix = add_menu_page(
@@ -53,6 +73,15 @@ class Admin_Page {
 			array( __CLASS__, 'render_page' ),
 			'dashicons-database',
 			75
+		);
+
+		add_submenu_page(
+			self::PAGE_SLUG,
+			__( 'Gateway', 'gateway' ),
+			__( 'Gateway', 'gateway' ),
+			'manage_options',
+			self::PAGE_SLUG,
+			array( __CLASS__, 'render_page' )
 		);
 	}
 
