@@ -75,13 +75,23 @@ class Admin_Page {
 			75
 		);
 
+		// Explicit `$position = 0` -- WordPress core's own
+		// `_add_post_type_submenus()` (which registers `gateway_templates`'s
+		// own submenu row here, per that CPT's `show_in_menu`) is hooked on
+		// `admin_menu` too, added during core's bootstrap, well before this
+		// plugin's `Admin_Page::init()` (hooked from `plugins_loaded`) even
+		// runs -- so without an explicit position, Dashboard would always
+		// register SECOND, landing below Templates. Pinning this to 0
+		// guarantees Dashboard sorts first regardless of registration
+		// order, keeping the menu Gateway / Dashboard / Templates.
 		add_submenu_page(
 			self::PAGE_SLUG,
 			__( 'Dashboard', 'gateway' ),
 			__( 'Dashboard', 'gateway' ),
 			'manage_options',
 			self::PAGE_SLUG,
-			array( __CLASS__, 'render_page' )
+			array( __CLASS__, 'render_page' ),
+			0
 		);
 	}
 

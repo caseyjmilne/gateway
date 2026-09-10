@@ -8052,6 +8052,19 @@ top-level item) -- the resulting menu reads **Gateway / Dashboard /
 Templates** (`Template_Post_Type`'s own `all_items` label is already
 "Templates," so nothing else needed changing to get that third row).
 
+**Follow-up, reported directly**: Templates was sorting ABOVE Dashboard
+(`Gateway / Templates / Dashboard`) -- WordPress core's own
+`_add_post_type_submenus()` (which adds `gateway_templates`'s own
+submenu row here) is hooked on `admin_menu` too, registered during
+core's bootstrap, well before this plugin's `Admin_Page::init()`
+(hooked from `plugins_loaded`) ever runs -- so without an explicit
+sort position, Dashboard always registered SECOND into
+`$submenu['gateway']`, landing below Templates regardless of which one
+a person would expect first. Fixed by passing an explicit `$position = 0`
+to Dashboard's own `add_submenu_page()` call (a WP 5.3+ parameter),
+which pins it first regardless of registration order -- restoring
+**Gateway / Dashboard / Templates**.
+
 ### Link fields (`Link_Field_Type`) -- ACF's own Link field, copied directly
 
 Per a direct request: "copy ACF link field type, it has URL/Link Text
