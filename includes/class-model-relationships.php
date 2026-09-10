@@ -462,11 +462,59 @@ class Model_Relationships {
 	 * referencing a class name that no longer exists. A future version
 	 * could cascade that cleanup too; not done here to keep a rename's
 	 * own blast radius limited to the model actually being renamed.
+	 * `Model_Builder::delete()` closes this same gap for itself instead,
+	 * by calling `referencing()` below and refusing to proceed rather
+	 * than leaving a dangling reference behind -- a rename keeps the
+	 * class name's identity alive in spirit (the same table generally
+	 * lives on under a new name), but a delete makes the class name
+	 * genuinely stop existing, which a surviving model's own generated
+	 * relationship method can't tolerate the way this method's own gap
+	 * already does.
 	 *
 	 * @param string $class_name Model class name.
 	 */
 	public static function forget( $class_name ) {
 		self::table()->where( 'model', $class_name )->delete();
+	}
+
+	/**
+	 * Every OTHER model's relationship that currently points AT
+	 * `$class_name` (`related_model === $class_name`) -- the one thing
+	 * `forget()`'s own docblock says it doesn't cover. `Model_Builder::delete()`
+	 * is this method's one caller: a class that's about to stop existing
+	 * entirely can't be left referenced by a surviving model's own
+	 * generated relationship method (unlike a rename, where the class
+	 * name's identity effectively lives on). A relationship $class_name
+	 * itself OWNS -- including one pointing at itself -- is never
+	 * included here; only an INCOMING one from a genuinely different
+	 * model counts as a blocker.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array<int,array{model:string,method_name:string,type:string}>
+	 *              Each entry: the OWNING model, its own method_name, and
+	 *              the relationship type -- enough to name exactly what
+	 *              has to be removed first, and where.
+	 */
+	public static function referencing( $class_name ) {
+		$matches = array();
+
+		foreach ( self::all_relationships_everywhere() as list( $owning_class, $relationship ) ) {
+			if ( $owning_class === $class_name ) {
+				continue;
+			}
+
+			if ( $relationship['related_model'] !== $class_name ) {
+				continue;
+			}
+
+			$matches[] = array(
+				'model'       => $owning_class,
+				'method_name' => $relationship['method_name'],
+				'type'        => $relationship['type'],
+			);
+		}
+
+		return $matches;
 	}
 
 	/**

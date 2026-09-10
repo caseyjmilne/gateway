@@ -534,6 +534,131 @@ class Model_Builder {
 	}
 
 	/**
+	 * Permanently deletes a model: drops its real DB table (and every
+	 * row of data in it), forgets every bit of metadata about it, and
+	 * removes its generated model/migration files. Mirrors `rename()`'s
+	 * own "retire the old side" block almost verbatim -- that block IS
+	 * this operation, just never callable on its own before now.
+	 *
+	 * Unlike `rename()`, this refuses to proceed at all when another
+	 * model's own relationship still points AT this one
+	 * (`Model_Relationships::referencing()`) -- see that method's own
+	 * docblock for why this is the one real behavioral difference from
+	 * `rename()`'s own, more lenient precedent: a rename keeps the class
+	 * name's identity alive in spirit, a delete makes it genuinely stop
+	 * existing, which a surviving model's own generated relationship
+	 * method can't tolerate.
+	 *
+	 * @param string $class_name Model class name.
+	 * @return array{deleted:true,class:string,warnings:string[]}|\WP_Error
+	 */
+	public static function delete( $class_name ) {
+		if ( ! Model_Registry::has( $class_name ) || ! class_exists( $class_name ) ) {
+			return new \WP_Error(
+				'gateway_model_not_found',
+				__( 'Model not found.', 'gateway' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$blocking = Model_Relationships::referencing( $class_name );
+
+		if ( $blocking ) {
+			$named = array_map(
+				function ( $relationship ) {
+					return sprintf(
+						'%1$s::%2$s()',
+						$relationship['model'],
+						$relationship['method_name']
+					);
+				},
+				$blocking
+			);
+
+			return new \WP_Error(
+				'gateway_model_still_referenced',
+				sprintf(
+					/* translators: 1: model class name, 2: comma-separated list of "Model::method()" relationships still pointing at it */
+					__( 'Cannot delete "%1$s" -- remove these relationships first: %2$s.', 'gateway' ),
+					$class_name,
+					implode( ', ', $named )
+				),
+				array( 'status' => 409 )
+			);
+		}
+
+		if ( ! Database_Connection::is_healthy() ) {
+			return new \WP_Error(
+				'gateway_database_unavailable',
+				__( 'The database connection isn\'t currently working -- check the Database Connection screen before deleting a model.', 'gateway' ),
+				array( 'status' => 503 )
+			);
+		}
+
+		$instance         = new $class_name();
+		$table            = $instance->getTable();
+		$migration_class  = self::migration_class_for_table( $table );
+		$warnings         = array();
+
+		if ( class_exists( $migration_class ) ) {
+			$rollback_result = Migration_Runner::rollback( $migration_class );
+
+			if ( is_wp_error( $rollback_result ) ) {
+				// Non-fatal -- same "the site owner can drop it by hand"
+				// reasoning rename()'s own identical rollback call already
+				// accepts; the rest of this deletion still proceeds, so the
+				// model isn't left half-deleted just because its own table
+				// happened to resist dropping.
+				$warnings[] = sprintf(
+					/* translators: 1: table name, 2: error message */
+					__( 'Could not drop the table "%1$s": %2$s', 'gateway' ),
+					$table,
+					$rollback_result->get_error_message()
+				);
+			}
+		}
+
+		Model_Registry::unregister( $class_name );
+		Migration_Registry::unregister( $migration_class );
+		self::forget_plural_title( $class_name );
+		self::forget_model_type( $class_name );
+		Model_Fields::forget( $class_name );
+		Model_Relationships::forget( $class_name );
+		Model_Columns::forget( $class_name );
+
+		$model_path = trailingslashit( GATEWAY_MODELS_DIR ) . $class_name . '.php';
+
+		if ( file_exists( $model_path ) ) {
+			wp_delete_file( $model_path );
+		}
+
+		if ( class_exists( $migration_class ) ) {
+			$version = self::registered_migration_version( $migration_class );
+
+			if ( null !== $version ) {
+				$migration_path = trailingslashit( GATEWAY_MIGRATIONS_DIR ) . self::migration_filename( $version, $table );
+
+				if ( file_exists( $migration_path ) ) {
+					wp_delete_file( $migration_path );
+				}
+			}
+		}
+
+		// Deleting a routable model is exactly the kind of routing
+		// -affecting event this exists for -- cheap and unconditional,
+		// same "harmless extra bump" reasoning Model_Fields::add() already
+		// accepts for itself, rather than trying to prove this model
+		// couldn't possibly have been routable first.
+		Permalink_Routes::bump_config_version();
+
+		return array(
+			'deleted'  => true,
+			'class'    => $class_name,
+			'warnings' => $warnings,
+		);
+	}
+
+	/**
 	 * @param string $class_name Model class name.
 	 * @return string The stored Plural Title label, or '' if none is set.
 	 */

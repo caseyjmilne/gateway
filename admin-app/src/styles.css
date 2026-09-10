@@ -2074,3 +2074,43 @@
 	padding: 6px 10px;
 	color: #646970;
 }
+
+/*
+ * Danger Zone -- the Model edit screen's own "Delete Model" section
+ * (ModelDetail.jsx), styled distinctly from the rest of the General
+ * tab per direct request ("similar to how GitHub does with repos"):
+ * a bordered, red-toned block that reads as categorically different
+ * from ordinary settings, using the same #d63638 WordPress admin
+ * already uses for its own destructive/error text elsewhere in this
+ * file, rather than inventing a new color.
+ */
+.gateway-admin-app .gateway-danger-zone {
+	margin-top: 24px;
+	padding: 16px;
+	border: 1px solid #d63638;
+	border-radius: 4px;
+}
+
+.gateway-admin-app .gateway-danger-zone-title {
+	margin-top: 0;
+	color: #d63638;
+}
+
+.gateway-admin-app .button-danger {
+	background: #d63638;
+	border-color: #b32d2e;
+	color: #fff;
+}
+
+.gateway-admin-app .button-danger:hover,
+.gateway-admin-app .button-danger:focus {
+	background: #b32d2e;
+	border-color: #b32d2e;
+	color: #fff;
+}
+
+.gateway-admin-app .button-danger:disabled {
+	background: #e5a6a6;
+	border-color: #e5a6a6;
+	color: #fff;
+}

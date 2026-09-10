@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import { SkeletonTableRows } from '../components/Skeleton.jsx';
@@ -79,6 +79,15 @@ const MODEL_TYPES = [
  * site owner would otherwise have to remember to add by hand every time.
  */
 export default function ModelsList() {
+	// Populated only when ModelDetail.jsx's own delete-a-model flow
+	// navigated here with a warning to show (e.g. the model's own table
+	// couldn't be dropped automatically) -- mirrors ModelDetail's own
+	// identical `location.state`-driven `renameNotice`, read directly
+	// rather than copied into local state, so it naturally disappears
+	// the moment this screen is navigated away from and back to.
+	const location = useLocation();
+	const deleteNotice = location.state && location.state.notice ? location.state.notice : '';
+
 	const [ showCreateForm, setShowCreateForm ] = useState( false );
 	const [ title, setTitle ] = useState( '' );
 	const [ pluralTitle, setPluralTitle ] = useState( '' );
@@ -140,6 +149,12 @@ export default function ModelsList() {
 	return (
 		<div className="gateway-models">
 			<h2>Models</h2>
+
+			{ deleteNotice && (
+				<div className="notice notice-warning">
+					<p>⚠️ { deleteNotice }</p>
+				</div>
+			) }
 
 			<p>
 				<button

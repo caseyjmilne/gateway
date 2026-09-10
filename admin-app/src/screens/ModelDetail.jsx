@@ -6,6 +6,7 @@ import FieldEditor from '../components/FieldEditor.jsx';
 import RelationshipEditor from '../components/RelationshipEditor.jsx';
 import PermalinkEditor from '../components/PermalinkEditor.jsx';
 import ColumnsEditor from '../components/ColumnsEditor.jsx';
+import Modal from '../components/Modal.jsx';
 import { SkeletonBar } from '../components/Skeleton.jsx';
 
 // Gateway\Model_Builder::TYPE_CONTENT_TYPE/TYPE_DATA_MODEL's own values --
@@ -136,6 +137,21 @@ export default function ModelDetail() {
 	const [ confirming, setConfirming ] = useState( false );
 	const [ saving, setSaving ] = useState( false );
 	const [ saveResult, setSaveResult ] = useState( null );
+
+	// The Danger Zone's own delete-confirm flow -- a single model in
+	// view here, not a list of many deletable items, so this is plain
+	// local state rather than the `deleteConfirm<Thing>`-keyed-by-id
+	// pattern FieldEditor/RelationshipEditor use for their own rows.
+	// `deleteError` is deliberately its own state, not `saveResult`
+	// above (shared today only by the rename/plural-title Save flow) --
+	// a failed delete needs to render INSIDE the still-open confirm
+	// modal, not in the General tab's own save-error banner, the same
+	// "each action's own error stays separate" convention every other
+	// delete-confirm flow in this app already follows.
+	const [ showDeleteConfirm, setShowDeleteConfirm ] = useState( false );
+	const [ deleteConfirmText, setDeleteConfirmText ] = useState( '' );
+	const [ deletingModel, setDeletingModel ] = useState( false );
+	const [ deleteError, setDeleteError ] = useState( '' );
 
 	// Owned HERE, not inside FieldEditor/RelationshipEditor themselves, and
 	// passed down to both as a controlled prop + shared setter -- FieldEditor's
@@ -286,6 +302,30 @@ export default function ModelDetail() {
 			// Plural Title only -- a plain label update, nothing
 			// destructive, no confirmation needed.
 			performSave();
+		}
+	};
+
+	const handleDeleteModel = async () => {
+		setDeleteError( '' );
+		setDeletingModel( true );
+
+		try {
+			const data = await apiFetch(
+				`/models/${ encodeURIComponent( className ) }`,
+				{ method: 'DELETE' }
+			);
+			setShowDeleteConfirm( false );
+			navigate( '/', {
+				replace: true,
+				state:
+					data.warnings && data.warnings.length
+						? { notice: data.warnings.join( ' ' ) }
+						: undefined,
+			} );
+		} catch ( error ) {
+			setDeleteError( error.message );
+		} finally {
+			setDeletingModel( false );
 		}
 	};
 
@@ -520,6 +560,32 @@ export default function ModelDetail() {
 								<p>{ saveResult.message }</p>
 							</div>
 						) }
+
+						<div className="gateway-danger-zone">
+							<h3 className="gateway-danger-zone-title">
+								Danger Zone
+							</h3>
+							<p className="description">
+								Deleting this model permanently drops its
+								real database table --{ ' ' }
+								<code>{ model.table }</code> -- destroying
+								every record it currently holds. This
+								cannot be undone.
+							</p>
+							<p>
+								<button
+									type="button"
+									className="button button-danger"
+									onClick={ () => {
+										setDeleteError( '' );
+										setDeleteConfirmText( '' );
+										setShowDeleteConfirm( true );
+									} }
+								>
+									Delete Model
+								</button>
+							</p>
+						</div>
 					</div>
 
 					<div hidden={ 'fields' !== activeTab }>
@@ -558,6 +624,70 @@ export default function ModelDetail() {
 							initialColumns={ model.columns }
 						/>
 					</div>
+
+					{ showDeleteConfirm && (
+						<Modal
+							title="Delete Model"
+							onClose={ () => setShowDeleteConfirm( false ) }
+						>
+							<p>
+								Are you sure you want to delete{ ' ' }
+								<code>{ model.plural_title || model.class }</code>?
+								This permanently drops its real database
+								table -- <code>{ model.table }</code> --
+								destroying every record currently in it.{ ' ' }
+								<strong>This cannot be undone.</strong>
+							</p>
+							<p>
+								Type <code>{ model.class }</code> to
+								confirm:
+							</p>
+							<p>
+								<input
+									type="text"
+									className="regular-text"
+									value={ deleteConfirmText }
+									onChange={ ( event ) =>
+										setDeleteConfirmText(
+											event.target.value
+										)
+									}
+									disabled={ deletingModel }
+									autoFocus
+								/>
+							</p>
+							{ deleteError && (
+								<div className="notice notice-error">
+									<p>{ deleteError }</p>
+								</div>
+							) }
+							<p>
+								<button
+									type="button"
+									className="button button-danger"
+									onClick={ handleDeleteModel }
+									disabled={
+										deletingModel ||
+										deleteConfirmText !== model.class
+									}
+								>
+									{ deletingModel
+										? 'Deleting…'
+										: 'Delete Model' }
+								</button>{ ' ' }
+								<button
+									type="button"
+									className="button"
+									onClick={ () =>
+										setShowDeleteConfirm( false )
+									}
+									disabled={ deletingModel }
+								>
+									Cancel
+								</button>
+							</p>
+						</Modal>
+					) }
 				</>
 			) }
 		</div>

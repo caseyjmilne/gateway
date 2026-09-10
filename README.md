@@ -4672,6 +4672,89 @@ as a `warnings` entry rather than failing the rename outright -- worth
 surfacing so a site owner can clean up an orphaned table by hand, but
 not worth discarding an otherwise-successful rename over.
 
+### Deleting a model -- a Danger Zone, GitHub-repo-style
+
+Per direct request: a way to permanently delete a model, presented as a
+"Danger Zone" section beneath the General tab's own edit form on the
+Model detail screen, "similar to how GitHub does with repos" -- Delete
+Model opens a confirm modal that requires **typing the model's own
+class name exactly** before the Delete button enables (the same
+deliberate friction GitHub's own repo-delete modal uses), explicitly
+warning that this destroys the real table and every record in it. This
+is the one delete flow in the app with that extra typed-confirmation
+step -- every other delete here (a field, a relationship, a record) is
+a plain Delete/Cancel pair, justified by this being strictly more
+destructive than any of those (a whole table + all its data, not one
+row or one column).
+
+`Model_Builder::delete( $class_name )` mirrors `rename()`'s own "retire
+the old side" block almost verbatim -- that block already WAS this
+entire operation, just never callable on its own before now: drop the
+table via its own create migration's `down()` (a non-fatal `warnings`
+entry on failure, same as `rename()`), unregister both
+`Model_Registry`/`Migration_Registry` entries, forget every bit of
+metadata (`Model_Fields`, `Model_Relationships`, `Model_Columns`, the
+Plural Title/Type options), delete the generated model and migration
+files, and bump `Permalink_Routes`' own config version (the same
+"harmless extra bump" reasoning `Model_Fields::add()` already accepts
+for itself).
+
+**The one real behavioral difference from `rename()`**: `Model_Relationships::forget()`'s
+own docblock already documents a known gap -- it only deletes
+relationship rows the model being removed itself OWNS, never a
+relationship on some OTHER model that points AT it. `rename()` tolerates
+this (the class name's identity effectively lives on), but a genuine
+delete makes the class stop existing entirely, and a surviving model's
+own generated relationship method referencing a class that's really
+gone would fatal the moment that method is ever invoked. Closed here
+with a new `Model_Relationships::referencing( $class_name )` -- every
+OTHER model's relationship currently pointing at this one -- called by
+`delete()` before anything destructive happens: any match rejects the
+whole deletion outright (`409`, naming exactly which
+`{Model}::{method}()` relationships have to be removed first, on that
+OTHER model's own Relationships tab), rather than silently leaving the
+app in a state where an ordinary eager-load can fatal later. A
+relationship the model being deleted owns itself (including one
+pointing at itself) is never a blocker -- only an INCOMING one from a
+genuinely different model counts.
+
+The one thing this deliberately still leaves alone: a `gateway_templates`
+Template post built for this model's own Permalink field (see that
+section, below in "Laravel Models"/"The Gateway admin app" as
+applicable) isn't deleted or reassigned. Confirmed this degrades
+tolerably rather than breaking anything -- `Permalink_Routes::routable_models()`
+already filters by `Model_Registry::all()`, so a deleted model simply
+stops being routable the instant it's unregistered, and a direct visit
+to its old Template's own URL just renders with no bound record (the
+same "record context absent" state this plugin already treats as
+normal everywhere else). Left as a documented limitation rather than
+solved here, matching this codebase's own established practice of
+flagging rather than papering over every such edge.
+
+New `DELETE /gateway/v1/models/<class>` route
+(`Model_REST_Controller::delete_model()`), same `manage_options` gate
+every other route on this controller already shares. On success,
+`ModelDetail.jsx` navigates back to the Models list, carrying any
+`warnings` through `react-router`'s own navigation state (the same
+mechanism `rename()`'s own success path already uses for its own
+warnings) so `ModelsList.jsx` can show them as a plain dismissible
+notice -- e.g. the table itself resisting the drop -- without needing
+any new client-side cache invalidation (the list already refetches
+fresh from `Model_Registry::all()` on every mount).
+
+Verified with a standalone PHP smoke test (scratchpad, real in-memory
+SQLite via Capsule): `referencing()` correctly finds/excludes
+self-owned vs. genuinely incoming relationships (including the classic
+bidirectional `belongsTo`/`hasMany` pair, where each model ends up
+blocking the other until one side's relationship is removed), and
+`delete()`'s own guard sequence (404 for an unknown class, 409 naming
+the exact blocker, clearing once removed) -- 16 checks, all passing --
+alongside a clean `admin-app` production build. The full destructive
+path itself (the real migration rollback + file cleanup) is exercised
+by the exact same, already-trusted machinery `rename()`'s own tests
+already cover, so it wasn't re-verified from scratch here; confirmed
+manually against a real WordPress install instead.
+
 ### Fields (`Model_Fields`) -- an ACF-style Field Editor, backed by real columns
 
 A model's detail screen (below) also has a Field Editor: Add Field, a

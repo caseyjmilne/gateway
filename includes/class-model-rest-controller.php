@@ -22,10 +22,11 @@ class Model_REST_Controller {
 	}
 
 	/**
-	 * GET   /gateway/v1/models
-	 * POST  /gateway/v1/models
-	 * GET   /gateway/v1/models/<class>
-	 * PUT   /gateway/v1/models/<class>
+	 * GET    /gateway/v1/models
+	 * POST   /gateway/v1/models
+	 * GET    /gateway/v1/models/<class>
+	 * PUT    /gateway/v1/models/<class>
+	 * DELETE /gateway/v1/models/<class>
 	 */
 	public static function register_routes() {
 		register_rest_route(
@@ -60,6 +61,11 @@ class Model_REST_Controller {
 					'callback'            => array( __CLASS__, 'rename_model' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
 					'args'                => self::title_args(),
+				),
+				array(
+					'methods'             => \WP_REST_Server::DELETABLE,
+					'callback'            => array( __CLASS__, 'delete_model' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
 				),
 			)
 		);
@@ -190,6 +196,20 @@ class Model_REST_Controller {
 			$request->get_param( 'title' ),
 			(string) $request->get_param( 'plural_title' )
 		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return rest_ensure_response( $result );
+	}
+
+	/**
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function delete_model( \WP_REST_Request $request ) {
+		$result = Model_Builder::delete( $request->get_param( 'class' ) );
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
