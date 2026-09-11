@@ -176,11 +176,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 		<div className="gateway-permalink-editor">
 			<h3>Single Record</h3>
 			<p className="description">
-				Configures where{ ' ' }
-				<code>{ permalinkField.label || permalinkField.name }</code>
-				&rsquo;s records live -- e.g. a Root of &ldquo;tickets&rdquo;
-				makes a record&rsquo;s URL{ ' ' }
-				<code>/tickets/{ '{slug}' }</code>.
+				Configure the permalink and template for single records.
 			</p>
 
 			{ error && (
