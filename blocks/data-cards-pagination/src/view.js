@@ -1,16 +1,13 @@
 /**
  * Wires the Previous/Next/page-number buttons to fetches against the
- * sibling Data Cards grid's REST endpoint -- the gateway/data-cards
- * equivalent of gateway/pagination's `dataTable.page(n).draw('page')`
- * calls, and getPageWindow()-based button rebuilding, fed a REST fetch
- * response's `{ page, pages }` instead of `dataTable.page.info()`.
+ * sibling Data Cards grid's REST endpoint, and getPageWindow()-based
+ * button rebuilding, fed a REST fetch response's `{ page, pages }`.
  *
  * Listens for the 'gatewaycards:update' event (dispatched by shared/
  * cards.js's renderCardsPage(), on every fetch this block *or any
- * sibling widget* triggers) to rebuild its own buttons -- the fetch
- * equivalent of gateway/pagination's own `dataTable.on('draw', ...)`,
- * since a page-size change or search from a DIFFERENT block can also
- * change the total page count this block needs to reflect.
+ * sibling widget* triggers) to rebuild its own buttons, since a
+ * page-size change or search from a DIFFERENT block can also change the
+ * total page count this block needs to reflect.
  */
 
 import './style.scss';

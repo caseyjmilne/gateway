@@ -35,8 +35,9 @@ class Data_Cards_Renderer {
 
 	/**
 	 * Page-size choices offered alongside a block's own configured Page
-	 * Size -- mirrors blocks/shared/datatable.js's buildLengthMenu(), so
-	 * both grid types offer the same shape of choice list.
+	 * Size -- mirrors blocks/shared/length-menu.js's own
+	 * DEFAULT_LENGTH_MENU/buildLengthMenu(), the editor-side counterpart
+	 * to this PHP one.
 	 */
 	const DEFAULT_LENGTH_MENU = array( 10, 25, 50, 100 );
 
@@ -98,9 +99,9 @@ class Data_Cards_Renderer {
 	 *
 	 * `$page` is zero-based throughout this whole class (and the REST
 	 * route), matching DataTables' own `page.info().page` convention that
-	 * gateway/pagination's existing getPageWindow()/attachPagination()
-	 * logic already assumes -- WP_Query's native `paged` is 1-based, so
-	 * the +1 conversion happens here, once, rather than at every call site.
+	 * blocks/shared/pagination-window.js's own getPageWindow() already
+	 * assumes -- WP_Query's native `paged` is 1-based, so the +1
+	 * conversion happens here, once, rather than at every call site.
 	 *
 	 * @param string $post_type Post type slug.
 	 * @param int    $page      Zero-based page index.
@@ -123,10 +124,10 @@ class Data_Cards_Renderer {
 			'post_status'    => 'publish',
 			'posts_per_page' => max( 1, (int) $page_size ),
 			'paged'          => max( 0, (int) $page ) + 1,
-			// Server-side pagination needs a real found_posts/max_num_pages,
-			// unlike gateway/datatable-body's WP_Query (no_found_rows=true
-			// there, since DataTables paginates client-side over one
-			// already-fetched full result set).
+			// Server-side pagination needs a real found_posts/max_num_pages
+			// (no_found_rows stays false, WP_Query's own default) -- this
+			// grid paginates a fresh query per page, not a client-side
+			// slice of one big already-fetched result set.
 			'no_found_rows'  => false,
 		);
 
@@ -704,12 +705,11 @@ class Data_Cards_Renderer {
 	}
 
 	/**
-	 * PHP port of blocks/shared/datatable.js's buildLengthMenu() -- a
-	 * choice list guaranteed to include the block's own configured Page
-	 * Size, so gateway/data-cards-page-size's <select> (rendered here,
-	 * server-side, unlike gateway/datatable-page-size which must wait for
-	 * a live DataTables instance to ask) never offers a set of options
-	 * that doesn't include the value the grid is actually showing.
+	 * PHP port of blocks/shared/length-menu.js's own buildLengthMenu() --
+	 * a choice list guaranteed to include the block's own configured Page
+	 * Size, so gateway/data-cards-page-size's server-rendered `<select>`
+	 * never offers a set of options that doesn't include the value the
+	 * grid is actually showing.
 	 *
 	 * @param int $page_size Configured page size.
 	 * @return int[] Sorted, deduplicated length menu.

@@ -6,7 +6,7 @@
  * block.json, compiled assets (build/), and optional render.php. Dropping a
  * new block directory in place is enough for it to be picked up on the next
  * request -- nothing else in PHP needs to change as more blocks (including
- * child blocks of the datatable block) are added.
+ * a top-level block's own child blocks) are added.
  *
  * @package Gateway
  */
@@ -32,15 +32,15 @@ class Block_Loader {
 	 * `category` to this slug, rather than the generic core "widgets"
 	 * category they used to share with every other plugin's own
 	 * non-top-level blocks -- so the inserter has one obvious place to
-	 * find them, instead of hunting through Widgets for four blocks among
-	 * many unrelated ones.
+	 * find them, instead of hunting through Widgets among many unrelated
+	 * ones.
 	 *
 	 * Deliberately NOT applied to any of this plugin's own CHILD blocks
-	 * (gateway/datatable-header, gateway/card-field-text, etc. -- every
+	 * (gateway/card-field-text, gateway/card-facet, etc. -- every
 	 * block.json with its own `parent`/`ancestor` restriction) -- those
 	 * are never something a site owner picks off the top-level inserter
 	 * list to begin with, only ever reachable already nested inside one
-	 * of the four blocks above, so grouping them under "Gateway" too
+	 * of the two blocks above, so grouping them under "Gateway" too
 	 * would just be dead weight in a category no one browses looking for
 	 * them.
 	 *

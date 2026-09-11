@@ -9,8 +9,7 @@
  * lives in a SEPARATE stylesheet (gateway/card-facet's own) that's only
  * ever enqueued when a real gateway/card-facet block is also present on
  * the page -- so the handful of rules this block actually needs are
- * duplicated here too, the same "direct copy, renamed" precedent
- * gateway/card-facet's own style.scss already set against gateway/facet's.
+ * duplicated here too.
  *
  * `--toggle` (the default) mirrors the admin app's own established
  * `.gateway-toggle`/`.gateway-toggle-slider` component (admin-app/src/

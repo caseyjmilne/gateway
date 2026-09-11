@@ -1,10 +1,9 @@
 /**
  * Shared "find my sibling Data Cards grid, fetch a page of it, swap it into
- * the DOM" logic -- the gateway/data-cards equivalent of shared/wait-for
- * -datatable.js, but fetch-driven instead of DataTables-driven, since
- * gateway/data-cards has no DataTables instance to poll for at all (see
- * gateway/data-cards-body/render.php: the grid, its pager, and its result
- * count are all fully rendered server-side on first paint).
+ * the DOM" logic -- fetch-driven: gateway/data-cards-body/render.php
+ * fully renders the grid, its pager, and its result count server-side on
+ * first paint, so every sibling widget's own view.js only ever needs to
+ * trigger a fresh fetch and swap the response in.
  *
  * Used by gateway/data-cards-search, -page-size, -pagination, -results'
  * own view.js files. Deliberately plain `fetch()`, not `@wordpress/api
@@ -28,9 +27,9 @@ export function findCardsGridElement( el ) {
 /**
  * Gather every currently-active gateway/card-facet filter under the same
  * grid as `gridEl`, regardless of which specific block triggered a fetch
- * -- the fetch equivalent of DataTables' own multi-column search state
- * (each column's `search()` call independently contributes to the same
- * overall result, without the caller needing to know about the others).
+ * -- each facet's own current value independently contributes to the
+ * same overall result, without the caller needing to know about the
+ * others.
  *
  * Each card-facet's own current DOM value already reflects its default
  * (pre-filled server-side by render.php) unless a visitor changed it, so
@@ -258,10 +257,9 @@ export function handleCardsFetchError( error ) {
 
 /**
  * Debounce a function -- shared by gateway/data-cards-search and
- * gateway/card-facet's own view.js (both fire a fetch per keystroke
- * otherwise, unlike gateway/datatable-search's own deliberately-undebounced
- * input, which drives cheap client-side DataTables search instead of a
- * network request -- see each of those two view.js files for the same
+ * gateway/card-facet's own view.js (both fire a network fetch per
+ * keystroke otherwise, which isn't free the way a client-side search
+ * would be -- see each of those two view.js files for the same
  * reasoning, restated where the debounce is actually used).
  *
  * @param {Function} fn   Function to debounce.

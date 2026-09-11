@@ -8,10 +8,11 @@
  * column.
  *
  * Single source of truth used by both Columns_REST_Controller (what the
- * block editor's column picker offers) and blocks/datatable/render.php
- * (validating the columns a block instance actually asks for, and
- * rendering their values) -- so a column key can never make it into the
- * grid unless it's one this class actually recognizes for that post type.
+ * block editor's column/field pickers offer) and the various
+ * gateway/card-field-* and gateway/card-facet-* blocks' own render.php
+ * files (validating the field a block instance actually asks for) -- so
+ * a column key can never make it into a grid unless it's one this class
+ * actually recognizes for that post type.
  *
  * @package Gateway
  */
@@ -161,12 +162,12 @@ class Column_Registry {
 	 * `isFilterable`/`facetType` (a subset of `'input'`/`'select'`/
 	 * `'checkboxes'`, empty when `isFilterable` is false) say whether a
 	 * column is suitable for use as a facet, and with which UI types --
-	 * consumed by both `gateway/datatable`'s own Facets panel and
-	 * `gateway/data-cards`'s (`shared/controls/facets-panel.js`) to decide
-	 * which fields to offer at all, and by `gateway/card-facet`'s own
-	 * `UiTypeControl` usage to trim which UI types make sense for the
-	 * chosen field. See each column-producing method below for the
-	 * reasoning behind its own values.
+	 * consumed by `gateway/data-cards`'s own Filters panel
+	 * (`shared/controls/facets-panel.js`) to decide which fields to offer
+	 * at all, and by `gateway/card-facet`'s own `UiTypeControl` usage to
+	 * trim which UI types make sense for the chosen field. See each
+	 * column-producing method below for the reasoning behind its own
+	 * values.
 	 *
 	 * @param string $post_type Post type slug.
 	 * @return array[] Column definitions.
@@ -292,8 +293,8 @@ class Column_Registry {
 	/**
 	 * The `get_columns()` counterpart for a Collection (Gateway model)
 	 * data source, in the same `{key, label, type, isFilterable,
-	 * facetType}` shape -- so `gateway/datatable`'s own column-validation
-	 * logic (render.php) and its Columns/Facets panels can treat a model's
+	 * facetType}` shape -- so `gateway/data-cards`'s own field-validation
+	 * logic (render.php) and its Filters panel can treat a model's
 	 * fields as just another kind of column, without needing to know
 	 * where they actually came from.
 	 *
@@ -354,12 +355,11 @@ class Column_Registry {
 	 * literal tags.
 	 *
 	 * `isNumeric` is the same pattern again, via `Field_Type::is_numeric()`
-	 * -- what `gateway/card-field-number`'s own Field picker (and
-	 * `gateway/datatable`'s own per-column Number Format button) reads to
+	 * -- what `gateway/card-field-number`'s own Field picker reads to
 	 * decide which fields are eligible at all, and what
-	 * `blocks/card-field-number/render.php`/`blocks/datatable-body/render.php`
-	 * both re-check before ever running `Number_Formatter::format()` on a
-	 * value -- `true` only for Number/Range, `false` for the synthetic
+	 * `blocks/card-field-number/render.php` re-checks before ever running
+	 * `Number_Formatter::format()` on a value -- `true` only for
+	 * Number/Range, `false` for the synthetic
 	 * `id` column (an identifier, not a quantity a Currency/Percent
 	 * format would ever make sense on) and every other built-in type.
 	 *
@@ -727,9 +727,9 @@ class Column_Registry {
 	 * own `"{$relationship_method}.{$related_field_name}"` key shape),
 	 * the related record's own field value instead. Used anywhere a
 	 * Collection's own column/field value is read for display
-	 * (`gateway/datatable-body`'s cell rendering, `gateway/card-field-text`'s
-	 * own value) so both share one definition of what a dotted key means,
-	 * rather than each re-deriving it.
+	 * (`gateway/card-field-text`'s own value, and its `card-field-*`
+	 * siblings) so every one of them shares one definition of what a
+	 * dotted key means, rather than each re-deriving it.
 	 *
 	 * Returns `null` (never errors) if the relationship isn't actually
 	 * loaded/set for this record (e.g. a `belongsTo` whose FK is NULL) --

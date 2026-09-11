@@ -2,8 +2,8 @@
 /**
  * REST API route the front end uses to fetch subsequent pages of a
  * gateway/data-cards grid -- pagination, page-size changes, and search all
- * go through this one route, since (unlike gateway/datatable) there's no
- * DataTables instance doing this client-side.
+ * go through this one route: a fresh, server-side WP_Query per page, no
+ * client-side pagination library involved.
  *
  * Unlike Columns_REST_Controller (editor-only, gated on `edit_posts`),
  * this route is PUBLIC: it's the front-end pagination mechanism for

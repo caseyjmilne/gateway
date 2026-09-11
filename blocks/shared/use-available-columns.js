@@ -8,15 +8,17 @@
  * can treat "what's available to show/filter by" as one question
  * regardless of where the block's data actually comes from.
  *
- * Lives in blocks/shared/ (not the datatable block's own src/) since it's
- * used across block boundaries: the datatable block's edit.js (fetched
- * once, shared by ColumnsPanel and FacetsPanel -- "what fields exist for
- * this post type" is the same question for both), and the facet block's
- * edit.js, which needs the same field list purely to resolve a friendly
- * label for the facet it's configured for. Those other callers only ever
- * deal in post types -- passing a plain `postType` string (no second
- * argument) keeps them working unchanged; only gateway/datatable's own
- * edit.js currently ever passes `{ sourceType: 'collection', collection }`.
+ * Lives in blocks/shared/ since it's used across block boundaries:
+ * gateway/data-cards' own edit.js (fetched once, shared by its Filters
+ * panel and Order By picker -- "what fields exist for this post type or
+ * Collection" is the same question for both), every gateway/card-field-*
+ * and gateway/card-facet-* block's own edit.js, which needs the same
+ * field list to populate its Field picker or resolve a friendly label,
+ * and gateway/related-items' own edit.js for the related model's own
+ * fields.
+ * `{ sourceType: 'collection', collection }` (the second argument) is how
+ * a caller opts into the Collection branch -- passing a plain `postType`
+ * string alone keeps a post-type-only caller working unchanged.
  */
 
 import { useEffect, useState } from '@wordpress/element';

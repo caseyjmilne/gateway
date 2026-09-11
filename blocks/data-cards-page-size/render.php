@@ -2,12 +2,10 @@
 /**
  * Server-side render for the gateway/data-cards-page-size block.
  *
- * Unlike gateway/datatable-page-size (an empty, disabled <select> until
- * DataTables exists client-side and can be asked for its own real
- * lengthMenu), this block already knows everything it needs at PHP-render
- * time: the parent gateway/data-cards' own Page Size setting, via context
- * -- no live library instance to wait for. Real <option>s, already
- * selected correctly, render here directly.
+ * This block already knows everything it needs at PHP-render time: the
+ * parent gateway/data-cards' own Page Size setting, via context -- no
+ * live library instance to wait for. Real <option>s, already selected
+ * correctly, render here directly.
  *
  * @package Gateway
  *

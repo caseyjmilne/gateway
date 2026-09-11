@@ -1,10 +1,8 @@
 /**
  * Keeps the "Showing X to Y of Z entries" text in sync with the sibling
- * Data Cards grid -- the gateway/data-cards equivalent of gateway/
- * datatable-results' own `dataTable.on('draw', ...)` wiring, listening
- * for the 'gatewaycards:update' event (dispatched by shared/cards.js's
- * renderCardsPage() on every fetch this block *or any sibling widget*
- * triggers) instead.
+ * Data Cards grid -- listening for the 'gatewaycards:update' event
+ * (dispatched by shared/cards.js's renderCardsPage() on every fetch this
+ * block *or any sibling widget* triggers).
  */
 
 import './style.scss';

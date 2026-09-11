@@ -2,20 +2,11 @@
  * "UI Type" select control: which control renders on the front end for
  * this facet. Supported types: input, select, checkboxes.
  *
- * Originally lived under blocks/facet/src/controls/ as gateway/facet's
- * own control; moved here once gateway/card-facet needed the same
- * picker. Gained `allowedTypes` at the same time, trimming this to the
- * selected field's own `facetType` (from Column_Registry -- a Select of
- * every distinct `post_content` value, or a taxonomy's nonexistent
- * free-text compare mode, aren't real choices) -- but only
- * gateway/card-facet's own edit.js actually passed it at first,
- * gateway/facet's own usage passing nothing and silently offering all
- * three regardless of the field. A real gap, not a deliberate
- * difference: found and closed by comparing the two blocks directly
- * (both already read the same Column_Registry-derived `facetType` off
- * the same `useAvailableColumns()` hook, so nothing but the missing prop
- * itself was stopping gateway/facet from doing the same trimming). Both
- * now pass `allowedTypes`.
+ * `allowedTypes` trims the offered list to the selected field's own
+ * `facetType` (from Column_Registry -- a Select of every distinct
+ * `post_content` value, or a taxonomy's nonexistent free-text compare
+ * mode, aren't real choices) -- gateway/card-facet's own edit.js always
+ * passes it.
  */
 
 import { SelectControl } from '@wordpress/components';

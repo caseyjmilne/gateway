@@ -158,9 +158,8 @@ export default function Edit( {
 		'gateway/data-cards/collection': collection = '',
 		// 10 -- matching block.json's own attribute default and
 		// shared/length-menu.js's own DEFAULT_LENGTH_MENU (its first,
-		// smallest option) -- same standard size gateway/datatable's own
-		// pageLength attribute already defaults to; only a fallback for a
-		// genuinely absent context value, not a second source of truth.
+		// smallest option); only a fallback for a genuinely absent context
+		// value, not a second source of truth.
 		'gateway/data-cards/pageSize': pageSize = 10,
 		// '' means "use this source type's own real default" -- see
 		// gateway/data-cards/render.php's own docblock. Never translated

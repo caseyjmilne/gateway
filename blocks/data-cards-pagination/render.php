@@ -2,14 +2,12 @@
 /**
  * Server-side render for the gateway/data-cards-pagination block.
  *
- * Unlike gateway/pagination (an empty skeleton until DataTables exists
- * client-side and view.js can ask it for the real page count), this block
- * already knows everything it needs at PHP-render time: gateway/
- * data-cards/render.php -- the one common ancestor this block, gateway/
- * data-cards-body, and gateway/data-cards-results all share -- already
- * ran the query and computed pager metadata once, and stashed it via
- * Data_Cards_Renderer::set_current() (see that block's own render.php and
- * Data_Cards_Renderer's own docblock for why). Real Previous/Next/page
+ * This block already knows everything it needs at PHP-render time:
+ * gateway/data-cards/render.php -- the one common ancestor this block,
+ * gateway/data-cards-body, and gateway/data-cards-results all share --
+ * already ran the query and computed pager metadata once, and stashed it
+ * via Data_Cards_Renderer::set_current() (see that block's own render.php
+ * and Data_Cards_Renderer's own docblock for why). Real Previous/Next/page
  * -number buttons, already reflecting the real page count, render here
  * directly -- src/view.js only adds the click-to-fetch wiring on top of
  * already-correct, already-visible markup.

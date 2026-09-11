@@ -17,8 +17,7 @@ import NumberFormatControls from '../../shared/controls/number-format-controls';
  * `isNumeric` instead of `isTextRenderable` (so choosing a Text field
  * here is never even offered -- Number_Formatter::format() has nothing
  * sensible to do with one), and a second Inspector section
- * (`NumberFormatControls`, shared with gateway/datatable's own per
- * -column Format modal) configures this block's own `numberFormat`
+ * (`NumberFormatControls`) configures this block's own `numberFormat`
  * attribute -- Style/Decimal Places/Thousands Separator/Currency Symbol
  * /Position, with a live preview line.
  *

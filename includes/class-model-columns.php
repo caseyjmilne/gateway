@@ -10,12 +10,9 @@
  * Structurally the smallest member of the Model_Fields/Model_Relationships
  * family: ONE row per model (`gateway_table_columns`, `model` unique),
  * not one row per column. An ordered LIST of `{key, sortable}` pairs is
- * exactly what a single JSON column already models well -- the same
- * shape `gateway/datatable`'s own `columns` block attribute already uses
- * for its front-end column picker (`ColumnConfigTable`/`ColumnsPanel`;
- * this feature's own admin-app UI deliberately mirrors that same
- * picker-plus-config-table shape) -- so there's no per-row structure
- * here worth a normalized table the way `gateway_relationships` needs.
+ * exactly what a single JSON column already models well -- there's no
+ * per-row structure here worth a normalized table the way
+ * `gateway_relationships` needs.
  *
  * **Unconfigured** (no row at all -- every model starts this way) means
  * exactly today's PRE-EXISTING behavior: every one of the model's own
@@ -105,9 +102,7 @@ class Model_Columns {
 	 * this class's own docblock) -- a model explicitly configured to show
 	 * every CURRENT field does not automatically pick up a field added
 	 * to the model afterward; a site owner returns to this tab and adds
-	 * it, the same way `gateway/datatable`'s own column picker doesn't
-	 * retroactively add a newly-created field to an already-published
-	 * block either.
+	 * it explicitly.
 	 *
 	 * Every entry's own `key` must name one of `$class_name`'s OWN
 	 * CURRENT fields (`Model_Fields::all()`) -- a stale key (the field

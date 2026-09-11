@@ -1,7 +1,7 @@
 {
 	"name": "gateway",
 	"version": "0.1.0",
-	"description": "Gateway WordPress plugin -- custom Gutenberg blocks, starting with a DataTables-powered grid block.",
+	"description": "Gateway WordPress plugin -- custom Gutenberg blocks, including a searchable/filterable card grid block.",
 	"private": true,
 	"license": "GPL-2.0-or-later",
 	"scripts": {
@@ -14,7 +14,6 @@
 		"packages-update": "wp-scripts packages-update"
 	},
 	"dependencies": {
-		"datatables.net-dt": "^2.1.8",
 		"marked": "^18.0.11"
 	},
 	"devDependencies": {

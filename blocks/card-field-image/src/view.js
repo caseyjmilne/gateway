@@ -4,8 +4,6 @@
  * This file exists solely so the build picks it up as an entry and
  * extracts style.scss into build/style-view.css, matching block.json's
  * "style" field path -- block.json deliberately declares no "viewScript"
- * for this block, since there'd be nothing for one to do, the same
- * reasoning gateway/datatable-footer's own identical-shaped view.js
- * already gives.
+ * for this block, since there'd be nothing for one to do.
  */
 import './style.scss';

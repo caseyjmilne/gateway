@@ -3,11 +3,10 @@
  * docblock for the full reasoning behind each setting) -- used ONLY for
  * a live editor preview (`gateway/card-field-number`'s own edit.js, and
  * this same module's own preview line inside `NumberFormatControls`
- * below). Every REAL render -- the front end, and every block's own
- * `<ServerSideRender>`-backed editor preview (gateway/datatable-body's
- * own column config, e.g.) -- goes through the real PHP class instead;
- * this only ever has to be "close enough" for a momentary preview, not
- * byte-for-byte identical, since nothing here ever reaches a visitor.
+ * below). Every REAL render -- the front end -- goes through the real
+ * PHP class instead; this only ever has to be "close enough" for a
+ * momentary preview, not byte-for-byte identical, since nothing here
+ * ever reaches a visitor.
  */
 
 export const DEFAULT_NUMBER_FORMAT = {

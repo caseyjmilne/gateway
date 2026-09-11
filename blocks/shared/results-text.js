@@ -1,23 +1,14 @@
 /**
- * Pure "Showing X to Y of Z entries" text-building logic, shared by every
- * results-count control in this plugin.
+ * Pure "Showing X to Y of Z entries" text-building logic for
+ * gateway/data-cards-results -- `buildInfoText()` only ever needs a
+ * plain `{ start, end, recordsDisplay, recordsTotal }` object, fed by a
+ * REST fetch response.
  *
- * Originally lived inside blocks/datatable-results/src/attach-results.js
- * (the gateway/datatable-results block, fed by a live DataTables `page
- * .info()` result). Moved here, unchanged, so gateway/data-cards-results
- * (fed by a REST fetch response instead) can share the exact same wording
- * without a copy-pasted, silently-divergent second implementation --
- * `buildInfoText()` only ever needed a plain `{ start, end, recordsDisplay,
- * recordsTotal }` object, never DataTables itself, so relocating it costs
- * nothing.
- *
- * Text/pluralization deliberately mirrors DataTables' own default `info`
- * language strings (`sInfo`/`sInfoEmpty`/`sInfoFiltered`, and the
- * `entries`/`entry` plural pair) -- gateway/datatable-results is a drop-in
- * replacement for DataTables' own default info widget, so it reads the
- * same way; gateway/data-cards-results reuses the same wording purely for
- * consistency across both grid types, not because anything DataTables
- * -specific is involved here.
+ * Text/pluralization deliberately mirrors the well-known DataTables.net
+ * library's own default `info` language strings (`sInfo`/`sInfoEmpty`/
+ * `sInfoFiltered`, and the `entries`/`entry` plural pair) purely for a
+ * familiar, consistent reading -- nothing here has any actual dependency
+ * on that library.
  */
 
 /**
@@ -30,9 +21,8 @@ export function pluralizeEntries( count ) {
 
 /**
  * @param {Object} info `{ start, end, recordsDisplay, recordsTotal }` --
- *                       DataTables' own `page.info()` shape, or (for
- *                       gateway/data-cards) the equivalently-shaped object
- *                       returned by `Data_Cards_Renderer::build_pager_meta()`.
+ *                       the shape returned by
+ *                       `Data_Cards_Renderer::build_pager_meta()`.
  * @return {string} The "Showing X to Y of Z entries" (or filtered/empty variant) text.
  */
 export function buildInfoText( info ) {

@@ -30,15 +30,12 @@
  * block's own Inspector or documentation ever guides a site owner
  * toward.
  *
- * A trimmed gateway/facet/render.php: gateway/facet also requires its
- * facet's field to be a currently *displayed column* (its DataTables
- * column index is how the front end targets it) -- gateway/card-facet has
- * no columns/table/column-index concept at all (it drives a REST refetch
- * instead -- see src/view.js and shared/cards.js), so that half of the
- * check simply has no counterpart here. The "must still be configured on
- * the parent" half stays: a facet can be removed from gateway/data-cards'
- * own Facets panel independently of any gateway/card-facet block
- * referencing it.
+ * gateway/card-facet has no columns/table/column-index concept at all (it
+ * drives a REST refetch instead -- see src/view.js and shared/cards.js),
+ * so its own validation here checks only one thing: a facet can be
+ * removed from gateway/data-cards' own Facets panel independently of any
+ * gateway/card-facet block referencing it, so this must still be
+ * configured on the parent.
  *
  * @package Gateway
  *

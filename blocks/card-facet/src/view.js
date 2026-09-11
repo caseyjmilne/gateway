@@ -1,18 +1,15 @@
 /**
  * Wires the filter control (input/select/checkboxes) to a fetch against
- * the sibling Data Cards grid's REST endpoint -- the gateway/card-facet
- * equivalent of gateway/facet's own `column(idx).search(...).draw()`
- * call. Doesn't need to build its own request payload: shared/cards.js's
- * fetchCardsPage() gathers every currently-active card-facet under the
- * same grid itself (collectActiveFacets()) on every fetch, so this file
- * only needs to trigger one, the same way gateway/data-cards-search's own
- * view.js does.
+ * the sibling Data Cards grid's REST endpoint. Doesn't need to build its
+ * own request payload: shared/cards.js's fetchCardsPage() gathers every
+ * currently-active card-facet under the same grid itself
+ * (collectActiveFacets()) on every fetch, so this file only needs to
+ * trigger one, the same way gateway/data-cards-search's own view.js does.
  *
- * 300ms debounce for the "input" UI type only (matches gateway/facet's
- * own existing input debounce, and gateway/data-cards-search's reasoning
- * -- a network fetch per keystroke isn't free the way DataTables' client
- * -side search is); Select/Checkboxes fire once per discrete choice, no
- * debounce needed.
+ * 300ms debounce for the "input" UI type only (same reasoning as
+ * gateway/data-cards-search's own: a network fetch per keystroke isn't
+ * free); Select/Checkboxes fire once per discrete choice, no debounce
+ * needed.
  */
 
 import './style.scss';

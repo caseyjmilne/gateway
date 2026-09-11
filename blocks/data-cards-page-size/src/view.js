@@ -1,13 +1,11 @@
 /**
  * Wires the page-size <select> to a fetch against the sibling Data Cards
- * grid's REST endpoint -- the gateway/data-cards equivalent of gateway/
- * datatable-page-size's `dataTable.page.len(value).draw()` call.
+ * grid's REST endpoint.
  *
  * No debounce needed: a `change` event fires once per discrete choice, not
- * per keystroke (same reasoning as gateway/datatable-page-size's own
- * view.js). Changing page size resets to page 0 -- the same simplification
- * gateway/data-cards-search's search reset uses, rather than trying to
- * preserve scroll position across a page-size change.
+ * per keystroke. Changing page size resets to page 0 -- the same
+ * simplification gateway/data-cards-search's search reset uses, rather
+ * than trying to preserve scroll position across a page-size change.
  */
 
 import './style.scss';

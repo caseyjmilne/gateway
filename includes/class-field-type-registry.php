@@ -188,8 +188,7 @@ class Field_Type_Registry extends Registry {
 	 * currently read by anything in this admin app (unlike
 	 * `is_text_renderable`), but the record-CRUD/block-editor side of
 	 * this same "which fields am I allowed to offer" question:
-	 * `gateway/card-field-number`'s own Field picker and `gateway/datatable`'s
-	 * own per-column Number Format button both read it via
+	 * `gateway/card-field-number`'s own Field picker reads it via
 	 * `Column_Registry::get_columns_for_collection()`'s own `isNumeric`
 	 * (computed from this), not straight from here.
 	 *

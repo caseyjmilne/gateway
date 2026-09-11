@@ -1,27 +1,13 @@
 /**
- * Facet selection + configuration panel: renders the same click-to-toggle
+ * gateway/data-cards' own "Filters" panel: renders the same click-to-toggle
  * list used for columns (AvailableColumnsList) and the drag-and-drop
  * reorder/compare/value table (FacetConfigTable) for the currently selected
  * facets.
  *
- * Originally lived under blocks/datatable/src/controls/ as gateway/datatable's
- * own Facets panel; moved here, generalized, once gateway/data-cards needed
- * the same "pick a field, set a default value" UI (see FacetConfigTable's
- * own Default-value modal) for its own top-level Facets panel.
- *
- * The one real change from the original: which fields are offered
- * (`selectableColumns`) is now a prop the CALLER computes, not something
- * this component derives internally. gateway/datatable's own fields are
- * narrowed to "isFilterable AND currently a displayed column" -- a facet
- * only has something to hook into once its field is also a displayed
- * column, since its DataTables column index is how the front end targets
- * it (see gateway/facet's view.js). gateway/data-cards has no "displayed
- * columns" concept at all -- its own fields are narrowed to
- * "isFilterable" alone. Both callers already have everything needed to
- * compute their own list (Column_Registry's `isFilterable` flag, plus --
- * for the table only -- its own `columns` attribute), so pushing that
- * decision out to them keeps this component itself caller-agnostic
- * rather than hardcoding one family's own rule.
+ * Which fields are offered is narrowed to `isFilterable` alone -- the
+ * same flag `Column_Registry` computes for every field type (see that
+ * class's own docblock), true for anything `Facet_Query::apply_facets()`/
+ * `apply_collection_facets()` can actually filter by.
  */
 
 import { Notice, Spinner } from '@wordpress/components';
@@ -33,23 +19,25 @@ import { DEFAULT_FACET_COMPARE } from './facet-compare-options';
 
 /**
  * @param {Object}   props
- * @param {Object[]} props.availableColumns  Every column/field available for the current post type -- used to resolve labels/types for FacetConfigTable, independent of which are selectable.
- * @param {Object[]} props.selectableColumns Columns the toggle list actually offers -- computed by the caller (see this file's own docblock for why).
- * @param {boolean}  props.isLoading         Whether the available field list is still loading.
- * @param {string}   props.error             Error message, if the fetch failed.
- * @param {Object[]} props.facets            Selected facets: [{ key, compare, value }].
- * @param {Function} props.onChange          ( nextFacets ) => void.
- * @param {string}   [props.emptyMessage]    Shown when `selectableColumns` is empty, in place of the toggle list. Defaults to a generic "nothing available" message; callers with a more specific reason (e.g. "select columns first") can override it.
+ * @param {Object[]} props.availableColumns Every column/field available for the current post type/Collection -- narrowed to `isFilterable` internally for the toggle list, but kept in full to resolve labels/types for FacetConfigTable.
+ * @param {boolean}  props.isLoading        Whether the available field list is still loading.
+ * @param {string}   props.error            Error message, if the fetch failed.
+ * @param {Object[]} props.facets           Selected facets: [{ key, compare, value }].
+ * @param {Function} props.onChange         ( nextFacets ) => void.
+ * @param {string}   [props.emptyMessage]   Shown when there's nothing filterable, in place of the toggle list. Defaults to a generic "nothing available" message; callers with a more specific reason (e.g. "select columns first") can override it.
  */
 export default function FacetsPanel( {
 	availableColumns,
-	selectableColumns,
 	isLoading,
 	error,
 	facets,
 	onChange,
 	emptyMessage,
 } ) {
+	const selectableColumns = availableColumns.filter(
+		( column ) => column.isFilterable
+	);
+
 	const handleRemove = ( key ) => {
 		onChange( facets.filter( ( facet ) => facet.key !== key ) );
 	};

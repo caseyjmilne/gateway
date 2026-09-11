@@ -3,11 +3,10 @@
  * Turns a raw stored number into a display string per a small, fixed set
  * of "common options" (Plain/Currency/Percent, decimal places, thousands
  * separator, currency symbol/position) -- the shared formatting rules
- * behind both `gateway/card-field-number`'s own single-field display and
- * `gateway/datatable`'s own per-column Number Format (see each one's own
- * render.php). One class, not duplicated logic in each render.php,
- * so "$4.55" means the same thing everywhere a number gets formatted at
- * all.
+ * behind `gateway/card-field-number`'s own single-field display (see
+ * that block's own render.php). One class, not duplicated logic
+ * elsewhere, so "$4.55" means the same thing everywhere a number gets
+ * formatted at all.
  *
  * A pure static helper, not a hook-owning service -- nothing here needs
  * to run on its own, so it has no init() and gateway.php only ever

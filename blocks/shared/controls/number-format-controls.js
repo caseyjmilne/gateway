@@ -1,17 +1,12 @@
 /**
  * The actual Style/Decimal Places/Thousands Separator/Currency Symbol/
- * Currency Position controls -- shared between `gateway/card-field-number`'s
- * own Inspector panel (rendered directly, plenty of room in a block's own
- * sidebar) and `gateway/datatable`'s per-column Format modal (see
- * column-config-table.js's own docblock for why THAT one needs a modal at
- * all: the same narrow, fixed-width config table `facet-config-table.js`'s
- * own "Default" modal already had to solve for Compare/Value).
+ * Currency Position controls, rendered directly inside
+ * `gateway/card-field-number`'s own Inspector panel -- plenty of room in
+ * a block's own sidebar.
  *
  * A live preview line under the controls (`formatNumber()` against a
  * fixed sample value) is what actually answers "what will this look
- * like" without needing a real record on hand -- useful in both homes,
- * but especially the modal, where there's no visible block canvas nearby
- * to glance at instead.
+ * like" without needing a real record on hand.
  */
 
 import { SelectControl, RangeControl, ToggleControl, TextControl } from '@wordpress/components';

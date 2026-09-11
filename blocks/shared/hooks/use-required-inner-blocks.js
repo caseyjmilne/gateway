@@ -1,27 +1,25 @@
 /**
- * Self-heals a parent block's required, named children (e.g.
- * gateway/datatable's Facets/Header/Body/Footer, or gateway/data-cards'
- * Header/Body/Footer) -- inserting any that are missing, at the correct
- * position, WITHOUT touching any that already exist (their own attributes
- * and nested inner blocks included). Fully generic (`clientId, required,
- * buildBlock`), so it moved here from blocks/datatable/src/hooks/ -- its
- * first consumer, not its only one -- once gateway/data-cards needed the
- * exact same self-heal for its own fixed set of named children.
+ * Self-heals a parent block's required, named children (gateway/data-cards'
+ * own Header/Body/Footer) -- inserting any that are missing, at the
+ * correct position, WITHOUT touching any that already exist (their own
+ * attributes and nested inner blocks included). Fully generic (`clientId,
+ * required, buildBlock`), reusable by any future block with its own fixed
+ * set of named children.
  *
  * Why this exists instead of relying on `template` + `templateLock: 'all'`
  * (an earlier version of this used exactly that): that lock's own built-in
  * synchronization (`synchronizeBlocksWithTemplate`, in @wordpress/blocks)
  * matches existing blocks to the template BY POSITION, not by name. A
- * block instance saved *before* a new required child was introduced (e.g.
- * gateway/datatable-body, added after gateway/datatable-header/-footer
- * already existed) has only 2 existing children where the template now
- * has 3+ -- so the sync compared index-for-index, found the existing
- * Footer sitting at the position the template now expects Body to be,
- * and *discarded that Footer entirely*, replacing it with a fresh default
- * one. In practice: reopening a datatable block saved under the older,
- * 2-child structure silently threw away a site owner's own Pagination/
- * Results configuration in the Footer, replacing it with the template's
- * defaults, the moment the post was next saved.
+ * block instance saved *before* a new required child was introduced has
+ * fewer existing children than the template now has -- so the sync
+ * compared index-for-index, found an existing child sitting at the
+ * position the template now expects a different one to be, and
+ * *discarded that child entirely*, replacing it with a fresh default one.
+ * In practice (the reported incident this hook was built to fix, on a
+ * now-removed block that had exactly this shape): reopening a block saved
+ * under an older, fewer-children structure silently threw away a site
+ * owner's own configuration in one of its children, replacing it with the
+ * template's defaults, the moment the post was next saved.
  *
  * Name-based, one-at-a-time insertion here can't make that mistake: it
  * only ever ADDS a block whose name is genuinely absent, at a position
@@ -41,8 +39,8 @@
  * exists yet and calls `replaceInnerBlocks()` with the *entire* template,
  * discarding what this hook just inserted. Two mount-time writers racing
  * over the same "is it empty" moment is exactly what produced the reported
- * bug (a freshly inserted datatable block ending up completely empty
- * instead of populated by either mechanism). Skipping the empty case here
+ * bug (a freshly inserted block ending up completely empty instead of
+ * populated by either mechanism). Skipping the empty case here
  * leaves it to the one mechanism actually designed for it, and this hook
  * only ever takes over once something -- anything -- already exists to
  * prove that moment has passed.

@@ -13,16 +13,16 @@ import DndSortableGroup from './DndSortableGroup.jsx';
  * unconditionally, which gets cluttered fast on a model with a lot of
  * fields.
  *
- * Deliberately mirrors `gateway/datatable`'s own column-picker UI (a
- * click-to-toggle "available" list above a drag-to-reorder "selected"
- * config table below, `blocks/shared/controls/available-columns-list.js`
- * + `blocks/datatable/src/controls/column-config-table.js`) -- same
- * shape, same class names even, reimplemented here in this app's own
- * plain-HTML idiom rather than shared code: the admin app is a
- * completely separate build from the Gutenberg blocks (see this app's
- * own README, "Plain React + Vite, not @wordpress/scripts"), so there's
- * no `@wordpress/components` here to import that UI from directly. The
- * drag-to-reorder mechanism itself is `@dnd-kit` (`useSortableRow()`/
+ * A click-to-toggle "available" list above a drag-to-reorder "selected"
+ * config table below -- the same shape, and even the same class names,
+ * as gateway/data-cards' own Filters panel
+ * (`blocks/shared/controls/available-columns-list.js`), reimplemented
+ * here in this app's own plain-HTML idiom rather than shared code: the
+ * admin app is a completely separate build from the Gutenberg blocks
+ * (see this app's own README, "Plain React + Vite, not
+ * @wordpress/scripts"), so there's no `@wordpress/components` here to
+ * import that UI from directly. The drag-to-reorder mechanism itself is
+ * `@dnd-kit` (`useSortableRow()`/
  * `DndSortableGroup()`, shared with RecordsCrud's own Position-sorted
  * table, FieldEditor's own Fields list, and ChoicesEditor's own choice
  * rows), not the plain native HTML5 drag-and-drop this used to use --
@@ -261,8 +261,7 @@ export default function ColumnsEditor( { modelClass, fields, initialColumns } ) 
 
 	const handleRemove = ( key ) => {
 		// Keep at least one column shown -- an entirely empty Records
-		// table isn't useful, the same floor gateway/datatable's own
-		// ColumnsPanel already enforces for its own column picker.
+		// table isn't useful.
 		if ( columns.length <= 1 ) {
 			return;
 		}

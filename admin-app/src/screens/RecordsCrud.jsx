@@ -18,7 +18,8 @@ const PER_PAGE = 20;
 /**
  * How many of the page-size <select>'s own options to offer -- the same
  * "reasonable, small, fixed set" every other length-menu in this plugin
- * already uses (e.g. gateway/datatable's own default length menu).
+ * already uses (e.g. gateway/data-cards-page-size's own default length
+ * menu, shared/length-menu.js's DEFAULT_LENGTH_MENU).
  */
 const PER_PAGE_OPTIONS = [ 10, 20, 50, 100 ];
 
@@ -81,11 +82,11 @@ function isInstantlySortable( records, key ) {
  * model always requests this larger page instead, and `canReorder` below
  * only ever turns on once every one of the model's own records genuinely
  * fits on that one page (`total <= records.length`). A model with more
- * records than this is a known, accepted trade-off (same "real
- * pagination/lazy-loading is separate work" shape this plugin's own
- * Data Display block docblock already accepts elsewhere): reordering
- * simply isn't offered, and the table falls back to its normal paginated
- * view instead of ever silently dragging against an incomplete list.
+ * records than this is a known, accepted trade-off: real pagination/
+ * lazy-loading of a reorderable list is separate work, not solved here --
+ * reordering simply isn't offered, and the table falls back to its
+ * normal paginated view instead of ever silently dragging against an
+ * incomplete list.
  */
 const POSITION_PER_PAGE = 100;
 
@@ -420,8 +421,8 @@ export default function RecordsCrud() {
 	 * effect below (it depends on `loadRecords`'s own identity) on every
 	 * single fetch this function itself completes -- an infinite loop.
 	 *
-	 * `search`/`perPage` are the two new query-string params this endpoint
-	 * gained alongside DataTables-style pagination controls -- `search`
+	 * `search`/`perPage` are the two query-string params this endpoint
+	 * supports alongside its own pagination controls -- `search`
 	 * is a global LIKE search across every filterable field
 	 * (`Records_REST_Controller::list_records()`'s own docblock), and
 	 * `perPage` a user-selectable page size, both capped/validated

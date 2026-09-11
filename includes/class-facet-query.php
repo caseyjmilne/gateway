@@ -1,6 +1,8 @@
 <?php
 /**
- * Applies a datatable block's configured facets to a WP_Query.
+ * Applies gateway/data-cards' own configured facets (its top-level
+ * Filters panel, plus a visitor's own live gateway/card-facet* input) to
+ * a WP_Query or an Eloquent Collection query.
  *
  * Meta-type facets are layered on as native `meta_query` clauses; taxonomy
  * -type facets as native `tax_query` clauses. Core (WP_Post field) facets
@@ -8,6 +10,15 @@
  * filter -- scoped to *only* the query that explicitly opted in (via a
  * private query var set by apply_facets()), so this never touches any
  * other query on the site.
+ *
+ * A handful of this class's own `apply_filters()` hooks still carry a
+ * `gateway_datatable_*` name (e.g. `gateway_datatable_facet_values_cache_ttl`
+ * below) -- legacy naming kept for filter-hook backward compatibility from
+ * when `gateway/datatable` was this class's original, and for a while
+ * only, consumer. Renaming a public filter hook is a breaking change for
+ * any site already using one, so these names stay as-is even though the
+ * block they were named after is gone; see gateway/data-cards' own
+ * README changelog entry for the full removal history.
  *
  * @package Gateway
  */
@@ -22,7 +33,7 @@ class Facet_Query {
 	 * Private WP_Query var used to pass core-field facets through to
 	 * filter_posts_where() without touching any other query.
 	 */
-	const QUERY_VAR = 'gateway_datatable_core_facets';
+	const QUERY_VAR = 'gateway_core_facets';
 
 	/**
 	 * Comparison operators safe to interpolate directly into SQL. Never
@@ -561,10 +572,9 @@ class Facet_Query {
 	 * against a post type's actual available columns -- the one place
 	 * this check happens, shared by every caller that ever hands facets
 	 * to apply_facets() with data that didn't originate from trusted PHP
-	 * code: `datatable-body/render.php` (the block's own saved `facets`
+	 * code: `gateway/data-cards/render.php` (its own saved `facets`
 	 * attribute -- a site owner's own choice, but still validated the
-	 * same way any post_content could be hand-edited), `gateway/data-cards/render.php`
-	 * (its own saved `facets` attribute, same reasoning), and
+	 * same way any post_content could be hand-edited), and
 	 * `Data_Cards_REST_Controller` (a visitor's live request -- the one
 	 * case this is a genuine trust boundary, not just defense in depth).
 	 *

@@ -1,8 +1,8 @@
 <?php
 /**
- * REST API routes the block editor's own facet blocks (gateway/facet,
- * gateway/card-facet) use to preview a Select/Checkboxes facet's real
- * options while editing -- the same discovered values Facet_Query::
+ * REST API routes gateway/card-facet's own block editor UI uses to
+ * preview a Select/Checkboxes facet's real options while editing -- the
+ * same discovered values Facet_Query::
  * get_facet_options()/get_facet_options_for_collection() already hand
  * render.php for the front end, exposed here so the editor's own preview
  * (previously a single static placeholder option/checkbox -- see each

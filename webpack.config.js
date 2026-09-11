@@ -28,7 +28,7 @@ glob.sync( '*/block.json', { cwd: blocksDir } ).forEach( ( relativePath ) => {
 		const entryFile = path.join( srcDir, `${ entryName }.js` );
 
 		if ( fs.existsSync( entryFile ) ) {
-			// e.g. "datatable/build/index" -> blocks/datatable/build/index.js
+			// e.g. "data-cards/build/index" -> blocks/data-cards/build/index.js
 			entry[ `${ blockSlug }/build/${ entryName }` ] = entryFile;
 		}
 	} );

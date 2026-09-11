@@ -1,12 +1,8 @@
 /**
  * "Facet" select control: which of the parent block's configured facets
- * (block context, not a fetch of its own) this control represents.
- *
- * Originally lived under blocks/facet/src/controls/ as gateway/facet's
- * own control; moved here, with its help text genericized (no longer
- * naming "Data Table" specifically), once gateway/card-facet needed the
- * exact same "pick one of the parent's configured facets" picker against
- * gateway/data-cards' own `facets` context instead.
+ * (block context, not a fetch of its own) this control represents --
+ * gateway/card-facet's own "pick one of the parent's configured facets"
+ * picker against gateway/data-cards' own `facets` context.
  */
 
 import { SelectControl } from '@wordpress/components';

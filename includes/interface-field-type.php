@@ -95,7 +95,7 @@ interface Field_Type {
 
 	/**
 	 * Whether a field of this type is ever a sensible thing to filter/
-	 * facet a Data Table or Data Cards grid by -- what `Column_Registry::
+	 * facet a Data Cards grid by -- what `Column_Registry::
 	 * get_columns_for_collection()` reads to decide a field's own
 	 * `isFilterable`/`facetType` (`false` here means both a flat `[]`,
 	 * regardless of anything a `gateway_datatable_collection_facet_type`

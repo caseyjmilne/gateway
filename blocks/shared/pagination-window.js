@@ -1,16 +1,8 @@
 /**
- * Pure pagination-button-window logic, shared by every "which page numbers
- * do we show around the current page" control in this plugin.
- *
- * Originally lived inside blocks/pagination/src/attach-pagination.js (the
- * gateway/pagination block, wired to a live DataTables instance). Moved
- * here, unchanged, so gateway/data-cards-pagination (wired to a REST fetch
- * response instead of a DataTables API) can share the exact same windowing
- * behavior without a copy-pasted, silently-divergent second implementation
- * -- this function has zero DataTables dependency to begin with (it's a
- * pure `(current, total) => array` transform), so relocating it costs
- * nothing and was only ever "inside pagination/" because that was its
- * first caller, not because it belongs to DataTables specifically.
+ * Pure pagination-button-window logic for gateway/data-cards-pagination
+ * -- a pure `(current, total) => array` transform, fed a REST fetch
+ * response's own `{ page, pages }`, with zero dependency on any
+ * particular data source.
  */
 
 // How many page-number buttons to show at once (not counting the always

@@ -10,8 +10,8 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
  * model type"): its Field picker is fed by useAvailableColumns() called
  * with { sourceType: 'collection', collection } -- the same hook and the
  * same REST route (/gateway/v1/columns-for-collection/<class>, itself
- * backed by Model_Fields::all()) gateway/datatable and gateway/data-cards
- * already use for their own column/facet pickers -- so this list is
+ * backed by Model_Fields::all()) every other Data Cards field/facet
+ * picker already uses -- so this list is
  * always exactly whichever fields the CURRENTLY-configured parent
  * Collection actually has, re-fetched automatically whenever that
  * changes, never a hardcoded or stale guess.

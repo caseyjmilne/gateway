@@ -9,19 +9,18 @@ import { useAvailableColumns } from '../../shared/use-available-columns';
 import { useFacetOptions } from '../../shared/use-facet-options';
 
 /**
- * A trimmed gateway/facet/src/edit.js: the "isn't currently a displayed
- * column" notice/check has no counterpart here (gateway/card-facet has
- * no columns concept at all -- see render.php's own docblock), so this
- * only ever checks "is a facet chosen" and "is it still configured on
- * the parent." `UiTypeControl` gets the selected field's own `facetType`
- * (from Column_Registry, via useAvailableColumns()) so it only offers UI
- * types that make sense for that field.
+ * gateway/card-facet has no columns concept at all (see render.php's own
+ * docblock), so this only ever checks "is a facet chosen" and "is it
+ * still configured on the parent." `UiTypeControl` gets the selected
+ * field's own `facetType` (from Column_Registry, via
+ * useAvailableColumns()) so it only offers UI types that make sense for
+ * that field.
  */
 export default function Edit( { attributes, setAttributes, context } ) {
 	const { facetKey, uiType, compare } = attributes;
 	// The same classes render.php gives its own wrapper `<div>`, on this
-	// one directly -- see gateway/facet's own edit.js for why that
-	// distinction matters for the native font-size control.
+	// one directly -- matters for the native font-size control to apply
+	// to the right element.
 	const blockProps = useBlockProps( {
 		className: `gateway-card-facet gateway-card-facet--${ uiType }`,
 	} );

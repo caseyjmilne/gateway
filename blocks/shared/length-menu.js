@@ -1,15 +1,9 @@
 /**
  * Pure "Show X entries" length-menu logic, shared by every page-size
- * control in this plugin.
- *
- * Originally lived inside blocks/shared/datatable.js, which is NOT safe to
- * import from anywhere except gateway/datatable's own view.js/edit.js (it
- * imports 'datatables.net-dt' as a side effect -- see that file's own
- * docblock for why a second, independently-bundled copy of that import is
- * an actual bug, not just wasted bytes). This function has zero DataTables
- * dependency of its own -- a pure `(pageSize) => number[]` transform -- so
- * it's split out here where gateway/data-cards-page-size's editor preview
- * can import it directly, without transitively pulling in DataTables.
+ * control in this plugin -- a plain `(pageSize) => number[]` transform
+ * with no dependencies of its own, safe for any block's editor preview to
+ * import directly. Mirrors `Data_Cards_Renderer::DEFAULT_LENGTH_MENU`/
+ * `build_length_menu()`, the real PHP counterpart used for the front end.
  */
 
 /**

@@ -308,7 +308,6 @@ export default function Edit( { attributes, setAttributes, clientId } ) {
 				<PanelBody title={ __( 'Filters', 'gateway' ) } initialOpen={ false }>
 					<FacetsPanel
 						availableColumns={ availableColumns }
-						selectableColumns={ selectableFacetColumns }
 						isLoading={ isLoadingColumns }
 						error={ columnsError }
 						facets={ facets }

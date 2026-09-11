@@ -2,12 +2,11 @@
 /**
  * Server-side render for the gateway/data-cards-results block.
  *
- * Unlike gateway/datatable-results (an empty skeleton until DataTables
- * exists client-side), this block already knows everything it needs at
- * PHP-render time -- see gateway/data-cards-pagination/render.php's own
- * docblock for why (the same Data_Cards_Renderer::get_current() state,
- * computed once by gateway/data-cards/render.php). The real "Showing X to
- * Y of Z entries" text renders here directly.
+ * This block already knows everything it needs at PHP-render time -- see
+ * gateway/data-cards-pagination/render.php's own docblock for why (the
+ * same Data_Cards_Renderer::get_current() state, computed once by
+ * gateway/data-cards/render.php). The real "Showing X to Y of Z entries"
+ * text renders here directly.
  *
  * @package Gateway
  *

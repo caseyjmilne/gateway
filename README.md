@@ -9864,3 +9864,140 @@ An old bookmarked `.../permalinks` URL falls back to the General tab,
 the same graceful handling `ModelDetail.jsx` already gives any
 unrecognized `:tab` value. Verified with `admin-app`'s own `npm run
 build` (Vite) compiling cleanly.
+
+## Post-removal cleanup: dead code, over-general shared code, stale docs
+
+With Data Table and Data Display both gone (see the two removal
+entries above), a follow-up sweep: anything left over that's now
+genuinely dead, and anything still "shared" in shape but down to Data
+Cards as its only real caller, worth simplifying now that it never has
+to serve a second consumer again. Three parallel audits
+(`includes/*.php`, `blocks/shared/*` + block families, `admin-app/src/**`)
+ran first; every change below only followed a grep-verified finding --
+including, in a couple of places, catching an audit's own claim
+(a docblock's "used two ways" description) that a direct grep showed
+was already stale by the time this pass ran.
+
+**Bottom line**: no orphaned files were found -- both prior removals
+were already thorough. What was left: one genuinely unused npm
+dependency, two shared-component simplifications, one internal
+constant rename, and a large but purely-cosmetic stale-docblock pass
+across `includes/`, `blocks/`, and `admin-app/src/`.
+
+### Removed the now-unused `datatables.net-dt` npm dependency
+
+Found independently of the three audits (they were scoped to PHP/JS
+source, not `package.json`): `datatables.net-dt` remained a listed
+`dependencies` entry, but a repo-wide grep turned up zero real imports
+of it anywhere -- only a stale comment in `blocks/shared/length-menu.js`
+(see below) claiming a *different*, already-deleted file
+(`blocks/shared/datatable.js`) imported it as a side effect. Removed
+from `package.json`, `npm install` run to regenerate `package-lock.json`
+cleanly. Also fixed `package.json`'s own `description` field, still
+reading "starting with a DataTables-powered grid block" (a duplicate of
+the same stale claim `gateway.php`'s own plugin header already had
+fixed during the Data Table removal -- this is a separate field in a
+separate file that removal missed).
+
+### Simplified `blocks/shared/controls/compare-control.js`
+
+Its `options` prop existed so `gateway/facet` (Data Table, removed) and
+`gateway/card-facet` could each optionally narrow the Compare vocabulary
+-- verified directly that `gateway/card-facet/src/edit.js` (the only
+remaining caller) never passed it, so with `gateway/facet` gone, nothing
+anywhere ever passes it. Removed the prop entirely; the control always
+offers the full `FACET_COMPARE_OPTIONS` vocabulary now.
+
+### Simplified `blocks/shared/controls/facets-panel.js`
+
+Which fields the toggle list offers (`selectableColumns`) used to be a
+prop the CALLER computed, specifically because `gateway/datatable`
+(removed) needed a different narrowing rule ("isFilterable AND
+currently a displayed column") than Data Cards' plain "isFilterable."
+Verified `gateway/data-cards/src/edit.js` is the only remaining caller,
+passing its own `isFilterable`-only list. `FacetsPanel` now derives that
+list internally from its existing `availableColumns` prop; the
+`selectableColumns` prop is gone. `edit.js`'s own `selectableFacetColumns`
+variable stays -- it's independently needed by a `useReconcileFieldList()`
+call a few lines below -- only the hand-off to `<FacetsPanel>` was
+removed.
+
+### Renamed `Facet_Query::QUERY_VAR`'s stale internal string
+
+`includes/class-facet-query.php`'s private `WP_Query` var (used only
+inside this one class, to pass core-field facets through to its own
+`posts_where` filter) was still literally `'gateway_datatable_core_facets'`.
+Verified zero external readers -- unlike the public `apply_filters()`
+hooks below, this was always a pure implementation detail, so renaming
+it is zero-risk. Now `'gateway_core_facets'`.
+
+### Left alone, and why
+
+- **Ten public `gateway_datatable_*` filter hooks** (`gateway_datatable_columns_cache_ttl`,
+  `gateway_datatable_meta_facet_type`, `gateway_datatable_facet_values_cache_ttl`,
+  etc., across `Column_Registry`/`Facet_Query`) still fire from code Data
+  Cards genuinely exercises today. These are extensibility hooks, not
+  internal details -- renaming one is a breaking change for any site
+  already filtering it. Added one short comment near each class's own
+  first cluster of these explaining they're legacy names kept for
+  filter-hook backward compatibility, so a future reader isn't puzzled
+  by "datatable" hooks firing from Data-Cards-only code paths.
+- **`Model_Fields::resync()` and `Migration_Runner::is_up_to_date()`** --
+  both genuinely zero-caller by grep, but pre-existing and unrelated to
+  either removal: `resync()`'s own docblock frames it as a deliberate,
+  documented manual-repair escape hatch (for WP-CLI or a one-off
+  snippet), not orphaned code, and `is_up_to_date()` is a trivial
+  one-liner composing two methods that ARE both used elsewhere. Left
+  as-is -- deleting a documented utility on a "no caller found" technicality
+  is a different, separate judgment call from this removal-driven pass.
+- **Every "postType vs. Collection" duality** in `Column_Registry`,
+  `Data_Cards_Renderer`, `Model_Fields::resolve_orderby()`,
+  `Records_REST_Controller`, and the various `SourceTypeControl`-driven
+  editors -- Data Cards' own intentional design (it supports both WP
+  post types and custom Eloquent models), not leftover generality from
+  serving multiple removed block families. Collapsing it would remove a
+  real, still-needed feature.
+- **`blocks/shared/use-loopable-relationships.js`'s `types` parameter** --
+  its own docblock says it exists for "a future consumer" wanting a
+  narrower relationship-type list, not as Data Table/Data Display
+  leftover generality. Speculative future-proofing, not dead weight.
+- `Facet_Query`, `Facet_Options_REST_Controller`, `Columns_REST_Controller`,
+  `Column_Registry`, `Markdown_Converter`, and the field-type interface's
+  `is_orderable()`/`is_filterable()`/etc. predicates -- all confirmed
+  multi-caller (or intentionally single-caller-by-design) and
+  appropriately general; no simplification opportunity found.
+
+### Documentation cleanup (comment/docblock only, no behavior change)
+
+A large pass across `includes/`, `blocks/`, and `admin-app/src/` fixing
+docblocks/comments that named a now-deleted block, file, or component as
+if it still existed -- "unlike gateway/datatable-body's WP_Query...",
+"the same shape gateway/datatable's own columns block attribute already
+uses...", "originally lived under blocks/facet/src/controls/...", and
+similar. One, `blocks/shared/use-available-columns.js`, had gone from
+merely stale to factually wrong (it claimed only `gateway/datatable`'s
+edit.js ever passed a Collection-mode argument -- by the time of this
+pass, 8+ Data Cards blocks did) -- rewritten to describe current
+callers. `includes/class-block-loader.php`'s own "Gateway" category
+docblock still said "four blocks" and listed `gateway/datatable-header`
+as an example child, both leftover from before *both* removals (only
+two top-level blocks exist now) -- fixed to match. Left untouched, per
+this codebase's own established distinction: genuine citations of the
+third-party DataTables.net library's own conventions (e.g. "matches
+DataTables' own `page.info().page` convention," used as design precedent
+for this plugin's own zero-based pagination) -- these were never claims
+that the library or the removed block still exists in this codebase,
+just familiar-shape citations, confirmed accurate either way.
+
+Verified: `npm run build` (blocks) and `admin-app`'s own `npm run build`
+(Vite) both compile cleanly. `php -l` clean on every touched `includes/`
+file (two edits initially introduced a literal `*/` inside a docblock's
+own prose -- e.g. "card-field-*/gateway" -- which prematurely closed the
+comment; caught by the very next lint/build pass and fixed by rewording
+around the asterisk). A repo-wide, case-insensitive grep for
+`datatable`/`data-display`/`gateway/facet` (excluding `card-facet-*`,
+which stays) across `includes/`, `blocks/`, `admin-app/src/`, and the
+root config files, after this pass, returns only: the ten intentionally
+-kept public filter hook names (plus the new comment explaining them),
+genuine DataTables.net library-convention citations, and this README's
+own historical entries.

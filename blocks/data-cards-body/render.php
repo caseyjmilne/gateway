@@ -2,13 +2,11 @@
 /**
  * Server-side render for the gateway/data-cards-body block.
  *
- * Unlike gateway/datatable-body (which runs its own WP_Query and builds
- * its own <table> entirely independently), this block's render.php does
- * almost nothing itself: gateway/data-cards/render.php -- the one common
- * ancestor Body, Pagination, and Results all share -- already ran the
- * query, rendered every card, and computed pager metadata ONCE, and
- * stashed it via Data_Cards_Renderer::set_current() right before
- * dispatching this block. This just reads that back and renders it.
+ * This block's render.php does almost nothing itself: gateway/data-cards/render.php
+ * -- the one common ancestor Body, Pagination, and Results all share --
+ * already ran the query, rendered every card, and computed pager metadata
+ * ONCE, and stashed it via Data_Cards_Renderer::set_current() right
+ * before dispatching this block. This just reads that back and renders it.
  *
  * A single <ul> carries both the wrapper/layout-support classes (via
  * get_block_wrapper_attributes(), which also applies this block's
@@ -25,10 +23,8 @@
  * built around this one element carrying everything.
  *
  * Explicit esc_attr() on each data attribute below, not
- * get_block_wrapper_attributes()'s own $extra_attributes -- matches
- * gateway/datatable-body's own render.php, which builds its <table> tag
- * manually the same way, for the same reason: this repo's own established
- * pattern for anything beyond a plain class list.
+ * get_block_wrapper_attributes()'s own $extra_attributes -- this repo's
+ * own established pattern for anything beyond a plain class list.
  *
  * @package Gateway
  *
