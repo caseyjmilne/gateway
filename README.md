@@ -10039,3 +10039,30 @@ defaults Root to key+"s" correctly; a `gateway_permalink_root_taken`
 response triggers exactly one retry with no Root, and the field is
 still created; any other error code is surfaced as-is with no retry
 attempted. `php -l` clean on `class-model-builder.php`.
+
+## Make Title sortable by default on a new Content Type model
+
+Reported directly: Title wasn't sortable by default on a fresh Content
+Type model's Records table -- unconfigured `Model_Columns` (the
+otherwise-simpler default) makes NOTHING sortable at all (see that
+class's own docblock), so a site owner always had to visit the Columns
+tab by hand just to sort by the one field almost every model has.
+
+`Model_Builder::create()`'s existing Content Type seeding block now
+seeds a `Model_Columns` row right after Title and Permalink are added:
+`[{key: 'title', sortable: true}, {key: 'permalink', sortable: false}]`
+(Permalink included only when it was actually seeded successfully) --
+matching exactly the visible column set "unconfigured" mode would have
+shown anyway, so the only real change from before is Title's own
+sortable flag, not which columns appear. The one trade-off, inherited
+from `Model_Columns::set()`'s own existing "no partial config" design
+(already documented on that class): a field added to this model later
+needs to be added to Columns by hand from that point on, since seeding
+this row moves the model from "unconfigured" into "explicitly
+configured" a little earlier than a site owner doing it themselves
+would have.
+
+Verified with a standalone smoke test isolating the new logic:
+Permalink seeded successfully -> both columns saved, Title sortable;
+Permalink failed to seed -> only Title saved, still sortable. `php -l`
+clean.

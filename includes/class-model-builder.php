@@ -364,6 +364,27 @@ class Model_Builder {
 						$permalink_field->get_error_message()
 					);
 				}
+
+				// Title sortable by default -- a direct request: it's the
+				// one field a site owner almost always wants to sort the
+				// Records table by, and leaving Columns unconfigured (the
+				// otherwise-simpler option) makes NOTHING sortable at all
+				// (see Model_Columns's own docblock). Includes Permalink
+				// too, when it was actually added, so the visible column
+				// set here matches exactly what "unconfigured" would have
+				// shown anyway -- the only real change from unconfigured is
+				// Title's own sortable flag, not which columns show. A
+				// field added to this model later needs to be added to
+				// Columns by hand from that point on (the same trade-off
+				// Model_Columns::set()'s own docblock already documents for
+				// any explicitly-configured model).
+				$columns = array( array( 'key' => 'title', 'sortable' => true ) );
+
+				if ( ! is_wp_error( $permalink_field ) ) {
+					$columns[] = array( 'key' => 'permalink', 'sortable' => false );
+				}
+
+				Model_Columns::set( $class_name, $columns );
 			}
 		}
 
