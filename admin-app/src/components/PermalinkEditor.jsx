@@ -195,7 +195,7 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 						<tr>
 							<th scope="row">
 								<label htmlFor="gateway-permalink-root">
-									Root
+									Permalink Root
 								</label>
 							</th>
 							<td>
@@ -209,11 +209,6 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 										setRoot( event.target.value )
 									}
 								/>
-								<p className="description">
-									Must be unique across every model on
-									this site. Leave blank to leave this
-									model unrouted for now.
-								</p>
 							</td>
 						</tr>
 						<tr>
@@ -243,14 +238,6 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 										</a>
 									</p>
 								) }
-								<p className="description">
-									A real block-editor page rendering one
-									record -- design it with Gateway blocks
-									(e.g. Card Field Text, Related Items),
-									then pick this Model in its own
-									&ldquo;Gateway Template&rdquo; sidebar
-									panel.
-								</p>
 							</td>
 						</tr>
 					</tbody>
