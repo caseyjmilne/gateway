@@ -10001,3 +10001,41 @@ root config files, after this pass, returns only: the ten intentionally
 -kept public filter hook names (plus the new comment explaining them),
 genuine DataTables.net library-convention citations, and this README's
 own historical entries.
+
+## Auto-default the Single Record Root on a new Content Type model
+
+Reported directly: a new model's Single Record Root was always left
+blank, requiring a manual trip to the Single Record tab before any of
+its records could route at all -- easy to forget, and (per the earlier
+404 fix above) genuinely blocks the front end until done. Since this
+plugin already derives a URL-safe "key" from a model's own Title
+(`Model_Builder::slug_for_class()` -- "Listing" -> "listing"), the
+requested fix: default Root to that key plus a literal `"s"`
+("listing" -> "listings") the moment a Content Type model is created,
+rather than a smart/library pluralizer -- exactly the simple rule
+asked for.
+
+Scoped to `Model_Builder::create()`'s existing Content Type seeding
+block (the only place a Permalink field is ever auto-created -- a Data
+Model never gets one at all, added by hand via the Fields tab if
+wanted, and that manual path is unaffected). `$new_slug` was already
+computed earlier in `create()` to check a slug collision, reused as-is
+rather than recomputed.
+
+Because `Model_Fields::add()` runs the same cross-model Root-uniqueness
+check for this call as it would for a site owner typing one by hand,
+a rare collision (two different models' own key+"s" happening to
+match, or a re-created model reusing a key another model has since
+claimed) must not fail seeding the field itself -- before this
+default existed, seeding a Permalink field with a blank Root always
+succeeded. So a `gateway_permalink_root_taken` error specifically
+retries once with no Root at all (today's original behavior), falling
+back gracefully for that one rare case; any other error is still
+surfaced as the existing non-fatal warning, unchanged.
+
+Verified with a standalone smoke test isolating the new branching
+logic against a stub `Model_Fields::add()`: no-collision case
+defaults Root to key+"s" correctly; a `gateway_permalink_root_taken`
+response triggers exactly one retry with no Root, and the field is
+still created; any other error code is surfaced as-is with no retry
+attempted. `php -l` clean on `class-model-builder.php`.

@@ -315,6 +315,12 @@ class Model_Builder {
 					$title_field->get_error_message()
 				);
 			} else {
+				// Root defaults to the model's own key plus a literal "s"
+				// ("listing" -> "listings") -- a direct request, so a fresh
+				// Content Type routes immediately (once a Template exists)
+				// without a separate manual trip to the Single Record tab
+				// first. Deliberately the simple rule asked for, not a
+				// smart pluralizer.
 				$permalink_field = Model_Fields::add(
 					$class_name,
 					'permalink',
@@ -323,8 +329,33 @@ class Model_Builder {
 					null,
 					null,
 					false,
-					array( 'source_field' => 'title' )
+					array(
+						'source_field' => 'title',
+						'root'         => $new_slug . 's',
+					)
 				);
+
+				// A root collision with another model's own Permalink field
+				// (rare -- e.g. two differently-keyed models whose own
+				// key+"s" happen to match, or a re-created model reusing a
+				// key another model has since claimed) is never a reason to
+				// fail seeding the field itself -- retry once with no root
+				// at all, the same blank starting point every Permalink
+				// field had before this default existed. The site owner can
+				// still set a different one by hand on the Single Record
+				// tab either way.
+				if ( is_wp_error( $permalink_field ) && 'gateway_permalink_root_taken' === $permalink_field->get_error_code() ) {
+					$permalink_field = Model_Fields::add(
+						$class_name,
+						'permalink',
+						'permalink',
+						__( 'Permalink', 'gateway' ),
+						null,
+						null,
+						false,
+						array( 'source_field' => 'title' )
+					);
+				}
 
 				if ( is_wp_error( $permalink_field ) ) {
 					$warnings[] = sprintf(
