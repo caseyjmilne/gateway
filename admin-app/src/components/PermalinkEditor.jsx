@@ -256,15 +256,9 @@ export default function PermalinkEditor( { modelClass, fields, onFieldsChange } 
 					</tbody>
 				</table>
 
-				{ root && templateId ? (
+				{ root && templateId && (
 					<p className="description">
 						Preview: <code>/{ root }/example-slug</code>
-					</p>
-				) : (
-					<p className="description">
-						Both Root and a Template are required before this
-						model&rsquo;s records are reachable at their own
-						URL.
 					</p>
 				) }
 
